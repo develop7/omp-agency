@@ -1,0 +1,37 @@
+# Dispatcher to the Nickel workflow engine.
+#
+# Constructs a Nickel expression inline with absolute paths so the workflow
+# works regardless of where the skill is installed (repo root, OMP plugin
+# directory, etc.). Nickel's `import` requires a string literal — no dynamic
+# interpolation — so we build the full expression in bash where $SCRIPT_DIR
+# (plugin/skill location) and $PWD (project root) are both available.
+#
+# Usage:
+#   nickel-cli cli
+#   nickel-cli cli_seed <from>
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WORKFLOW="$SCRIPT_DIR/../workflow.ncl"
+field="${1:?Usage: nickel-cli <cli|cli_seed> [args...]}"
+shift
+case "$field" in
+  cli)
+    printf 'let workflow = import "%s" in
+  let state = workflow.normalize_state (import "%s/.do-results.json") in
+  workflow.cli state
+' "$WORKFLOW" "$PWD" \
+      | nickel eval --stdin-format nickel
+    ;;
+  cli_seed)
+    from="${1:-}"
+    printf 'let workflow = import "%s" in
+  let state = workflow.normalize_state (import "%s/.do-results.json") in
+  workflow.cli_seed "%s" state
+' "$WORKFLOW" "$PWD" "$from" \
+      | nickel eval --stdin-format nickel
+    ;;
+  *)
+    echo "nickel-cli: unknown field: $field" >&2
+    exit 2
+    ;;
+esac

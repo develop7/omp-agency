@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agency",
+  "owner": {
+    "name": "srid"
+  },
+  "metadata": {
+    "description": "Near-autonomous workflow for coding agents — talk, do, and quality gates",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "agency",
+      "description": "Near-autonomous workflow: talk (design/exploration), do (implement → review → CI → ship), and structural quality gates (hickey, lowy, code-police).",
+      "source": "./",
+      "category": "development",
+      "homepage": "https://github.com/srid/agency",
+      "repository": "https://github.com/srid/agency",
+      "license": "MIT"
+    }
+  ]
+}

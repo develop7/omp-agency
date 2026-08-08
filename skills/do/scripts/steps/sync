@@ -1,0 +1,191 @@
+# /do workflow's sync step — extracted to a script to collapse several Bash
+# round-trips into one. Handles fetch, fast-forward, forge detection (from the
+# remote URL), dirty-tree hint, base resolution, and initial results
+# bookkeeping. VCS-agnostic: delegates to scripts/vcs-op.
+#
+# Also resolves the run's `base` — the branch to branch from, diff against,
+# and target the PR at (enables stacked PRs). Resolution order:
+#   --base <branch>  → base = <branch>          (explicit parent)
+#   --stack          → base = current feature branch, else the default branch
+#                      (auto "closest branch")
+#   neither          → base = default branch     (origin HEAD; today's behavior)
+# The resolved `base` is written to .do-results.json; downstream ops read it
+# via vcs-op's get_base_branch (no per-call arg threading).
+#
+# Usage:
+#   sync <noVcs> [--base <branch> | --stack]
+#     <noVcs>      "true" or "false" — whether --no-vcs was passed
+#     --base       explicit base branch (mutually exclusive with --stack;
+#                  incompatible with --no-vcs)
+#     --stack      auto-detect: stack on the current feature branch
+#
+# Stdout (for the agent to parse):
+#   vcs=<jj|git|unknown>
+#   forge=<github|bitbucket|unknown>
+#   branch=<current branch name>
+#   defaultBranch=<origin HEAD ref name>
+#   base=<resolved base branch name>
+
+set -euo pipefail
+
+noVcs=""
+base_request=""
+stack="false"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base)
+      base_request="${2:?--base requires a branch argument}"
+      shift 2
+      ;;
+    --stack)
+      stack="true"
+      shift
+      ;;
+    --*)
+      echo "sync: unknown flag: $1" >&2
+      echo "Usage: sync <noVcs> [--base <branch> | --stack]" >&2
+      exit 2
+      ;;
+    *)
+      # A bare positional is the noVcs argument; validate below. Accept it
+      # here even if invalid (e.g. "maybe") so the post-loop check emits the
+      # specific "noVcs must be 'true' or 'false'" message rather than
+      # "unknown argument".
+      noVcs="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$noVcs" ]; then
+  echo "sync: noVcs is required (true or false)" >&2
+  echo "Usage: sync <noVcs> [--base <branch> | --stack]" >&2
+  exit 2
+fi
+case "$noVcs" in
+  true|false) ;;
+  *) echo "sync: noVcs must be 'true' or 'false', got '$noVcs'" >&2; exit 2 ;;
+esac
+if [ -n "$base_request" ] && [ "$stack" = "true" ]; then
+  echo "sync: --base and --stack are mutually exclusive" >&2
+  exit 2
+fi
+if [ "$noVcs" = "true" ] && { [ -n "$base_request" ] || [ "$stack" = "true" ]; }; then
+  echo "sync: --base/--stack are incompatible with --no-vcs" >&2
+  echo "       --no-vcs skips branch/commit/PR; the base has no effect." >&2
+  exit 2
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DO_RESULTS="$SCRIPT_DIR/../do-results"
+VCS_OP="$SCRIPT_DIR/../vcs-op"
+FORGE_OP="$SCRIPT_DIR/../forge-op"
+
+startedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# Detect VCS
+vcs="$(bash "$VCS_OP" detect)"
+
+# Fetch
+bash "$VCS_OP" fetch >/dev/null
+
+# Pin origin/HEAD (git only; jj has no concept of origin/HEAD)
+if [ "$vcs" = "git" ]; then
+  git remote set-head origin --auto >/dev/null
+fi
+
+# Fast-forward if behind upstream, unless --no-vcs
+if [ "$noVcs" = "false" ]; then
+  case "$vcs" in
+    git)
+      if upstream="$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null)"; then
+        behind="$(git rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)"
+        ahead="$(git rev-list --count "$upstream..HEAD" 2>/dev/null || echo 0)"
+        if [ "$behind" -gt 0 ] && [ "$ahead" -eq 0 ]; then
+          git pull --ff-only
+        fi
+      fi
+      ;;
+    jj)
+      # jj's git fetch already updates remote bookmarks. No pull needed.
+      # If the user wants to move to the latest remote state, they do that
+      # explicitly via `jj new <remote-bookmark>`.
+      ;;
+  esac
+fi
+
+# Dirty-tree hint (no pause, just print)
+if [ "$noVcs" = "false" ] && bash "$VCS_OP" dirty; then
+  echo "Dirty tree detected. Continuing will create a fresh branch on top of these changes. If you wanted the agent to extend your WIP in place without touching git, re-run with --no-vcs." >&2
+fi
+
+# Forge detection — forge-op is the sole classifier (its `detect` subcommand
+# reads the origin URL). Previously sync carried its own copy of the URL→forge
+# glob set; now it delegates, so adding a forge (e.g. gitlab) is one edit in
+# forge-op, not two.
+forge="$(bash "$FORGE_OP" detect)"
+
+# Pre-compute forge capability booleans via forge-op's capability table.
+# Nodes and workflow.ncl skip predicates branch on these instead of on the
+# forge string — the forge → supported-ops map lives in one place (forge-op).
+# Only the ops nodes actually branch on are pre-computed; pr-view and pr-edit
+# have no reader (create-pr trusts that if pr-create is supported, so are
+# view/edit) and are omitted to avoid dead state surface.
+# When #10 lands, only forge-op's table + dispatch arms change; sync, nodes,
+# and workflow.ncl are untouched.
+supports_to_bool() {
+  if bash "$FORGE_OP" supports "$1" 2>/dev/null; then echo "true"; else echo "false"; fi
+}
+supports_pr_create="$(supports_to_bool pr-create)"
+supports_pr_comment="$(supports_to_bool pr-comment)"
+supports_issue_view="$(supports_to_bool issue-view)"
+supports_pr_checks="$(supports_to_bool pr-checks)"
+
+# Initialize results, stash /do-specific top-level fields (vcs, forge, noVcs)
+# via the generic `set` command. Suppress do-results' stdout confirmations —
+# sync emits its own protocol below and shouldn't pollute it with do-results'
+# echo lines.
+[ -f ".do-results.json" ] || bash "$DO_RESULTS" init >/dev/null
+bash "$DO_RESULTS" set vcs "$vcs" >/dev/null
+bash "$DO_RESULTS" set forge "$forge" >/dev/null
+bash "$DO_RESULTS" set noVcs "$noVcs" >/dev/null
+bash "$DO_RESULTS" set supportsPrCreate "$supports_pr_create" >/dev/null
+bash "$DO_RESULTS" set supportsPrComment "$supports_pr_comment" >/dev/null
+bash "$DO_RESULTS" set supportsIssueView "$supports_issue_view" >/dev/null
+bash "$DO_RESULTS" set supportsPrChecks "$supports_pr_checks" >/dev/null
+
+# Emit structured facts the agent uses for downstream steps
+branch="$(bash "$VCS_OP" head-revision)"
+default_ref="$(bash "$VCS_OP" default-branch)"
+
+# Resolve the base for this run (see header comment for the policy).
+if [ -n "$base_request" ]; then
+  base="$base_request"
+elif [ "$stack" = "true" ]; then
+  current="$(bash "$VCS_OP" current-branch)"
+  if [ -n "$current" ] && [ "$current" != "$default_ref" ] && [ "$current" != "HEAD" ]; then
+    base="$current"
+  else
+    # Fail loud: silently falling back to the default branch would target the
+    # PR at master while looking like a successful stack — the dangerous
+    # direction. The user asked to stack; if there's no feature branch to
+    # stack onto, make them say so explicitly via --base.
+    echo "sync: --stack found no feature branch to stack onto" >&2
+    echo "       current branch is '${current:-<none>}' (default is '$default_ref')." >&2
+    echo "       checkout the feature branch first, or pass --base <branch> explicitly." >&2
+    exit 2
+  fi
+else
+  base="$default_ref"
+fi
+bash "$DO_RESULTS" set base "$base" >/dev/null
+
+bash "$DO_RESULTS" step sync passed \
+  "fetch ok; vcs=$vcs; forge=$forge; noVcs=$noVcs; base=$base" \
+  "$startedAt" now >/dev/null
+
+echo "vcs=$vcs"
+echo "forge=$forge"
+echo "branch=$branch"
+echo "defaultBranch=$default_ref"
+echo "base=$base"

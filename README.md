@@ -1,0 +1,165 @@
+# agency
+
+Agency[^agency] is a near-autonomous workflow for coding agents on [OMP (Oh My Pi)](https://github.com/can1357/oh-my-pi). Two skills: **`talk`** for design and code exploration (read-only), **`do`** for shipping end-to-end (research → implement → structural review → CI → done).
+
+## How the loop works
+
+`talk` and `do` are separate entry points, not steps in a single flow. Pick based on whether the spec is already clear:
+
+- **Spec is clear** → `/do <thing>` directly. Concrete change, scope obvious, you know what "done" looks like.
+- **Spec isn't obvious** → `/talk` first. Discuss the approach, read code, sketch an interface, let `hickey` and `lowy` chew on the sketch. Once you both converge on a plan, hand it to `/do`.
+
+`/do` does not include a design-exploration phase. Its "research" step is implementation-level — what files to touch, what APIs to use — not "what should we build". Pasting a thin plan (or a one-shot outline from another model) straight into `/do` produces a thin implementation; the fix isn't to make `/do` smarter, it's to do the design work in `/talk` first.
+
+### Feedback is the bottleneck
+
+The autonomous loop is only as good as the feedback signal it gets. If the agent can't tell whether its change actually worked, no amount of model capability papers over that gap. End-to-end tests are a prerequisite, not a nice-to-have — unit tests and type-checks alone aren't enough. What "e2e" means depends on the surface:
+
+- **Frontend** → screenshot evidence in PRs ([example](https://github.com/juspay/kolu/pull/791#issuecomment-4352641175)) for visual changes — and a survives-restart capture for behavioral fixes that have no visual diff (persistence / restore / round-trip paths). First-class evidence as a workflow step is tracked in [#106](https://github.com/srid/agency/issues/106).
+- **Nix-based infra** → NixOS VM tests. Honest tradeoff: a VM isn't a live environment, mocking is often required, and reaching real fidelity for non-trivial infra takes effort — but it's still the closest thing to an executable spec the agent can drive.
+- **Backend / library** → fast, deterministic e2e suites the agent can run in a tight loop. Slow or flaky suites destroy the loop; a 30-second deterministic run beats a 10-minute thorough one.
+
+`/do` enforces this end of the bargain: any change that introduces new behavior (services, endpoints, configuration, env vars, network connectivity, persistence) writes its test before the implementation, and the `test` step fails the run if no test actually exercises the changed paths. Bug fixes get the same test-first treatment; refactors and pure docs are exempt only when there's no observable behavior to verify.
+
+### State, within and across PRs
+
+**Within a PR**, `/do` writes per-step lifecycle, status, and timing to `.do-results.json` at the repo root. The `stop-guard` extension reads this so the agent can't bail mid-workflow — if a run is still `working`, stops are blocked until it reaches `done` or is explicitly marked `failed`.
+
+**Across PRs**, there is no built-in memory, by design. Scope each PR small enough to land end-to-end in a day or two; branches that linger longer are a smell. When a piece of work genuinely doesn't fit in one PR, have `/talk` produce a GitHub issue with explicit phases, then run `/do` against each phase as its own PR — the issue is the cross-PR memory. See [juspay/kolu#514](https://github.com/juspay/kolu/issues/514) for the shape.
+
+### Structural reviews catch what tests don't
+
+Type-checkers, tests, and CI catch correctness; they don't catch design. An LLM-generated diff can pass every automated gate and still complect two roles into one construct, or draw a module boundary along the wrong axis of change.
+
+`/do` closes that gap with two structural-review passes that run **post-implement on the concrete diff** as parallel sub-agents:
+
+- **`hickey`** — accidental complexity, after Rich Hickey's [*Simple Made Easy*](https://www.infoq.com/presentations/Simple-Made-Easy/).
+- **`lowy`** — volatility-based decomposition, after Juval Lowy's [*Righting Software*](https://rightingsoftware.org/) (building on [Parnas 1972](https://www.win.tue.nl/~wstomv/edu/2ip30/references/criteria_for_modularization.pdf)).
+
+Every finding lands as its own commit in the same PR — there is no Defer disposition, no follow-up issue, no "out of scope" exit. The PR's scope expands to absorb each finding, even when the fix grows the diff substantially; the alternative is shipping the complected version and trusting a "broader refactor" follow-up that statistically never happens. Reviewers default to whole-module scope, not just the diff lines — recurring patterns in the same file are in scope even when the trigger pointed only at one symptom. PR history reads as a progression from primary implementation through each structural refinement; the full findings ledger ships as a PR comment. Both reviewers run on the `@task` model role — set `modelRoles.task` in your OMP config to control which model runs reviews.
+
+Read [**Hickey/Lowy on kolu.dev**](https://kolu.dev/blog/hickey-lowy/) for the full framing — what each lens looks for and why the pair catches what tests miss. Both can be extended with project-specific patterns via `.agency/hickey.md` / `.agency/lowy.md` (see [Project config](#project-config)).
+
+## Quickstart
+
+Install Agency as an OMP marketplace plugin:
+
+```
+omp plugin marketplace add srid/agency
+omp plugin install agency@agency
+```
+
+Or for local development:
+
+```
+omp plugin link ./path/to/agency
+```
+
+Then set the model for subagent reviewers in your OMP config:
+
+```yaml
+# ~/.omp/agent/config.yml
+modelRoles:
+  task: anthropic/claude-sonnet-4-5   # what hickey/lowy/code-police run on
+```
+
+Service tiers for subagents are controlled by `tier.subagent` (default `inherit`):
+
+```yaml
+tier:
+  subagent: flex   # auto, default, flex, scale, priority, none
+```
+
+## What's included
+
+### Primary skills
+
+- **`do`** — Full pipeline: research → implement → structural review (`hickey`, `lowy`) → quality gate (`code-police`) → CI → evidence (opt-in) → ship. Skip specific steps by mentioning them in the prompt, or pass **`--minimal`** to skip docs / structural review / police / evidence wholesale on trivially-scoped diffs (one-line fixes, typos, config tweaks).
+- **`talk`** — Conversation-and-research mode. Discuss ideas, explore approaches, read code, inspect upstream sources in temporary scratch space when needed — read-only by default. Auto-runs `hickey` + `lowy` on design sketches. Pass **`--html`** to write the response as a self-contained HTML artifact (in `docs/plans/` if that directory exists, else the repo root) instead of replying in chat — pair with a runner that can render and select-to-comment on the artifact (e.g. [juspay/kolu#922](https://github.com/juspay/kolu/pull/922)) for tight comment-driven iteration on the same file. When the topic involves UI work, the artifact embeds *rendered* HTML/CSS prototypes of the proposed components so you can react to the visual itself, not a prose description of it…
+- **`ralph`** — Iterative measurement-driven improvement loop. Measure, profile, mutate, re-measure, commit. Works for performance, bundle size, complexity — anything quantifiable.
+
+### Supporting skills
+
+- **`hickey`** — Structural simplicity evaluation, shipped as a sub-agent so it can run in parallel with `lowy`.
+- **`lowy`** — Volatility-based decomposition review, shipped as a sub-agent.
+- **`code-police`** — Three-pass quality gate (rule checklist, fact-check for logic errors, elegance). Rules and fact-check run as parallel sub-agents on fresh contexts so the implementer's main context — which just wrote the diff and is biased to rationalize it — can't launder violations through. The elegance pass runs sequentially after them and runs an iterative refinement loop.
+- **`fact-check`** — Standalone correctness audit: silent error swallowing, unjustified fallbacks, wishful thinking, logic errors. Prosecutor posture, no self-dismissals.
+- **`elegance`** — Iterative elegance pass: understand, research, apply, verify. 3 iterations by default, each building on the last.
+- **`forge-pr`** — PR titles and descriptions devs actually want to read. Narrative paragraphs for the why; lists/tables/diagrams when the content is genuinely structured. GitHub today; Bitbucket support tracked in [#10](https://github.com/srid/agency/issues/10).
+
+### Extension
+
+- **`stop-guard`** — OMP extension (`session_stop` event) that reads `.do-results.json` to keep the agent from stopping mid-`do` workflow.
+
+## Model tiers
+
+Agency's sub-agents (`hickey`, `lowy`, `code-police`) use the `@task` model role. Control the concrete model via OMP's `modelRoles.task` setting. Service tiers for all sub-agents are controlled by `tier.subagent` (default: `inherit`, which tracks the parent session's tier).
+
+## Project config
+
+Each agency skill reads its project-specific configuration from a single file named after itself, under a top-level `.agency/` directory:
+
+| File | Read by | Contains |
+|------|---------|----------|
+| `.agency/do.md` | `/do` | `## Check command` / `## Format command` / `## Test command` / `## CI command` / `## Documentation` (required for those steps to run) and an optional `## PR evidence` section that opts into the evidence step |
+| `.agency/code-police.md` | `code-police` | extra quality rules layered on top of the built-in checklist |
+| `.agency/hickey.md` | `hickey` | extra complecting/fragmentation patterns extending the Layer 4 catalog |
+| `.agency/lowy.md` | `lowy` | project-declared areas of volatility used by the review pass |
+
+All four files are **plain Markdown** — no frontmatter, no ceremony — and **opt-in** (the consuming skill silently skips its extension behavior when the file is missing). Each skill reads only its own file; nothing crosses, so a project can adopt skills à la carte without touching the others.
+
+Content is free-form: inline prose, a pointer to another file (`See ./code-police-rules.md`), or a script reference all work. Example `.agency/do.md`:
+
+```markdown
+# /do config
+
+## Check command
+just check
+
+## Format command
+just fmt
+
+## Test command
+just test
+
+## CI command
+just ci
+
+## Documentation
+Keep README.md in sync with user-facing changes.
+
+## PR evidence
+Capture proof when the change has a behavior worth proving — **visual** (a UI diff) or
+**behavioral** (state survives an interaction or a restart, e.g. a persistence / restore /
+debounce / reconnect fix with no visual diff):
+
+1. Use the `chrome-devtools` MCP to launch `npm run dev` and exercise the affected route — for
+   a behavioral fix, drive the before→after round-trip (e.g. change state → restart → restore).
+2. Capture a screenshot (or a video, for motion or a round-trip) and upload it via `gh api` to
+   the repo's release-asset endpoint.
+3. Embed the resulting URL inline in the PR comment under `## Evidence`.
+```
+
+Agency does not prescribe any specific tool or format — `chrome-devtools` MCP, `hyperfine`, `asciinema`, custom scripts all work.
+
+See [Kolu's `.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for a worked example.
+
+## Examples
+
+- **[Kolu](https://github.com/juspay/kolu)** — Terminal multiplexer that uses agency for its autonomous development workflow. See its [`.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for how project-specific instructions layer on top of agency's generic workflow.
+
+## Development
+
+```bash
+just test      # run bats tests (unit + integration)
+just lint      # run shellcheck on bash scripts
+just ci        # full CI: tests + lint
+```
+
+Testing requires [bats-core](https://github.com/bats-core/bats-core): `sudo apt-get install bats`, `brew install bats-core`, or `nix profile install nixpkgs#bats`.
+
+## Resources
+
+- [Video walkthrough: adding a /code-police rule](https://youtu.be/IFp0bb2D0ZE?si=1ISdAYeFw5LTaMW1&t=426)
+
+[^agency]: _"as the term ‘pure intent’ refers to an intimate connection betwixt the near-purity of the sincerity of naiveté and the pristine-purity of that actual innocence which is inherent to living life as a flesh-and-blood body only (i.e., sans identity in toto/ the entire affective faculty) then the benedictive/ liberative impetus, or **agency** as such, *stems from and/or flows from that which is totally other than ‘me’/ completely outside of ‘me’* (this factor is very important as *it is vital that such impetus, such **agency**, be not of ‘me’ or ‘my’ doings*) and literally invisible to ‘me’ … namely: that flesh-and-blood body only being thus apperceptively conscious (i.e., apperceptively sentient)."_ — [Pure Intent](https://actualfreedom.com.au/libra…
