@@ -447,3 +447,88 @@ teardown() {
   [[ "$output" != *"notes.md"* ]]
   [[ "$output" != *"README.md"* ]]
 }
+
+# ─── jj diff-range: target @ (issue #4) ──────────────────────────────
+
+@test "jj: diff-range shows work in @ (--no-vcs state, no commit)" {
+  # Regression (#4): the jj arms targeted @-, but under --no-vcs the
+  # commit node is skipped and all work lives in @ — so the diff was
+  # empty. The fix targets @ (the working copy), which is correct in
+  # both the committed and working-copy-only states.
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > README.md
+  jj describe -m "base"
+  jj bookmark create main -r @
+  echo '{"base":"main"}' > .do-results.json
+
+  jj new main
+  echo feature > feature.txt
+
+  # Work is in @ (uncommitted); @- is main (the base).
+  run bash "$VCS_OP" diff-range
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+
+  run bash "$VCS_OP" diff-names
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+
+  run bash "$VCS_OP" new-files
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+}
+
+@test "jj: diff-range shows committed work in @- (post-commit state, @ empty)" {
+  # Post-commit: vcs-op commit does `jj describe && jj new`, so @ is a
+  # fresh empty change and the feature is @-. Targeting @ still works
+  # because @'s tree matches @- (snapshot diff), so base→@ == base→@-.
+  #
+  # The base bookmark must be separate from the working bookmark: the
+  # commit op moves the working bookmark to the described change, so if
+  # base == working bookmark it would end up on the feature commit and
+  # the diff would be empty. In the real /do flow the feature branch
+  # (created by the branch step) is distinct from main.
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > README.md
+  jj describe -m "base"
+  jj bookmark create main -r @
+  echo '{"base":"main"}' > .do-results.json
+
+  # Create a feature bookmark (as the branch step would) so commit moves
+  # the feature bookmark, not main.
+  jj new main
+  jj bookmark create feature -r @
+  echo feature > feature.txt
+  run bash "$VCS_OP" commit "feat: add feature" feature.txt
+  [ "$status" -eq 0 ]
+
+  # main stays on the base commit; @ is now empty; feature is @-.
+  # diff-range must still show feature.txt via the @ target.
+  run bash "$VCS_OP" diff-range
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+
+  run bash "$VCS_OP" log-range
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feat: add feature"* ]]
+}
+
+@test "jj: diff-range with unresolvable base exits non-zero" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > README.md
+  jj describe -m "base"
+  jj bookmark create main -r @
+  echo '{"base":"nonexistent-ref"}' > .do-results.json
+
+  jj new main
+  echo feature > feature.txt
+
+  run bash "$VCS_OP" diff-range
+  [ "$status" -ne 0 ]
+}

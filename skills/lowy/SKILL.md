@@ -116,7 +116,7 @@ domain, same kind" duplicates the receptacle, not the volatility — and a dupli
 radius exactly the way functional decomposition does.
 
 Budget heuristic: this survey is worth its cost when the diff introduces a new top-level module, component, or
-boundary — typically signalled by new files added (check with `.../skills/do/scripts/vcs-op new-files <base>`). Pure
+boundary — typically signalled by new files added (check with `.../skills/do/scripts/vcs-op new-files`). Pure
 refactors that don't add new boundaries are exempt.
 
 **Speculative volatility is not volatility.** A change scenario counts only if it has happened before, is on a roadmap,
