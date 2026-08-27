@@ -107,6 +107,24 @@ get_base_branch() {
   echo "$base"
 }
 
+# For jj: resolve the range source revision for the diff family
+# (diff-range, diff-names, diff-stat, new-files). Returns the merge-base
+# of @ and <base> when one exists, otherwise <base> itself. Centralized
+# so all four operations share one resolution path — a single revset
+# change updates every consumer (#4 hickey finding F1).
+#
+# Usage: jj_range_from <base>
+jj_range_from() {
+  local base="${1:?base required}"
+  local merge_base
+  merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
+  if [ -n "$merge_base" ]; then
+    echo "$merge_base"
+  else
+    echo "$base"
+  fi
+}
+
 # For jj: after `vcs-op commit` or `vcs-op fix-commit` (both of which
 # do `jj describe && jj new`), @ is the new empty change. The
 # working bookmark is somewhere up the parent chain (@-, @--,
@@ -365,12 +383,7 @@ case "$op" in
         # commit node is skipped), and after the commit flow @ is a fresh
         # empty change whose tree matches @- so base→@ == base→@-.
         # Previously --to @- missed working-copy-only changes (#4).
-        merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
-        if [ -n "$merge_base" ]; then
-          jj diff --from "$merge_base" --to @ -- "$@"
-        else
-          jj diff --from "$base" --to @ -- "$@"
-        fi
+        jj diff --from "$(jj_range_from "$base")" --to @ -- "$@"
         ;;
       *) echo "vcs-op: no VCS detected" >&2; exit 1 ;;
     esac
@@ -380,12 +393,7 @@ case "$op" in
     case "$vcs" in
       git) git diff "origin/${base}...HEAD" --name-only -- "$@" ;;
       jj)
-        merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
-        if [ -n "$merge_base" ]; then
-          jj diff --from "$merge_base" --to @ --name-only -- "$@"
-        else
-          jj diff --from "$base" --to @ --name-only -- "$@"
-        fi
+        jj diff --from "$(jj_range_from "$base")" --to @ --name-only -- "$@"
         ;;
       *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
     esac
@@ -395,12 +403,7 @@ case "$op" in
     case "$vcs" in
       git) git diff "origin/${base}...HEAD" --shortstat -- "$@" ;;
       jj)
-        merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
-        if [ -n "$merge_base" ]; then
-          jj diff --from "$merge_base" --to @ --summary -- "$@"
-        else
-          jj diff --from "$base" --to @ --summary -- "$@"
-        fi
+        jj diff --from "$(jj_range_from "$base")" --to @ --summary -- "$@"
         ;;
       *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
     esac
@@ -411,12 +414,8 @@ case "$op" in
       git) git diff --diff-filter=A --name-only "origin/${base}...HEAD" -- "$@" ;;
       jj)
         # Files added between merge-base and the working copy (@).
-        merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
-        if [ -n "$merge_base" ]; then
-          comm -13 <(jj file list -r "$merge_base" | sort) <(jj file list -r @ | sort)
-        else
-          comm -13 <(jj file list -r "$base" | sort) <(jj file list -r @ | sort)
-        fi
+        from=$(jj_range_from "$base")
+        comm -13 <(jj file list -r "$from" | sort) <(jj file list -r @ | sort)
         ;;
       *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
     esac
@@ -429,7 +428,13 @@ case "$op" in
            # state where the commit node was skipped), else @- (post-commit,
            # where @ is a fresh empty change and @- is the described feature).
            # Using @ unconditionally would emit a spurious empty entry (#4).
-           if [ -n "$(jj diff -r @ --summary 2>/dev/null)" ]; then
+           # Capture the probe so a jj failure exits loudly instead of
+           # silently selecting @- (hickey F2).
+           if ! summary=$(jj diff -r @ --summary 2>/dev/null); then
+             echo "vcs-op: unable to inspect jj working copy for log-range" >&2
+             exit 1
+           fi
+           if [ -n "$summary" ]; then
              target=@
            else
              target=@-
