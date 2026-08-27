@@ -118,7 +118,7 @@ For each new abstraction (component, module, signal, type) the code introduces:
 4. **Package surface as a fragmentation site.** When evaluating a new published-shape package (`@org/foo`), read its exports list the way Layer 2 reads a per-entity structure — *does the consumer have to reconstitute one concept by wiring multiple exports together?* If yes, the package has fragmented one primitive into N exports and shipped the integration cost to the consumer. The fix is the same as any Layer-2 fix: collapse to one primitive at the natural layer (one entry point, internal submodules hidden). See `/lowy` §6.5 for the volatility-side argument; the worked example (`@kolu/solid-xterm@0.1` → `@0.2.0`, [kolu#998 commit `4af1c647`](https://github.com/juspay/kolu/commit/4af1c647)) is the same case study used there.
 
 **Budget heuristic.** The codebase survey in step 2 is worth its cost when the diff introduces a new top-level
-abstraction — typically signalled by new files added (check with `.../skills/do/scripts/vcs-op new-files <base>`) or a
+abstraction — typically signalled by new files added (check with `.../skills/do/scripts/vcs-op new-files`) or a
 new exported component / module / type. Pure refactors, bug fixes, and line-level edits inside an existing abstraction
 don't trigger the survey.
 

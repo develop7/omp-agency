@@ -360,13 +360,16 @@ case "$op" in
         git diff "origin/${base}...HEAD" -- "$@"
         ;;
       jj)
-        # Diff from merge-base to the just-committed change (@-).
-        # Using @ here would diff to the new empty change (nothing).
-        merge_base=$(jj log -r 'heads(ancestors(@-) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
+        # Diff from merge-base to the working copy (@). @ is the correct
+        # target in both states: under --no-vcs the work lives in @ (the
+        # commit node is skipped), and after the commit flow @ is a fresh
+        # empty change whose tree matches @- so base→@ == base→@-.
+        # Previously --to @- missed working-copy-only changes (#4).
+        merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
         if [ -n "$merge_base" ]; then
-          jj diff --from "$merge_base" --to @- -- "$@"
+          jj diff --from "$merge_base" --to @ -- "$@"
         else
-          jj diff --from "$base" --to @- -- "$@"
+          jj diff --from "$base" --to @ -- "$@"
         fi
         ;;
       *) echo "vcs-op: no VCS detected" >&2; exit 1 ;;
@@ -377,11 +380,11 @@ case "$op" in
     case "$vcs" in
       git) git diff "origin/${base}...HEAD" --name-only -- "$@" ;;
       jj)
-        merge_base=$(jj log -r 'heads(ancestors(@-) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
+        merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
         if [ -n "$merge_base" ]; then
-          jj diff --from "$merge_base" --to @- --name-only -- "$@"
+          jj diff --from "$merge_base" --to @ --name-only -- "$@"
         else
-          jj diff --from "$base" --to @- --name-only -- "$@"
+          jj diff --from "$base" --to @ --name-only -- "$@"
         fi
         ;;
       *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
@@ -392,11 +395,11 @@ case "$op" in
     case "$vcs" in
       git) git diff "origin/${base}...HEAD" --shortstat -- "$@" ;;
       jj)
-        merge_base=$(jj log -r 'heads(ancestors(@-) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
+        merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
         if [ -n "$merge_base" ]; then
-          jj diff --from "$merge_base" --to @- --summary -- "$@"
+          jj diff --from "$merge_base" --to @ --summary -- "$@"
         else
-          jj diff --from "$base" --to @- --summary -- "$@"
+          jj diff --from "$base" --to @ --summary -- "$@"
         fi
         ;;
       *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
@@ -407,12 +410,12 @@ case "$op" in
     case "$vcs" in
       git) git diff --diff-filter=A --name-only "origin/${base}...HEAD" -- "$@" ;;
       jj)
-        # List files added in the just-committed change (@-) vs base.
-        merge_base=$(jj log -r 'heads(ancestors(@-) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
+        # Files added between merge-base and the working copy (@).
+        merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
         if [ -n "$merge_base" ]; then
-          comm -13 <(jj file list -r "$merge_base" | sort) <(jj file list -r @- | sort)
+          comm -13 <(jj file list -r "$merge_base" | sort) <(jj file list -r @ | sort)
         else
-          comm -13 <(jj file list -r "$base" | sort) <(jj file list -r @- | sort)
+          comm -13 <(jj file list -r "$base" | sort) <(jj file list -r @ | sort)
         fi
         ;;
       *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
@@ -422,7 +425,16 @@ case "$op" in
     base=$(get_base_branch)
     case "$vcs" in
       git) git log "origin/${base}..HEAD" --oneline -- "$@" ;;
-      jj)  jj log -r "${base}..@-" --no-graph -T 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ "\n"' 2>/dev/null ;;
+      jj)  # Target @ when the working copy holds changes (the --no-vcs
+           # state where the commit node was skipped), else @- (post-commit,
+           # where @ is a fresh empty change and @- is the described feature).
+           # Using @ unconditionally would emit a spurious empty entry (#4).
+           if [ -n "$(jj diff -r @ --summary 2>/dev/null)" ]; then
+             target=@
+           else
+             target=@-
+           fi
+           jj log -r "${base}..${target}" --no-graph -T 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ "\n"' 2>/dev/null ;;
       *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
     esac
     ;;
