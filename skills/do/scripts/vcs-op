@@ -369,7 +369,11 @@ case "$op" in
   dirty)
     case "$vcs" in
       git) [ -n "$(git status --porcelain)" ] ;;
-      jj)  [ -n "$(jj diff -r @ --summary 2>/dev/null)" ] ;;
+      jj)  if ! dirty_out=$(jj diff -r @ --summary 2>/dev/null); then
+             echo "vcs-op: unable to inspect jj working copy" >&2
+             exit 1
+           fi
+           [ -n "$dirty_out" ] ;;
       *)   false ;;
     esac
     ;;
