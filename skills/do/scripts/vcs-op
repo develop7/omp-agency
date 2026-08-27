@@ -117,7 +117,10 @@ get_base_branch() {
 jj_range_from() {
   local base="${1:?base required}"
   local merge_base
-  merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null | head -1)
+  if ! merge_base=$(jj log -r 'heads(ancestors(@) & ancestors('"$base"'))' --no-graph -T 'change_id' 2>/dev/null); then
+    echo "vcs-op: unable to resolve merge-base for base '$base'" >&2
+    exit 1
+  fi
   if [ -n "$merge_base" ]; then
     echo "$merge_base"
   else
@@ -414,10 +417,12 @@ case "$op" in
       git) git diff --diff-filter=A --name-only "origin/${base}...HEAD" -- "$@" ;;
       jj)
         # Files added between merge-base and the working copy (@).
-        from=$(jj_range_from "$base")
-        comm -13 <(jj file list -r "$from" | sort) <(jj file list -r @ | sort)
+        # Use jj diff --summary (not jj file list) so untracked working-
+        # copy files don't leak into the output — jj file list -r @ snaps
+        # the working tree including untracked files, while jj diff only
+        # reports tracked changes between the two trees (#4 fact-check).
+        jj diff --from "$(jj_range_from "$base")" --to @ --summary -- "$@" | awk '/^A / {print $2}'
         ;;
-      *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
     esac
     ;;
   log-range)
@@ -439,7 +444,7 @@ case "$op" in
            else
              target=@-
            fi
-           jj log -r "${base}..${target}" --no-graph -T 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ "\n"' 2>/dev/null ;;
+          jj log -r "${base}..${target}" --no-graph -T 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ "\n"' ;;
       *)   echo "vcs-op: no VCS detected" >&2; exit 1 ;;
     esac
     ;;
