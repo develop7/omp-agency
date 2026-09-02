@@ -5,16 +5,16 @@ module Agency.Scripts.Do.Cli
 
 import Prelude
 
+import Agency.Scripts.Do.Context as Context
+import Agency.Scripts.Do.Forge as Forge
+import Agency.Scripts.Do.Ops as Ops
+import Agency.Scripts.Do.Outcome as Outcome
+import Agency.Scripts.Do.Sys as Sys
+import Agency.Scripts.Do.Vcs as Vcs
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
-
-import Agency.Scripts.Do.Forge as Forge
-import Agency.Scripts.Do.Ops as Ops
-import Agency.Scripts.Do.Sys as Sys
-import Agency.Scripts.Do.Vcs as Vcs
-
 -- | Dispatch the legacy script name in argv[0] to its PureScript runner.
 dispatch :: Array String -> Effect Int
 dispatch args = case Array.uncons args of
@@ -44,14 +44,14 @@ dispatchVcs args = case Vcs.parseVcsOp args of
   Left message -> do
     Sys.stderrWrite (message <> "\n")
     pure 1
-  Right operation -> Vcs.runVcsOp operation
+  Right operation -> runWithContext (Vcs.runVcsOp) operation
 
 dispatchForge :: Array String -> Effect Int
 dispatchForge args = case Forge.parseForgeOp args of
   Left message -> do
     Sys.stderrWrite (message <> "\n")
     pure 1
-  Right operation -> Forge.runForgeOp operation
+  Right operation -> runWithContext (Forge.runForgeOp) operation
 
 dispatchResults :: Array String -> Effect Int
 dispatchResults args = runParsed (Ops.parseResultsOp args) Ops.runResultsOp
@@ -68,9 +68,33 @@ dispatchDone args = runParsed (Ops.parseDoneOp args) Ops.runDoneOp
 dispatchNickel :: Array String -> Effect Int
 dispatchNickel args = runParsed (Ops.parseNickelOp args) Ops.runNickelOp
 
-runParsed :: forall a. Either Ops.ParseError a -> (a -> Effect Int) -> Effect Int
+runParsed :: forall a. Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect Int
 runParsed parsed runner = case parsed of
   Left error -> do
     Sys.stderrWrite (error.message <> "\n")
     pure error.code
-  Right operation -> runner operation
+  Right operation -> runWithContext runner operation
+
+runWithContext :: forall a. (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> Effect Int
+runWithContext runner operation = do
+  resolved <- Ops.resolveWorkflowContext
+  case resolved of
+    Left error -> do
+      Sys.stderrWrite (error <> "\n")
+      pure 1
+    Right context -> do
+      outcome <- runner context operation
+      renderOutcome outcome
+
+renderOutcome :: Outcome.OpOutcome -> Effect Int
+renderOutcome outcome = do
+  case outcome.output of
+    Outcome.Passthrough -> pure unit
+    Outcome.Captured output ->
+      if output.stderrFirst then do
+        if output.stderr == "" then pure unit else Sys.stderrWrite output.stderr
+        if output.stdout == "" then pure unit else Sys.stdoutWrite output.stdout
+      else do
+        if output.stdout == "" then pure unit else Sys.stdoutWrite output.stdout
+        if output.stderr == "" then pure unit else Sys.stderrWrite output.stderr
+  pure outcome.exit

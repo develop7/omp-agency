@@ -22,5 +22,22 @@ lint:
         -type f ! -name '*.ncl' \
         -exec shellcheck --shell=bash --exclude=SC2148,SC1113,SC2096,SC1091 {} +
 
-# Full CI: tests + lint
-ci: test lint
+# Build the PureScript core and bundle the CLI entrypoint
+# (requires purs 0.15.x and spago — dev-only toolchain)
+build:
+    cd pure && spago build
+    cd pure && spago bundle --module Agency.Scripts.Do.Cli \
+        --outfile dist/agency-do.js --force --platform node
+
+# Verify the checked-in bundle matches the sources (drift guard for the
+# distributed artifact — the bundle IS the distributable, so it must
+# never go stale silently)
+bundle-check: build
+    @cd pure && spago bundle --module Agency.Scripts.Do.Cli \
+        --outfile dist/agency-do.check.js --force --platform node
+    @cmp pure/dist/agency-do.check.js pure/dist/agency-do.js \
+        || { echo "bundle drift: pure/dist/agency-do.js is stale — run 'just build' and commit it"; exit 1; }
+    @rm pure/dist/agency-do.check.js
+
+# Full CI: tests + lint + bundle freshness
+ci: test lint bundle-check

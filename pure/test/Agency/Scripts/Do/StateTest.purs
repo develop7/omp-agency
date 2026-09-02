@@ -3,6 +3,7 @@ module Agency.Scripts.Do.StateTest (run) where
 import Prelude
 
 import Data.Argonaut.Core (fromBoolean, toBoolean)
+import Data.Argonaut.Parser (jsonParser)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
@@ -34,11 +35,26 @@ run = do
           Sys.exit 1
         Right roundTripped -> do
           assert "unknown boolean/object value remains available" (State.stateGetJson "customField" roundTripped /= Nothing)
-          let withNewField = State.setField "newFlag" (fromBoolean true) roundTripped
-          assert "set unknown field can be read as boolean" ((State.stateGetJson "newFlag" withNewField >>= toBoolean) == Just true)
-          let reloaded = State.parseState (State.stringifyState withNewField)
-          case reloaded of
+          case State.setField "newFlag" (fromBoolean true) roundTripped of
             Left error -> do
-              Console.error ("FAIL: reload state after set: " <> error)
+              Console.error ("FAIL: set unknown field: " <> error)
               Sys.exit 1
-            Right finalState -> assert "set unknown field survives load/save" ((State.stateGetJson "newFlag" finalState >>= toBoolean) == Just true)
+            Right withNewField -> do
+              assert "set unknown field can be read as boolean" ((State.stateGetJson "newFlag" withNewField >>= toBoolean) == Just true)
+              case jsonParser "[]" >>= \json -> State.setField "steps" json withNewField of
+                Left error -> do
+                  Console.error ("FAIL: set reserved steps: " <> error)
+                  Sys.exit 1
+                Right withSteps -> do
+                  assert "reserved steps updates typed field" (State.stateGetJson "steps" withSteps /= Nothing)
+                  case State.setField "steps" (fromBoolean true) withSteps of
+                    Left _ -> pure unit
+                    Right _ -> do
+                      Console.error "FAIL: invalid reserved steps value was accepted"
+                      Sys.exit 1
+                  let reloaded = State.parseState (State.stringifyState withSteps)
+                  case reloaded of
+                    Left error -> do
+                      Console.error ("FAIL: reload state after set: " <> error)
+                      Sys.exit 1
+                    Right finalState -> assert "set unknown field survives load/save" ((State.stateGetJson "newFlag" finalState >>= toBoolean) == Just true)

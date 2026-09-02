@@ -8,7 +8,6 @@ setup() {
   load "$REPO_ROOT/tests/helpers/git-fixtures.bash"
   setup_test_dir
 
-  FORGE_OP="$(repo_script skills/do/scripts/forge-op)"
 
   # Real git fixture so vcs-op remote-url returns something forge-op can
   # classify when state is absent (the fallback path).

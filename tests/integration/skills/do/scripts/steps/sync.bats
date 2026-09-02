@@ -6,7 +6,6 @@ setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
   setup_test_dir
 
-  SYNC="$(repo_script skills/do/scripts/steps/sync)"
 
   # Create a git fixture with a working local remote
   git init -q
