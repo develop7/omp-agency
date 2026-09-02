@@ -3,6 +3,7 @@ module Agency.Scripts.Do.VcsTest (run) where
 import Prelude
 
 import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Effect.Console as Console
 
@@ -18,6 +19,9 @@ assert label condition =
 
 run :: Effect Unit
 run = do
+  assert "VCS override has highest precedence" (Vcs.detectVcs (Just "git") (Just "jj") true false == Vcs.Git)
+  assert "state VCS precedes filesystem" (Vcs.detectVcs Nothing (Just "jj") false true == Vcs.Jj)
+  assert "jj filesystem precedes git filesystem" (Vcs.detectVcs Nothing Nothing true true == Vcs.Jj)
   case Vcs.parseVcsOp [ "detect" ] of
     Right Vcs.Detect -> pure unit
     _ -> assert "detect parses" false

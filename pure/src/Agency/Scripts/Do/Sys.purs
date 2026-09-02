@@ -1,9 +1,9 @@
--- | Sys: injected Node capability surface. One FFI module owns every
--- | effect the agency-do core performs (subprocess, fs, time, env, path,
--- | argv, exit). Both front ends (OMP tool adapter, CLI test adapter)
--- | consume the compiled core through this seam only.
+-- | Sys: the small Node capability surface used by the agency-do core.
+-- | Standard filesystem, process, and child-process behavior comes from the
+-- | typed node-* packages; only clock formatting and bundle location need FFI.
 module Agency.Scripts.Do.Sys
-  ( ExecResult(..)
+  ( ExecResult
+  , InheritResult
   , exec
   , execInherit
   , execInheritInput
@@ -20,54 +20,145 @@ module Agency.Scripts.Do.Sys
   , stdoutWrite
   , stderrWrite
   , realpath
+  , bundleDir
   , isoToEpoch
-) where
+  ) where
 
 import Prelude
 
+import Data.Array as Array
+import Data.DateTime.Instant as Instant
+import Data.Either (Either(..))
+import Data.Int (floor)
+import Data.JSDate as JSDate
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Nullable (toMaybe)
+import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
+import Effect.Exception (try)
+import Node.Buffer as Buffer
+import Node.ChildProcess.Types (inherit, pipe)
+import Node.Encoding (Encoding(..))
+import Node.FS.Stats as Stats
+import Node.FS.Sync as FSSync
+import Node.Process as Process
+import Node.Stream as Stream
+import Node.UnsafeChildProcess.Unsafe as Child
+import Node.Errors.SystemError as SystemError
 
+-- | Captured output and the exit status of a synchronous child process.
 type ExecResult =
   { code :: Int
   , stdout :: String
   , stderr :: String
   }
 
-foreign import execImpl ∷ String → Array String → Effect ExecResult
+-- | Status and spawn diagnostics for a child whose streams are inherited.
+type InheritResult =
+  { code :: Int
+  , error :: Maybe String
+  }
 
-exec ∷ String → Array String → Effect ExecResult
-exec = execImpl
+-- | Run a command with UTF-8 captured output. A missing executable is a
+-- | normal command failure, represented as status 1 and its system message.
+exec :: String -> Array String -> Effect ExecResult
+exec command args = do
+  result <- Child.spawnSync' command args
+    { encoding: "utf8"
+    , maxBuffer: 64.0 * 1024.0 * 1024.0
+    }
+  let stdout = Child.unsafeSOBToString result.stdout
+      stderr = Child.unsafeSOBToString result.stderr
+      code = fromMaybe 1 (toMaybe result.status)
+  case toMaybe result.error of
+    Nothing -> pure { code, stdout, stderr }
+    Just error -> pure
+      { code: 1
+      , stdout
+      , stderr: if stderr == "" then SystemError.message error else stderr
+      }
 
-foreign import execInherit ∷ String → Array String → Effect Int
+-- | Run a command with all child streams inherited. A spawn failure is
+-- | returned separately because Node does not write it to inherited stderr.
+execInherit :: String -> Array String -> Effect InheritResult
+execInherit command args = do
+  result <- Child.spawnSync' command args
+    { stdio: [ inherit, inherit, inherit ] }
+  pure
+    { code: fromMaybe 1 (toMaybe result.status)
+    , error: SystemError.message <$> toMaybe result.error
+    }
 
-foreign import execInheritInput ∷ String → Array String → String → Effect Int
+-- | Run a command with supplied text on stdin and inherited output streams.
+execInheritInput :: String -> Array String -> String -> Effect InheritResult
+execInheritInput command args input = do
+  inputBuffer <- Buffer.fromString input UTF8
+  result <- Child.spawnSync' command args
+    { input: inputBuffer
+    , stdio: [ pipe, inherit, inherit ]
+    }
+  pure
+    { code: fromMaybe 1 (toMaybe result.status)
+    , error: SystemError.message <$> toMaybe result.error
+    }
 
-foreign import readUtf8 ∷ String → Effect String
+readUtf8 :: String -> Effect String
+readUtf8 = FSSync.readTextFile UTF8
 
-foreign import writeUtf8 ∷ String → String → Effect Unit
+writeUtf8 :: String -> String -> Effect Unit
+writeUtf8 path value = FSSync.writeTextFile UTF8 path value
 
-foreign import rename ∷ String → String → Effect Unit
+rename :: String -> String -> Effect Unit
+rename = FSSync.rename
 
-foreign import existsImpl ∷ String → Effect Boolean
+exists :: String -> Effect Boolean
+exists = FSSync.exists
 
-exists ∷ String → Effect Boolean
-exists = existsImpl
+-- | Missing or unreadable paths are not directories. Detection deliberately
+-- | treats those paths as absent so the VCS precedence can continue.
+isDir :: String -> Effect Boolean
+isDir path = do
+  result <- try (FSSync.stat path)
+  pure case result of
+    Left _ -> false
+    Right stats -> Stats.isDirectory stats
 
-foreign import isDir ∷ String → Effect Boolean
+-- | Format current time exactly as the legacy shell protocol requires.
+foreign import nowIso :: Effect String
 
-foreign import nowIso ∷ Effect String
+getEnv :: String -> Effect String
+getEnv key = fromMaybe "" <$> Process.lookupEnv key
 
-foreign import getEnv ∷ String → Effect String
+argv :: Effect (Array String)
+argv = Array.drop 2 <$> Process.argv
+exit :: Int -> Effect Unit
+exit code = Process.exit' code
 
-foreign import argv ∷ Effect (Array String)
+cwd :: Effect String
+cwd = Process.cwd
 
-foreign import exit ∷ Int → Effect Unit
+stdoutWrite :: String -> Effect Unit
+stdoutWrite value = do
+  _ <- Stream.writeString Process.stdout UTF8 value
+  pure unit
 
-foreign import cwd ∷ Effect String
+stderrWrite :: String -> Effect Unit
+stderrWrite value = do
+  _ <- Stream.writeString Process.stderr UTF8 value
+  pure unit
 
-foreign import stdoutWrite ∷ String → Effect Unit
+realpath :: String -> Effect String
+realpath = FSSync.realpath
 
-foreign import stderrWrite ∷ String → Effect Unit
+-- | Directory containing the executing bundle, independent of process cwd.
+foreign import bundleDir :: Effect String
 
-foreign import isoToEpoch ∷ String → Effect Int
-foreign import realpath ∷ String → Effect String
+-- | Convert an ISO/RFC timestamp to epoch seconds and reject invalid dates.
+isoToEpoch :: String -> Effect (Either String Int)
+isoToEpoch value = do
+  parsed <- JSDate.parse value
+  pure case JSDate.toInstant parsed of
+    Nothing -> Left ("invalid timestamp '" <> value <> "'")
+    Just instant ->
+      let Milliseconds milliseconds = Instant.unInstant instant
+      in Right (floor (milliseconds / 1000.0))

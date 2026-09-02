@@ -1,7 +1,8 @@
 module Agency.Scripts.Do.ForgeTest (run) where
 
 import Prelude
-
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Effect.Console as Console
 
@@ -17,6 +18,9 @@ assert label condition =
 
 run :: Effect Unit
 run = do
+  assert "forge override has highest precedence" (Forge.detectForge (Just "bitbucket") (Just "github") (Right "https://github.com/example/project.git") == Forge.Bitbucket)
+  assert "forge state precedes remote URL" (Forge.detectForge Nothing (Just "bitbucket") (Right "https://github.com/example/project.git") == Forge.Bitbucket)
+  assert "forge remote URL is fallback" (Forge.detectForge Nothing Nothing (Right "https://github.com/example/project.git") == Forge.Github)
   assert "github URL classification" (Forge.classifyUrl "https://github.com/example/project.git" == Forge.Github)
   assert "bitbucket URL classification" (Forge.classifyUrl "ssh://git@bitbucket.org/example/project.git" == Forge.Bitbucket)
   assert "unknown URL classification" (Forge.classifyUrl "https://gitlab.com/example/project.git" == Forge.Unknown)

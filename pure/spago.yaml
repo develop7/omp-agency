@@ -8,19 +8,16 @@ package:
     - either
     - strings
     - argonaut-core
-    - argonaut-codecs
-    - argonaut-generic
     - foreign-object
     - arrays
     - tuples
-    - lists
     - ordered-collections
     - node-fs
-    - node-path
     - node-process
     - node-child-process
-    - unsafe-coerce
-    - partial
+    - node-buffer
+    - node-streams
+    - js-date
   test:
     main: Test.Main
     dependencies: []
