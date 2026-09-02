@@ -14,7 +14,7 @@ teardown() {
 
 # Helper: run do-results and capture stdout + exit code
 run_dr() {
-  run bash "$DO_RESULTS" "$@"
+  run node "$REPO_ROOT/pure/dist/agency-do.js" do-results "$@"
 }
 
 @test "init creates skeleton JSON with correct fields" {

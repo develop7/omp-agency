@@ -13,7 +13,7 @@ teardown() {
 }
 
 run_done() {
-  run bash "$DONE"
+  run node "$REPO_ROOT/pure/dist/agency-do.js" done
 }
 
 @test "missing .do-results.json: errors" {
