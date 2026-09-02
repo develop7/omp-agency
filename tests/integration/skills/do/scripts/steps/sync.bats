@@ -28,7 +28,7 @@ teardown() {
 }
 
 run_sync() {
-  run bash "$SYNC" "$@"
+  run node "$REPO_ROOT/pure/dist/agency-do.js" sync "$@"
 }
 
 @test "sync with noVcs=true: emits correct protocol lines" {

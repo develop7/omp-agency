@@ -25,13 +25,13 @@ teardown() {
 # ─── detect ───────────────────────────────────────────────────────────
 
 @test "detect returns github from origin URL when state is absent" {
-  run bash "$FORGE_OP" detect
+  run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op detect
   [ "$status" -eq 0 ]
   [ "$output" = "github" ]
 }
 
 @test "detect honors FORGE_OVERRIDE" {
-  FORGE_OVERRIDE=bitbucket run bash "$FORGE_OP" detect
+  FORGE_OVERRIDE=bitbucket run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op detect
   [ "$status" -eq 0 ]
   [ "$output" = "bitbucket" ]
 }
@@ -39,21 +39,21 @@ teardown() {
 @test "detect reads forge from .do-results.json when present" {
   mkdir -p .do-results.json.d 2>/dev/null || true
   printf '{"forge":"bitbucket"}' > .do-results.json
-  run bash "$FORGE_OP" detect
+  run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op detect
   [ "$status" -eq 0 ]
   [ "$output" = "bitbucket" ]
 }
 
 @test "detect classifies bitbucket origin URL" {
   git remote set-url origin https://bitbucket.org/example/repo.git
-  run bash "$FORGE_OP" detect
+  run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op detect
   [ "$status" -eq 0 ]
   [ "$output" = "bitbucket" ]
 }
 
 @test "detect classifies unknown origin URL" {
   git remote set-url origin https://gitlab.com/example/repo.git
-  run bash "$FORGE_OP" detect
+  run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op detect
   [ "$status" -eq 0 ]
   [ "$output" = "unknown" ]
 }
@@ -62,45 +62,45 @@ teardown() {
 
 @test "supports returns 0 for all ops on github" {
   for op in pr-view pr-create pr-edit pr-comment issue-view pr-checks; do
-    FORGE_OVERRIDE=github run bash "$FORGE_OP" supports "$op"
+    FORGE_OVERRIDE=github run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op supports "$op"
     [ "$status" -eq 0 ] || { echo "expected $op supported on github"; false; }
   done
 }
 
 @test "supports returns 1 for all ops on bitbucket" {
   for op in pr-view pr-create pr-edit pr-comment issue-view pr-checks; do
-    FORGE_OVERRIDE=bitbucket run bash "$FORGE_OP" supports "$op"
+    FORGE_OVERRIDE=bitbucket run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op supports "$op"
     [ "$status" -eq 1 ] || { echo "expected $op unsupported on bitbucket"; false; }
   done
 }
 
 @test "supports returns 1 for all ops on unknown" {
-  FORGE_OVERRIDE=unknown run bash "$FORGE_OP" supports pr-create
+  FORGE_OVERRIDE=unknown run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op supports pr-create
   [ "$status" -eq 1 ]
 }
 
 @test "supports errors on unknown op name" {
-  FORGE_OVERRIDE=github run bash "$FORGE_OP" supports nonsense-op
+  FORGE_OVERRIDE=github run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op supports nonsense-op
   [ "$status" -eq 1 ]
 }
 
 # ─── dispatch ─────────────────────────────────────────────────────────
 
 @test "dispatch errors on unsupported forge" {
-  FORGE_OVERRIDE=bitbucket run bash "$FORGE_OP" pr-create --help
+  FORGE_OVERRIDE=bitbucket run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op pr-create --help
   [ "$status" -eq 1 ]
   [[ "$output" == *"does not support"* ]]
   [[ "$output" == *"#10"* ]]
 }
 
 @test "unknown operation errors" {
-  run bash "$FORGE_OP" nonsense-op
+  run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op nonsense-op
   [ "$status" -eq 1 ]
   [[ "$output" == *"unknown operation"* ]]
 }
 
 @test "no operation errors with usage" {
-  run bash "$FORGE_OP"
+  run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op
   [ "$status" -eq 1 ]
   [[ "$output" == *"Usage"* ]]
 }
