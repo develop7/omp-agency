@@ -49,6 +49,9 @@ The sub-agent prompt should include:
 
 After the sub-agent returns, post its output as one PR comment using the `forge` tool with `{ op: "pr-comment", args: [], body: "<comment>" }` under a `## Evidence` heading. Put the returned markdown in the tool's `body` field so backticks and `$` survive unescaped — the tool writes a temporary body file for `gh`:
 
+Use the body-bearing `forge` `pr-comment` variant here; `pr-view`,
+`issue-view`, and other read/capability variants carry only `args`.
+
 ```text
 call the `forge` tool with `{ op: "pr-comment", args: [], body: "## Evidence\n\n<markdown returned by the sub-agent>" }`
 ```

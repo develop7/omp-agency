@@ -1,0 +1,6 @@
+# Generated bundles: exclude from diffs and stats on GitHub.
+# Marked binary so the web UI collapses the blob into a "diff not shown"
+# view instead of rendering hundreds of KB of bundled JavaScript.
+pure/dist/*.js linguist-generated=true -diff -merge=ours
+
+# Keep the checked-in bundles out of the language statistics too.

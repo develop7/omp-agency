@@ -176,8 +176,8 @@ parseDriverInit args = go args { review: false, noVcs: false, minimal: false, fr
       "--review" -> go after (state { review = true })
       "--no-vcs" -> go after (state { noVcs = true })
       "--minimal" -> go after (state { minimal = true })
-      "--base" -> Left (parseError 2 "do-driver: --base is a sync flag, not an init flag.\n         pass it to 'bash scripts/steps/sync', not to 'do-driver init'.")
-      "--stack" -> Left (parseError 2 "do-driver: --stack is a sync flag, not an init flag.\n         pass it to 'bash scripts/steps/sync', not to 'do-driver init'.")
+      "--base" -> Left (parseError 2 "do-driver: --base is a sync flag, not an init flag.\n         pass it to the agency_driver tool with op sync, not to do-driver init.")
+      "--stack" -> Left (parseError 2 "do-driver: --stack is a sync flag, not an init flag.\n         pass it to the agency_driver tool with op sync, not to do-driver init.")
       _ | Args.startsWith "--from=" arg -> case Args.nonEmpty (drop 7 arg) of
         Just from -> go after (state { from = from })
         Nothing -> Left (parseError 2 "do-driver: --from requires a non-empty step")
@@ -622,8 +622,8 @@ runNickelOp context operation = do
   workflow <- Sys.realpath workflowPath
   let statePath = Context.statePath context
       expression = case operation of
-        NickelCli -> "let workflow = import \"" <> workflow <> "\" in\n  let state = workflow.normalize_state (import \"" <> statePath <> "\") in\n  workflow.cli state\n"
-        NickelCliSeed from -> "let workflow = import \"" <> workflow <> "\" in\n  let state = workflow.normalize_state (import \"" <> statePath <> "\") in\n  workflow.cli_seed \"" <> from <> "\" state\n"
+        NickelCli -> "let workflow = import \"" <> escapeNickelString workflow <> "\" in\n  let state = workflow.normalize_state (import \"" <> escapeNickelString statePath <> "\") in\n  workflow.cli state\n"
+        NickelCliSeed from -> "let workflow = import \"" <> escapeNickelString workflow <> "\" in\n  let state = workflow.normalize_state (import \"" <> escapeNickelString statePath <> "\") in\n  workflow.cli_seed \"" <> escapeNickelString from <> "\" state\n"
   if context.captureOutput then do
     result <- Sys.execInput Binaries.nickel [ "eval", "--stdin-format", "nickel" ] expression
     pure (Outcome.captured result)
@@ -632,6 +632,13 @@ runNickelOp context operation = do
     pure case result.error of
       Just error -> Outcome.failure 1 ("nickel-cli: nickel failed to spawn: " <> error <> "\n")
       Nothing -> Outcome.passthrough result.code
+-- | Keep model-controlled values inside one Nickel string literal.
+escapeNickelString :: String -> String
+escapeNickelString value =
+  replaceAll (Pattern "\r") (Replacement "\\r")
+    (replaceAll (Pattern "\n") (Replacement "\\n")
+      (replaceAll (Pattern "\"") (Replacement "\\\"")
+        (replaceAll (Pattern "\\") (Replacement "\\\\") value)))
 
 loadState :: WorkflowContext -> Effect (Either String State.State)
 loadState context = do

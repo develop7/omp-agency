@@ -996,12 +996,12 @@ var foldl = function(dict) {
 var foldMapDefaultR = function(dictFoldable) {
   var foldr2 = foldr(dictFoldable);
   return function(dictMonoid) {
-    var append4 = append(dictMonoid.Semigroup0());
+    var append5 = append(dictMonoid.Semigroup0());
     var mempty2 = mempty(dictMonoid);
     return function(f) {
       return foldr2(function(x) {
         return function(acc) {
-          return append4(f(x))(acc);
+          return append5(f(x))(acc);
         };
       })(mempty2);
     };
@@ -1196,6 +1196,7 @@ var unfoldableArray = {
 
 // output/Data.Array/index.js
 var map4 = /* @__PURE__ */ map(functorMaybe);
+var append2 = /* @__PURE__ */ append(semigroupArray);
 var traverse2 = /* @__PURE__ */ traverse(traversableArray);
 var unsafeIndex = function() {
   return runFn2(unsafeIndexImpl);
@@ -1275,6 +1276,11 @@ var elem2 = function(dictEq) {
     return function(arr) {
       return isJust(elemIndex1(a)(arr));
     };
+  };
+};
+var cons = function(x) {
+  return function(xs) {
+    return append2([x])(xs);
   };
 };
 var concatMap = /* @__PURE__ */ flip(/* @__PURE__ */ bind(bindArray));
@@ -1489,7 +1495,7 @@ var appendOutput = function(first) {
     throw new Error("Failed pattern match at Agency.Scripts.Do.Outcome (line 71, column 29 - line 80, column 60): " + [first.constructor.name, second2.constructor.name]);
   };
 };
-var append2 = function(first) {
+var append3 = function(first) {
   return function(second2) {
     return {
       exit: (function() {
@@ -2295,7 +2301,7 @@ var cwd2 = cwd;
 // output/Agency.Scripts.Do.Forge/index.js
 var elem3 = /* @__PURE__ */ elem2(eqString);
 var map8 = /* @__PURE__ */ map(functorEffect);
-var append3 = /* @__PURE__ */ append(semigroupArray);
+var append4 = /* @__PURE__ */ append(semigroupArray);
 var pure4 = /* @__PURE__ */ pure(applicativeEffect);
 var Detect = /* @__PURE__ */ (function() {
   function Detect3() {
@@ -2416,11 +2422,11 @@ var runForgeOp = function(context) {
             return function(args) {
               if (forge instanceof Github) {
                 if (context.captureOutput) {
-                  return map8(captured)(exec5(gh)(append3([command, subcommand])(args)));
+                  return map8(captured)(exec5(gh)(append4([command, subcommand])(args)));
                 }
                 ;
                 return function __do() {
-                  var result = execInherit(gh)(append3([command, subcommand])(args))();
+                  var result = execInherit(gh)(append4([command, subcommand])(args))();
                   if (result.error instanceof Just) {
                     return failure(1)("forge-op: gh failed to spawn: " + (result.error.value0 + "\n"));
                   }
@@ -2481,7 +2487,7 @@ var runForgeOp = function(context) {
     throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 105, column 32 - line 113, column 73): " + [operation.constructor.name]);
   };
 };
-var commandNames = /* @__PURE__ */ append3(["detect", "supports"])(operationNames);
+var commandNames = /* @__PURE__ */ append4(["detect", "supports"])(operationNames);
 var classifyUrl = function(url) {
   if (contains("github.com")(url)) {
     return Github.value;
@@ -5644,57 +5650,6 @@ var slowestStep = function(values) {
 var skippedName = function(step) {
   return step.name + (":" + fromMaybe("unspecified")(step.reason));
 };
-var runNickelOp = function(context) {
-  return function(operation) {
-    return function __do() {
-      var bundle = bundleDir();
-      var cwdWorkflow = context.stateDir + "/skills/do/workflow.ncl";
-      var bundleWorkflow = bundle + "/../../../skills/do/workflow.ncl";
-      var adjacentWorkflow = bundle + "/../../skills/do/workflow.ncl";
-      var bundleExists = exists2(bundleWorkflow)();
-      var adjacentExists = exists2(adjacentWorkflow)();
-      var workflowPath = (function() {
-        if (bundleExists) {
-          return bundleWorkflow;
-        }
-        ;
-        if (adjacentExists) {
-          return adjacentWorkflow;
-        }
-        ;
-        return cwdWorkflow;
-      })();
-      var workflow = realpath2(workflowPath)();
-      var statePath2 = statePath(context);
-      var expression = (function() {
-        if (operation instanceof NickelCli) {
-          return 'let workflow = import "' + (workflow + ('" in\n  let state = workflow.normalize_state (import "' + (statePath2 + '") in\n  workflow.cli state\n')));
-        }
-        ;
-        if (operation instanceof NickelCliSeed) {
-          return 'let workflow = import "' + (workflow + ('" in\n  let state = workflow.normalize_state (import "' + (statePath2 + ('") in\n  workflow.cli_seed "' + (operation.value0 + '" state\n')))));
-        }
-        ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 624, column 20 - line 626, column 204): " + [operation.constructor.name]);
-      })();
-      if (context.captureOutput) {
-        var result = execInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
-        return captured(result);
-      }
-      ;
-      var result = execInheritInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
-      if (result.error instanceof Just) {
-        return failure(1)("nickel-cli: nickel failed to spawn: " + (result.error.value0 + "\n"));
-      }
-      ;
-      if (result.error instanceof Nothing) {
-        return passthrough(result.code);
-      }
-      ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 632, column 10 - line 634, column 49): " + [result.error.constructor.name]);
-    };
-  };
-};
 var resultsCommandNames = "init|step-start|step-end|step|set";
 var resultsUsage = /* @__PURE__ */ (function() {
   return "Usage: do-results <" + (resultsCommandNames + "> ...");
@@ -5768,11 +5723,11 @@ var resolveSyncBase = function(v) {
       if (v.value0.base instanceof Nothing && v.value0.stack) {
         return function __do() {
           var current = currentBranchValue(context)();
-          var $105 = current.code !== 0;
-          if ($105) {
+          var $98 = current.code !== 0;
+          if ($98) {
             return new Left((function() {
-              var $106 = current.stderr === "";
-              if ($106) {
+              var $99 = current.stderr === "";
+              if ($99) {
                 return "sync: unable to resolve current branch";
               }
               ;
@@ -5780,14 +5735,14 @@ var resolveSyncBase = function(v) {
             })());
           }
           ;
-          var $107 = current.value !== "" && (current.value !== defaultRef && current.value !== "HEAD");
-          if ($107) {
+          var $100 = current.value !== "" && (current.value !== defaultRef && current.value !== "HEAD");
+          if ($100) {
             return new Right(current.value);
           }
           ;
           return new Left("sync: --stack found no feature branch to stack onto\n" + ("       current branch is '" + (function() {
-            var $108 = current.value === "";
-            if ($108) {
+            var $101 = current.value === "";
+            if ($101) {
               return "<none>";
             }
             ;
@@ -5805,8 +5760,8 @@ var resolveSyncBase = function(v) {
   };
 };
 var resolveNow = function(value) {
-  var $110 = value === "now";
-  if ($110) {
+  var $103 = value === "now";
+  if ($103) {
     return nowIso;
   }
   ;
@@ -5875,7 +5830,7 @@ var putSyncFields = function(context) {
   };
 };
 var phaseOutput = function(phase) {
-  return append2(append2(phase.quietFetch)(phase.quietRefresh))(phase.forwarded);
+  return append3(append3(phase.quietFetch)(phase.quietRefresh))(phase.forwarded);
 };
 var parseError = function(code2) {
   return function(message3) {
@@ -5998,8 +5953,8 @@ var parseDriverInit = function(args) {
       function $tco_loop(remaining, state2) {
         var v = uncons(remaining);
         if (v instanceof Nothing) {
-          var $154 = state2.review && (state2.from !== "" && state2.from !== "default");
-          if ($154) {
+          var $147 = state2.review && (state2.from !== "" && state2.from !== "default");
+          if ($147) {
             $tco_done = true;
             return new Left(parseError(2)("do-driver: --review is incompatible with --from=" + (state2.from + ("\n" + ("         --from=" + (state2.from + " starts past research, where the plan-approval pause lives.\n         drop --review if the plan is already approved, or drop --from for a full workflow."))))));
           }
@@ -6047,12 +6002,12 @@ var parseDriverInit = function(args) {
           ;
           if (v.value0.head === "--base") {
             $tco_done = true;
-            return new Left(parseError(2)("do-driver: --base is a sync flag, not an init flag.\n         pass it to 'bash scripts/steps/sync', not to 'do-driver init'."));
+            return new Left(parseError(2)("do-driver: --base is a sync flag, not an init flag.\n         pass it to the agency_driver tool with op sync, not to do-driver init."));
           }
           ;
           if (v.value0.head === "--stack") {
             $tco_done = true;
-            return new Left(parseError(2)("do-driver: --stack is a sync flag, not an init flag.\n         pass it to 'bash scripts/steps/sync', not to 'do-driver init'."));
+            return new Left(parseError(2)("do-driver: --stack is a sync flag, not an init flag.\n         pass it to the agency_driver tool with op sync, not to do-driver init."));
           }
           ;
           if (startsWith("--from=")(v.value0.head)) {
@@ -6307,13 +6262,13 @@ var parseSyncOp = function(args) {
     }
     ;
     if (parsed.noVcs instanceof Just) {
-      var $200 = notEq2(parsed.base)(Nothing.value) && parsed.stack;
-      if ($200) {
+      var $193 = notEq2(parsed.base)(Nothing.value) && parsed.stack;
+      if ($193) {
         return new Left(parseError(2)("sync: --base and --stack are mutually exclusive"));
       }
       ;
-      var $201 = parsed.noVcs.value0 && (notEq2(parsed.base)(Nothing.value) || parsed.stack);
-      if ($201) {
+      var $194 = parsed.noVcs.value0 && (notEq2(parsed.base)(Nothing.value) || parsed.stack);
+      if ($194) {
         return new Left(parseError(2)("sync: --base/--stack are incompatible with --no-vcs\n       --no-vcs skips branch/commit/PR; the base has no effect."));
       }
       ;
@@ -6342,7 +6297,7 @@ var loadState = function(context) {
       return new Right(result.value0.value0);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 639, column 8 - line 642, column 38): " + [result.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 646, column 8 - line 649, column 38): " + [result.constructor.name]);
   };
 };
 var jsonValueFor = function(field) {
@@ -6365,12 +6320,12 @@ var jsonValueFor = function(field) {
       })());
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 647, column 1 - line 647, column 55): " + [field.constructor.name, value.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 654, column 1 - line 654, column 55): " + [field.constructor.name, value.constructor.name]);
   };
 };
 var fmtDur = function(seconds) {
-  var $211 = seconds < 60;
-  if ($211) {
+  var $204 = seconds < 60;
+  if ($204) {
     return show3(seconds) + "s";
   }
   ;
@@ -6381,16 +6336,16 @@ var fetchPhase = function(context) {
     return function __do() {
       var fetched = fetchValue(context)();
       var quietFetch = quietResult(fetched);
-      var $212 = fetched.exit !== 0;
-      if ($212) {
+      var $205 = fetched.exit !== 0;
+      if ($205) {
         return new Left(quietFetch);
       }
       ;
       var refreshed = refreshDefaultBranchValue(context)();
       var quietRefresh = quietResult(refreshed);
-      var $213 = refreshed.exit !== 0;
-      if ($213) {
-        return new Left(append2(quietFetch)(quietRefresh));
+      var $206 = refreshed.exit !== 0;
+      if ($206) {
+        return new Left(append3(quietFetch)(quietRefresh));
       }
       ;
       var forwarded = (function() {
@@ -6400,9 +6355,9 @@ var fetchPhase = function(context) {
         ;
         return runVcsOp(context)(FastForwardIfSafe.value)();
       })();
-      var $215 = forwarded.exit !== 0;
-      if ($215) {
-        return new Left(append2(append2(quietFetch)(quietRefresh))(forwarded));
+      var $208 = forwarded.exit !== 0;
+      if ($208) {
+        return new Left(append3(append3(quietFetch)(quietRefresh))(forwarded));
       }
       ;
       return new Right({
@@ -6618,14 +6573,68 @@ var renderDoneMarkdown = function(summary) {
   })();
   var rows = map11(renderTimedRow(summary.totalSeconds))(summary.rows);
   var table = "| Step | Status | Duration | Verification |\n" + ("|------|--------|----------|--------------|\n" + (joinWith("\n")(rows) + ((function() {
-    var $256 = $$null(rows);
-    if ($256) {
+    var $249 = $$null(rows);
+    if ($249) {
       return "";
     }
     ;
     return "\n";
   })() + ("| **Total** | | **" + (fmtDur(summary.totalSeconds) + "** | |\n\n")))));
   return table + (slowLine + "\n");
+};
+var escapeNickelString = function(value) {
+  return replaceAll("\r")("\\r")(replaceAll("\n")("\\n")(replaceAll('"')('\\"')(replaceAll("\\")("\\\\")(value))));
+};
+var runNickelOp = function(context) {
+  return function(operation) {
+    return function __do() {
+      var bundle = bundleDir();
+      var cwdWorkflow = context.stateDir + "/skills/do/workflow.ncl";
+      var bundleWorkflow = bundle + "/../../../skills/do/workflow.ncl";
+      var adjacentWorkflow = bundle + "/../../skills/do/workflow.ncl";
+      var bundleExists = exists2(bundleWorkflow)();
+      var adjacentExists = exists2(adjacentWorkflow)();
+      var workflowPath = (function() {
+        if (bundleExists) {
+          return bundleWorkflow;
+        }
+        ;
+        if (adjacentExists) {
+          return adjacentWorkflow;
+        }
+        ;
+        return cwdWorkflow;
+      })();
+      var workflow = realpath2(workflowPath)();
+      var statePath2 = statePath(context);
+      var expression = (function() {
+        if (operation instanceof NickelCli) {
+          return 'let workflow = import "' + (escapeNickelString(workflow) + ('" in\n  let state = workflow.normalize_state (import "' + (escapeNickelString(statePath2) + '") in\n  workflow.cli state\n')));
+        }
+        ;
+        if (operation instanceof NickelCliSeed) {
+          return 'let workflow = import "' + (escapeNickelString(workflow) + ('" in\n  let state = workflow.normalize_state (import "' + (escapeNickelString(statePath2) + ('") in\n  workflow.cli_seed "' + (escapeNickelString(operation.value0) + '" state\n')))));
+        }
+        ;
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 624, column 20 - line 626, column 261): " + [operation.constructor.name]);
+      })();
+      if (context.captureOutput) {
+        var result = execInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
+        return captured(result);
+      }
+      ;
+      var result = execInheritInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
+      if (result.error instanceof Just) {
+        return failure(1)("nickel-cli: nickel failed to spawn: " + (result.error.value0 + "\n"));
+      }
+      ;
+      if (result.error instanceof Nothing) {
+        return passthrough(result.code);
+      }
+      ;
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 632, column 10 - line 634, column 49): " + [result.error.constructor.name]);
+    };
+  };
 };
 var dominantName = function(totalDuration) {
   return function(v) {
@@ -6848,7 +6857,7 @@ var runDriverOp = function(context) {
         }
         ;
         var ended = runResultsOp(context)(new ResultsStepEnd("skipped", "", nonEmpty(operation.value1)))();
-        return append2(started)(ended);
+        return append3(started)(ended);
       };
     }
     ;
@@ -6920,7 +6929,7 @@ var runSyncOp = function(context) {
           return inspectDirty(context)();
         })();
         if (inspected instanceof InspectionFailed) {
-          return append2(phaseOutput(fetched.value0))(inspected.value0);
+          return append3(phaseOutput(fetched.value0))(inspected.value0);
         }
         ;
         var resolvedContext = resolveContext(context)(v)(startedAt)();
@@ -6943,7 +6952,7 @@ var runSyncOp = function(context) {
               return success;
             })();
             var protocol = recordPhase(context)(v)(startedAt)(resolved.value0)();
-            return append2(append2(phaseOutput(fetched.value0))(dirtyWarning))(protocol);
+            return append3(append3(phaseOutput(fetched.value0))(dirtyWarning))(protocol);
           }
           ;
           throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 346, column 15 - line 356, column 100): " + [resolved.constructor.name]);
@@ -6961,6 +6970,8 @@ var runSyncOp = function(context) {
 var pure8 = /* @__PURE__ */ pure(applicativeEffect);
 var map14 = /* @__PURE__ */ map(functorEffect);
 var eq3 = /* @__PURE__ */ eq(/* @__PURE__ */ eqMaybe(eqString));
+var elem5 = /* @__PURE__ */ elem2(eqString);
+var resultsOperationNames = ["step-start", "step-end", "step"];
 var outcomeResult = function(outcome) {
   if (outcome.output instanceof Captured) {
     return {
@@ -6978,9 +6989,86 @@ var outcomeResult = function(outcome) {
     };
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 124, column 25 - line 134, column 6): " + [outcome.output.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 163, column 25 - line 173, column 6): " + [outcome.output.constructor.name]);
+};
+var messageParseError = function(message3) {
+  return {
+    code: 1,
+    message: message3
+  };
+};
+var parseMessageError = function(parsed) {
+  if (parsed instanceof Left) {
+    return new Left(messageParseError(parsed.value0));
+  }
+  ;
+  if (parsed instanceof Right) {
+    return new Right(parsed.value0);
+  }
+  ;
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 147, column 28 - line 149, column 37): " + [parsed.constructor.name]);
 };
 var isWriteOperation = function(operation) {
+  if (operation instanceof Detect2) {
+    return false;
+  }
+  ;
+  if (operation instanceof Fetch) {
+    return false;
+  }
+  ;
+  if (operation instanceof RemoteUrl) {
+    return false;
+  }
+  ;
+  if (operation instanceof HeadRevision) {
+    return false;
+  }
+  ;
+  if (operation instanceof HeadCommitSha) {
+    return false;
+  }
+  ;
+  if (operation instanceof DefaultBranch) {
+    return false;
+  }
+  ;
+  if (operation instanceof CurrentBranch) {
+    return false;
+  }
+  ;
+  if (operation instanceof Base) {
+    return false;
+  }
+  ;
+  if (operation instanceof Dirty) {
+    return false;
+  }
+  ;
+  if (operation instanceof DiffRange) {
+    return false;
+  }
+  ;
+  if (operation instanceof DiffNames) {
+    return false;
+  }
+  ;
+  if (operation instanceof DiffStat) {
+    return false;
+  }
+  ;
+  if (operation instanceof NewFiles) {
+    return false;
+  }
+  ;
+  if (operation instanceof LogRange) {
+    return false;
+  }
+  ;
+  if (operation instanceof LogHead) {
+    return false;
+  }
+  ;
   if (operation instanceof Branch) {
     return true;
   }
@@ -6997,7 +7085,15 @@ var isWriteOperation = function(operation) {
     return true;
   }
   ;
-  return false;
+  if (operation instanceof RefreshDefaultBranch) {
+    return false;
+  }
+  ;
+  if (operation instanceof FastForwardIfSafe) {
+    return false;
+  }
+  ;
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 119, column 30 - line 140, column 33): " + [operation.constructor.name]);
 };
 var parseVcsWrite = function(args) {
   var v = parseVcsOp(args);
@@ -7006,22 +7102,18 @@ var parseVcsWrite = function(args) {
   }
   ;
   if (v instanceof Right) {
-    var $24 = isWriteOperation(v.value0);
-    if ($24) {
+    var $33 = isWriteOperation(v.value0);
+    if ($33) {
       return new Right(v.value0);
     }
     ;
     return new Left("vcs_write: read-only operation rejected; use vcs_read instead");
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 75, column 22 - line 77, column 146): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 90, column 22 - line 92, column 146): " + [v.constructor.name]);
 };
 var isReadOperation = function(operation) {
   if (operation instanceof Detect2) {
-    return true;
-  }
-  ;
-  if (operation instanceof Fetch) {
     return true;
   }
   ;
@@ -7077,7 +7169,35 @@ var isReadOperation = function(operation) {
     return true;
   }
   ;
-  return false;
+  if (operation instanceof Fetch) {
+    return false;
+  }
+  ;
+  if (operation instanceof Branch) {
+    return false;
+  }
+  ;
+  if (operation instanceof Commit) {
+    return false;
+  }
+  ;
+  if (operation instanceof Push) {
+    return false;
+  }
+  ;
+  if (operation instanceof FixCommit) {
+    return false;
+  }
+  ;
+  if (operation instanceof RefreshDefaultBranch) {
+    return false;
+  }
+  ;
+  if (operation instanceof FastForwardIfSafe) {
+    return false;
+  }
+  ;
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 95, column 29 - line 116, column 33): " + [operation.constructor.name]);
 };
 var parseVcsRead = function(args) {
   var v = parseVcsOp(args);
@@ -7085,16 +7205,20 @@ var parseVcsRead = function(args) {
     return new Left(v.value0);
   }
   ;
+  if (v instanceof Right && v.value0 instanceof Fetch) {
+    return new Left("vcs_read: fetch updates remote-tracking refs; use agency_driver sync instead");
+  }
+  ;
   if (v instanceof Right) {
-    var $34 = isReadOperation(v.value0);
-    if ($34) {
+    var $50 = isReadOperation(v.value0);
+    if ($50) {
       return new Right(v.value0);
     }
     ;
     return new Left("vcs_read: mutating operation rejected; use vcs_write instead");
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 70, column 21 - line 72, column 144): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 84, column 21 - line 87, column 144): " + [v.constructor.name]);
 };
 var failureResult = function(exit2) {
   return function(message3) {
@@ -7118,28 +7242,10 @@ var runOperation = function(captureOutput) {
           return map14(outcomeResult)(runner(resolved.value0)(operation))();
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 119, column 3 - line 121, column 64): " + [resolved.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 158, column 3 - line 160, column 64): " + [resolved.constructor.name]);
       };
     };
   };
-};
-var runMessageParsed = function(captureOutput) {
-  return function(parsed) {
-    return function(runner) {
-      if (parsed instanceof Left) {
-        return pure8(failureResult(1)(parsed.value0));
-      }
-      ;
-      if (parsed instanceof Right) {
-        return runOperation(captureOutput)(runner)(parsed.value0);
-      }
-      ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 112, column 48 - line 114, column 65): " + [parsed.constructor.name]);
-    };
-  };
-};
-var runForge = function(request) {
-  return runMessageParsed(request.captureOutput)(parseForgeOp(request.args))(runForgeOp);
 };
 var runParsed = function(captureOutput) {
   return function(parsed) {
@@ -7152,53 +7258,12 @@ var runParsed = function(captureOutput) {
         return runOperation(captureOutput)(runner)(parsed.value0);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 107, column 41 - line 109, column 65): " + [parsed.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 143, column 41 - line 145, column 65): " + [parsed.constructor.name]);
     };
   };
 };
-var runAgencyDriver = function(request) {
-  var v = head(request.args);
-  if (v instanceof Just && v.value0 === "sync") {
-    return runParsed(request.captureOutput)(parseSyncOp(request.args))(runSyncOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "step-start") {
-    return runParsed(request.captureOutput)(parseResultsOp(request.args))(runResultsOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "step-end") {
-    return runParsed(request.captureOutput)(parseResultsOp(request.args))(runResultsOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "step") {
-    return runParsed(request.captureOutput)(parseResultsOp(request.args))(runResultsOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "init") {
-    return runParsed(request.captureOutput)(parseDriverOp(request.args))(runDriverOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "start") {
-    return runParsed(request.captureOutput)(parseDriverOp(request.args))(runDriverOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "end") {
-    return runParsed(request.captureOutput)(parseDriverOp(request.args))(runDriverOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "skip") {
-    return runParsed(request.captureOutput)(parseDriverOp(request.args))(runDriverOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "set") {
-    return runParsed(request.captureOutput)(parseDriverOp(request.args))(runDriverOp);
-  }
-  ;
-  if (v instanceof Just && v.value0 === "summary") {
-    return runParsed(request.captureOutput)(parseDriverOp(request.args))(runDriverOp);
-  }
-  ;
-  return pure8(failureResult(1)("agency_driver: operation required (init|start|end|skip|set|summary|sync|step-start|step-end|step)"));
+var runForge = function(request) {
+  return runParsed(request.captureOutput)(parseMessageError(parseForgeOp(request.args)))(runForgeOp);
 };
 var runVcsRead = function(request) {
   var v = parseVcsRead(request.args);
@@ -7225,12 +7290,59 @@ var runVcsWrite = function(request) {
   throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 41, column 23 - line 43, column 79): " + [v.constructor.name]);
 };
 var runWorkflow = function(request) {
-  var $62 = eq3(head(request.args))(new Just("cli")) && length(request.args) > 1;
-  if ($62) {
+  var $64 = eq3(head(request.args))(new Just("cli")) && length(request.args) > 1;
+  if ($64) {
     return pure8(failureResult(1)("workflow: from is only valid with cli_seed"));
   }
   ;
   return runParsed(request.captureOutput)(parseNickelOp(request.args))(runNickelOp);
+};
+var driverOperationNames = ["init", "start", "end", "skip", "set", "summary"];
+var agencyDriverUsage = "agency_driver: operation required (init|start|end|skip|set|summary|sync|step-start|step-end|step)";
+var runAgencyDriver = function(request) {
+  var dispatchWith = function(parser) {
+    return function(runner) {
+      return function(args) {
+        return runParsed(request.captureOutput)(parser(args))(runner);
+      };
+    };
+  };
+  var dispatchResults = function(operation) {
+    return function(operands) {
+      return dispatchWith(parseResultsOp)(runResultsOp)(cons(operation)(operands));
+    };
+  };
+  var dispatchDriver = function(operation) {
+    return function(operands) {
+      return dispatchWith(parseDriverOp)(runDriverOp)(cons(operation)(operands));
+    };
+  };
+  var v = uncons(request.args);
+  if (v instanceof Nothing) {
+    return pure8(failureResult(1)(agencyDriverUsage));
+  }
+  ;
+  if (v instanceof Just) {
+    if (v.value0.head === "sync") {
+      return dispatchWith(parseSyncOp)(runSyncOp)(v.value0.tail);
+    }
+    ;
+    if (elem5(v.value0.head)(resultsOperationNames)) {
+      return dispatchResults(v.value0.head)(v.value0.tail);
+    }
+    ;
+    if (elem5(v.value0.head)(driverOperationNames)) {
+      return dispatchDriver(v.value0.head)(v.value0.tail);
+    }
+    ;
+    if (otherwise) {
+      return pure8(failureResult(1)(agencyDriverUsage));
+    }
+    ;
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 61, column 47 - line 65, column 62): " + [v.value0.head.constructor.name]);
+  }
+  ;
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 56, column 27 - line 65, column 62): " + [v.constructor.name]);
 };
 var runTool = function(request) {
   if (request.tool === "vcs_read") {
