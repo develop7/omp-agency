@@ -42,6 +42,9 @@ For each violation reported by `/code-police` (across all three passes), in turn
    - Fact-check pass: `fix(police): fact-check — <short description>`
    - Elegance pass: `refactor(police): elegance — <short description>`
 
+The `fix-commit` variant requires both `message` and a non-empty `files` list;
+fields for `branch` or `push` are not valid in that request.
+
 **Under `--no-vcs`**: Skip commit/push. Apply fixes to working tree.
 
 **Verify**: All 3 passes clean ("All clear").

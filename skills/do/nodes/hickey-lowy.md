@@ -78,6 +78,9 @@ finding — apply as its own commit with prefix `refactor(hickey): cross-validat
 2. Run the project's format command on the changed files, if configured.
 3. Call the `vcs_write` tool with `{ op: "fix-commit", message: "refactor(hickey): <short finding label>", files: ["<file1>", "<file2>", ...] }` (or `refactor(lowy)`). Pass the files the finding fix touched. Body restates the finding in one line.
 
+The `fix-commit` variant requires both `message` and a non-empty `files` list;
+do not pass branch or push fields with it.
+
 **Under `--no-vcs`**: Skip commit/push. Apply fixes to working tree.
 
 **Verify**: Both hickey and lowy produced review output. Cross-validation ran (or skipped because zero findings). Every

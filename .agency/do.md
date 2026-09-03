@@ -7,14 +7,18 @@ just lint
 just test
 
 ## Test coverage-gap resolution
-This repo's tests run as subprocess-style black-box tests (bats) without coverage
-instrumentation. Resolve the coverage-gap check from the `/do` test node by **path
-intersection**: compare the `vcs_read` tool with `{ args: ["diff-names"] }`
-(changed source files) against the test files' mirrored paths.
+This repo's PureScript core tests are module-level unit tests under
+`pure/test/Agency/Scripts/Do/`, mirroring the implementation modules under
+`pure/src/Agency/Scripts/Do/` (for example, `Ops.purs` is covered by
+`OpsTest.purs`). Resolve a coverage gap by comparing the `vcs_read` tool with
+`{ args: ["diff-names"] }` (changed source files) against those mirrored test
+paths. The `tests/` bats suites provide bundle-level black-box coverage for the
+CLI and should also be considered when a source change affects a bundled
+entrypoint.
 
-Test files live under `tests/` mirroring the repo-root `skills/` structure — a test at
-`tests/unit/skills/do/scripts/do-results.bats` covers `skills/do/scripts/do-results`.
-If at least one test file maps to a changed source file, the check is satisfied.
+Test files under `tests/` still mirror the repo-root `skills/` structure; use the
+matching `tests/unit/skills/do/` or `tests/integration/skills/do/` suite for
+workflow behavior.
 
 ## CI command
 just ci

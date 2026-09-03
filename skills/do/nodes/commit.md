@@ -24,6 +24,9 @@ call the `vcs_write` tool with `{ op: "commit", message: "<message>", files: ["<
 call the `vcs_write` tool with `{ op: "push", ref: "<branch>" }`
 ```
 
+The `vcs_write` schema keeps variants separate: `commit` requires a non-empty
+`message` and `files` list, while `push` accepts only its optional `ref`.
+
 **Pass the files that belong to this feature** — the files you changed during **implement**. The dispatcher stages only the files you pass and preserves unrelated working-copy changes (see `SKILL.md` ## Rules for the git/jj mechanics). `vcs_write` push sets upstream on first push (git).
 
 **Follow-up commits (hickey-lowy, police) go through `vcs_write` `fix-commit`** — the dispatcher leaves `@` on a fresh empty change, so the next finding's edits land as a separate commit on top. See `SKILL.md` ## Rules for the no-raw-VCS-commands invariant.

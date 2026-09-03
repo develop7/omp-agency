@@ -19,6 +19,9 @@ description: Open a draft PR on the detected forge.
 
 Check whether a PR already exists for this branch by calling the `forge` tool with `{ op: "pr-view", args: [] }`.
 
+The `pr-view` variant carries only `args`; `body` is available only on the
+body-bearing `pr-create`, `pr-edit`, and `pr-comment` variants below.
+
 **If no PR exists** (first run, normal path):
 
 1. Create a draft PR by calling the `forge` tool with `{ op: "pr-create", args: ["--draft", "--head", "<current_branch_name>", "--base", "<base branch name>", "--title", "..."], body: "<body>" }`.

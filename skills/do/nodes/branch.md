@@ -19,7 +19,7 @@ description: Create a descriptive feature branch from the resolved base.
 Read `vcs` and `base` from `.do-results.json`. Then:
 
 ```
-call the `vcs_write` tool with `{ op: "branch", ref: "<descriptive-name>" }`
+call the `vcs_write` tool with `{ op: "branch", name: "<descriptive-name>" }`
 ```
 
 No base argument — `vcs_write` reads the resolved `base` from state. The tool handles the VCS-specific details: git

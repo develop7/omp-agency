@@ -61,8 +61,10 @@ Be specific to this run's data, not generic advice.
 
 **If `supportsPrComment`**: Report the PR URL. Then post the final step status table as a **PR comment** by calling the
 `forge` tool with `{ op: "pr-comment", args: [], body: "<comment>" }`. Use the markdown table and slowest-step line emitted by the
-`agency_driver` summary operation verbatim
-(strip the trailing `<<<FACTS ... FACTS` block — that's internal). Format:
+`agency_driver` summary operation verbatim (strip the trailing `<<<FACTS ... FACTS` block — that's internal). Format:
+
+This uses the body-bearing `forge` `pr-comment` variant; read operations such
+as `pr-view` remain args-only.
 
 ```text
 call the `forge` tool with `{ op: "pr-comment", args: [], body: """`

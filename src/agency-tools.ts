@@ -22,6 +22,8 @@ type ToolContext = {
   cwd: string;
 };
 
+const forgeBodyOperations = ["pr-create", "pr-edit", "pr-comment"];
+
 let apiPromise: Promise<AgencyApi> | undefined;
 
 async function loadApi(): Promise<AgencyApi> {
@@ -36,7 +38,7 @@ async function executeApi(tool: string, args: string[]): Promise<{
   const api = await loadApi();
   const result = await api.runTool({ tool, args, captureOutput: true })();
   if (result.exit !== 0) {
-    throw new Error(result.stderr || result.stdout);
+    throw new Error(result.stderr || result.stdout || emptyFailureMessage(tool, args, result.exit));
   }
   return {
     content: [{ type: "text", text: result.stdout || "ok" }],
@@ -44,11 +46,29 @@ async function executeApi(tool: string, args: string[]): Promise<{
   };
 }
 
+function emptyFailureMessage(tool: string, args: string[], exit: number): string {
+  const operation = args[0] ?? "operation";
+  if (tool === "vcs_read" && operation === "dirty") {
+    return "vcs_read dirty: working copy clean";
+  }
+  if (tool === "forge" && operation === "supports") {
+    return `forge supports ${args[1] ?? "operation"}: not supported`;
+  }
+  return `${tool} ${operation} failed: exit ${exit} (no output)`;
+}
+
 function requireValue(value: string | undefined, field: string, operation: string): string {
   if (value === undefined || value === "") {
     throw new Error(`vcs_write ${operation} requires ${field}`);
   }
   return value;
+}
+
+function requireFiles(files: string[] | undefined, operation: string): string[] {
+  if (files === undefined || files.length === 0) {
+    throw new Error(`vcs_write ${operation} requires at least one file`);
+  }
+  return files;
 }
 
 async function executeForge(
@@ -60,6 +80,11 @@ async function executeForge(
 }> {
   let tempDir: string | undefined;
   try {
+    if (params.body !== undefined && !forgeBodyOperations.includes(params.op)) {
+      throw new Error(
+        `forge ${params.op} does not accept body; body is only valid for pr-create, pr-edit, and pr-comment`,
+      );
+    }
     let args = params.args;
     if (params.body !== undefined) {
       tempDir = await mkdtemp(join(ctx.cwd, ".agency-forge-"));
@@ -82,7 +107,7 @@ export default function (pi: ExtensionAPI) {
     name: "vcs_read",
     label: "VCS Read",
     description:
-      "Read-only VCS operations. Use args exactly as the semantic vcs-op CLI: detect, fetch, remote-url, head-revision, head-commit-sha, default-branch, current-branch, base, dirty, diff-range, diff-names, diff-stat, new-files, log-range, or log-head, followed by any operation arguments such as paths.",
+      "Read-only VCS operations. Use args exactly as the semantic vcs-op CLI: detect, remote-url, head-revision, head-commit-sha, default-branch, current-branch, base, dirty, diff-range, diff-names, diff-stat, new-files, log-range, or log-head, followed by any operation arguments such as paths. Fetching belongs to agency_driver sync because it updates remote-tracking refs.",
     parameters: z.object({ args: z.array(z.string()) }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       return executeApi("vcs_read", params.args);
@@ -93,14 +118,37 @@ export default function (pi: ExtensionAPI) {
     name: "vcs_write",
     label: "VCS Write",
     description:
-      "Mutating VCS operations with critical arguments hoisted into a schema. branch requires name as the new branch/bookmark name; commit and fix-commit require message and files; push accepts an optional ref.",
-    parameters: z.object({
-      op: z.enum(["branch", "commit", "push", "fix-commit"]),
-      message: z.string().optional(),
-      files: z.array(z.string()).optional(),
-      ref: z.string().optional(),
-      name: z.string().optional(),
-    }),
+      "Mutating VCS operations with operation-specific arguments: branch requires name; commit and fix-commit require message and a non-empty files list; push accepts an optional ref. Do not provide fields from another operation.",
+    parameters: z.union([
+      z.object({
+        op: z.literal("branch"),
+        name: z.string().min(1),
+        message: z.undefined().optional(),
+        files: z.undefined().optional(),
+        ref: z.undefined().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("commit"),
+        message: z.string().min(1),
+        files: z.array(z.string().min(1)).min(1),
+        name: z.undefined().optional(),
+        ref: z.undefined().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("fix-commit"),
+        message: z.string().min(1),
+        files: z.array(z.string().min(1)).min(1),
+        name: z.undefined().optional(),
+        ref: z.undefined().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("push"),
+        ref: z.string().min(1).optional(),
+        name: z.undefined().optional(),
+        message: z.undefined().optional(),
+        files: z.undefined().optional(),
+      }).strict(),
+    ]),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       if (params.op === "branch") {
         return executeApi("vcs_write", ["branch", requireValue(params.name, "name", params.op)]);
@@ -109,10 +157,8 @@ export default function (pi: ExtensionAPI) {
         return executeApi("vcs_write", ["push", ...(params.ref === undefined ? [] : [params.ref])]);
       }
       const message = requireValue(params.message, "message", params.op);
-      if (params.files === undefined) {
-        throw new Error(`vcs_write ${params.op} requires files`);
-      }
-      return executeApi("vcs_write", [params.op, message, ...params.files]);
+      const files = requireFiles(params.files, params.op);
+      return executeApi("vcs_write", [params.op, message, ...files]);
     },
   });
 
@@ -120,12 +166,49 @@ export default function (pi: ExtensionAPI) {
     name: "forge",
     label: "Forge",
     description:
-      "Forge operations over the detected remote host. Use op detect or supports, pr-view, pr-create, pr-edit, pr-comment, issue-view, or pr-checks; pass forge CLI flags in args. Supply body for body-bearing operations instead of constructing a body-file argument.",
-    parameters: z.object({
-      op: z.enum(["detect", "supports", "pr-view", "pr-create", "pr-edit", "pr-comment", "issue-view", "pr-checks"]),
-      args: z.array(z.string()),
-      body: z.string().optional(),
-    }),
+      "Forge operations over the detected remote host. Use op detect, supports, pr-view, pr-create, pr-edit, pr-comment, issue-view, or pr-checks; pass forge CLI flags in args. The body field is only valid for pr-create, pr-edit, and pr-comment.",
+    parameters: z.union([
+      z.object({
+        op: z.literal("detect"),
+        args: z.array(z.string()),
+        body: z.undefined().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("supports"),
+        args: z.array(z.string()),
+        body: z.undefined().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("pr-view"),
+        args: z.array(z.string()),
+        body: z.undefined().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("pr-create"),
+        args: z.array(z.string()),
+        body: z.string().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("pr-edit"),
+        args: z.array(z.string()),
+        body: z.string().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("pr-comment"),
+        args: z.array(z.string()),
+        body: z.string().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("issue-view"),
+        args: z.array(z.string()),
+        body: z.undefined().optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("pr-checks"),
+        args: z.array(z.string()),
+        body: z.undefined().optional(),
+      }).strict(),
+    ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       return executeForge(params, ctx);
     },
@@ -135,16 +218,19 @@ export default function (pi: ExtensionAPI) {
     name: "workflow",
     label: "Workflow",
     description:
-      "Evaluate the Nickel /do workflow. field cli returns the next-step decision for .do-results.json; field cli_seed requires from when seeding or resuming a workflow.",
-    parameters: z.object({
-      field: z.enum(["cli", "cli_seed"]),
-      from: z.string().optional(),
-    }),
+      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with one of default, followup, post-implement, polish, or ci-only to seed/resume from that entry point.",
+    parameters: z.union([
+      z.object({
+        field: z.literal("cli"),
+        from: z.undefined().optional(),
+      }).strict(),
+      z.object({
+        field: z.literal("cli_seed"),
+        from: z.enum(["default", "followup", "post-implement", "polish", "ci-only"]),
+      }).strict(),
+    ]),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      if (params.field === "cli" && params.from !== undefined) {
-        throw new Error("workflow: from is only valid with cli_seed");
-      }
-      return executeApi("workflow", [params.field, ...(params.from === undefined ? [] : [params.from])]);
+      return executeApi("workflow", [params.field, ...(params.field === "cli_seed" ? [params.from] : [])]);
     },
   });
 
@@ -152,7 +238,7 @@ export default function (pi: ExtensionAPI) {
     name: "agency_driver",
     label: "Agency Driver",
     description:
-      "Advance or inspect /do workflow state through the existing driver and results parsers. op is one of init, start, end, skip, set, summary, sync, step-start, step-end, or step; args are the exact remaining CLI arguments for that operation.",
+      "Advance or inspect /do workflow state through the existing driver and results parsers. op selects one of init, start, end, skip, set, summary, sync, step-start, step-end, or step; args contains only that operation's operands and must not repeat op (for example, { op: \"sync\", args: [\"false\"] } or { op: \"start\", args: [\"research\"] }).",
     parameters: z.object({
       op: z.enum(["init", "start", "end", "skip", "set", "summary", "sync", "step-start", "step-end", "step"]),
       args: z.array(z.string()),

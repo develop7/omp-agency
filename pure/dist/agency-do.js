@@ -5676,57 +5676,6 @@ var slowestStep = function(values) {
 var skippedName = function(step) {
   return step.name + (":" + fromMaybe("unspecified")(step.reason));
 };
-var runNickelOp = function(context) {
-  return function(operation) {
-    return function __do2() {
-      var bundle = bundleDir();
-      var cwdWorkflow = context.stateDir + "/skills/do/workflow.ncl";
-      var bundleWorkflow = bundle + "/../../../skills/do/workflow.ncl";
-      var adjacentWorkflow = bundle + "/../../skills/do/workflow.ncl";
-      var bundleExists = exists2(bundleWorkflow)();
-      var adjacentExists = exists2(adjacentWorkflow)();
-      var workflowPath = (function() {
-        if (bundleExists) {
-          return bundleWorkflow;
-        }
-        ;
-        if (adjacentExists) {
-          return adjacentWorkflow;
-        }
-        ;
-        return cwdWorkflow;
-      })();
-      var workflow = realpath2(workflowPath)();
-      var statePath2 = statePath(context);
-      var expression = (function() {
-        if (operation instanceof NickelCli) {
-          return 'let workflow = import "' + (workflow + ('" in\n  let state = workflow.normalize_state (import "' + (statePath2 + '") in\n  workflow.cli state\n')));
-        }
-        ;
-        if (operation instanceof NickelCliSeed) {
-          return 'let workflow = import "' + (workflow + ('" in\n  let state = workflow.normalize_state (import "' + (statePath2 + ('") in\n  workflow.cli_seed "' + (operation.value0 + '" state\n')))));
-        }
-        ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 624, column 20 - line 626, column 204): " + [operation.constructor.name]);
-      })();
-      if (context.captureOutput) {
-        var result = execInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
-        return captured(result);
-      }
-      ;
-      var result = execInheritInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
-      if (result.error instanceof Just) {
-        return failure(1)("nickel-cli: nickel failed to spawn: " + (result.error.value0 + "\n"));
-      }
-      ;
-      if (result.error instanceof Nothing) {
-        return passthrough(result.code);
-      }
-      ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 632, column 10 - line 634, column 49): " + [result.error.constructor.name]);
-    };
-  };
-};
 var resultsCommandNames = "init|step-start|step-end|step|set";
 var resultsUsage = /* @__PURE__ */ (function() {
   return "Usage: do-results <" + (resultsCommandNames + "> ...");
@@ -5800,11 +5749,11 @@ var resolveSyncBase = function(v) {
       if (v.value0.base instanceof Nothing && v.value0.stack) {
         return function __do2() {
           var current = currentBranchValue(context)();
-          var $105 = current.code !== 0;
-          if ($105) {
+          var $98 = current.code !== 0;
+          if ($98) {
             return new Left((function() {
-              var $106 = current.stderr === "";
-              if ($106) {
+              var $99 = current.stderr === "";
+              if ($99) {
                 return "sync: unable to resolve current branch";
               }
               ;
@@ -5812,14 +5761,14 @@ var resolveSyncBase = function(v) {
             })());
           }
           ;
-          var $107 = current.value !== "" && (current.value !== defaultRef && current.value !== "HEAD");
-          if ($107) {
+          var $100 = current.value !== "" && (current.value !== defaultRef && current.value !== "HEAD");
+          if ($100) {
             return new Right(current.value);
           }
           ;
           return new Left("sync: --stack found no feature branch to stack onto\n" + ("       current branch is '" + (function() {
-            var $108 = current.value === "";
-            if ($108) {
+            var $101 = current.value === "";
+            if ($101) {
               return "<none>";
             }
             ;
@@ -5837,8 +5786,8 @@ var resolveSyncBase = function(v) {
   };
 };
 var resolveNow = function(value) {
-  var $110 = value === "now";
-  if ($110) {
+  var $103 = value === "now";
+  if ($103) {
     return nowIso;
   }
   ;
@@ -6030,8 +5979,8 @@ var parseDriverInit = function(args) {
       function $tco_loop(remaining, state2) {
         var v = uncons(remaining);
         if (v instanceof Nothing) {
-          var $154 = state2.review && (state2.from !== "" && state2.from !== "default");
-          if ($154) {
+          var $147 = state2.review && (state2.from !== "" && state2.from !== "default");
+          if ($147) {
             $tco_done = true;
             return new Left(parseError(2)("do-driver: --review is incompatible with --from=" + (state2.from + ("\n" + ("         --from=" + (state2.from + " starts past research, where the plan-approval pause lives.\n         drop --review if the plan is already approved, or drop --from for a full workflow."))))));
           }
@@ -6079,12 +6028,12 @@ var parseDriverInit = function(args) {
           ;
           if (v.value0.head === "--base") {
             $tco_done = true;
-            return new Left(parseError(2)("do-driver: --base is a sync flag, not an init flag.\n         pass it to 'bash scripts/steps/sync', not to 'do-driver init'."));
+            return new Left(parseError(2)("do-driver: --base is a sync flag, not an init flag.\n         pass it to the agency_driver tool with op sync, not to do-driver init."));
           }
           ;
           if (v.value0.head === "--stack") {
             $tco_done = true;
-            return new Left(parseError(2)("do-driver: --stack is a sync flag, not an init flag.\n         pass it to 'bash scripts/steps/sync', not to 'do-driver init'."));
+            return new Left(parseError(2)("do-driver: --stack is a sync flag, not an init flag.\n         pass it to the agency_driver tool with op sync, not to do-driver init."));
           }
           ;
           if (startsWith("--from=")(v.value0.head)) {
@@ -6342,13 +6291,13 @@ var parseSyncOp = function(args) {
     }
     ;
     if (parsed.noVcs instanceof Just) {
-      var $200 = notEq2(parsed.base)(Nothing.value) && parsed.stack;
-      if ($200) {
+      var $193 = notEq2(parsed.base)(Nothing.value) && parsed.stack;
+      if ($193) {
         return new Left(parseError(2)("sync: --base and --stack are mutually exclusive"));
       }
       ;
-      var $201 = parsed.noVcs.value0 && (notEq2(parsed.base)(Nothing.value) || parsed.stack);
-      if ($201) {
+      var $194 = parsed.noVcs.value0 && (notEq2(parsed.base)(Nothing.value) || parsed.stack);
+      if ($194) {
         return new Left(parseError(2)("sync: --base/--stack are incompatible with --no-vcs\n       --no-vcs skips branch/commit/PR; the base has no effect."));
       }
       ;
@@ -6377,7 +6326,7 @@ var loadState = function(context) {
       return new Right(result.value0.value0);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 639, column 8 - line 642, column 38): " + [result.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 646, column 8 - line 649, column 38): " + [result.constructor.name]);
   };
 };
 var jsonValueFor = function(field) {
@@ -6400,12 +6349,12 @@ var jsonValueFor = function(field) {
       })());
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 647, column 1 - line 647, column 55): " + [field.constructor.name, value.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 654, column 1 - line 654, column 55): " + [field.constructor.name, value.constructor.name]);
   };
 };
 var fmtDur = function(seconds) {
-  var $211 = seconds < 60;
-  if ($211) {
+  var $204 = seconds < 60;
+  if ($204) {
     return show3(seconds) + "s";
   }
   ;
@@ -6416,15 +6365,15 @@ var fetchPhase = function(context) {
     return function __do2() {
       var fetched = fetchValue(context)();
       var quietFetch = quietResult(fetched);
-      var $212 = fetched.exit !== 0;
-      if ($212) {
+      var $205 = fetched.exit !== 0;
+      if ($205) {
         return new Left(quietFetch);
       }
       ;
       var refreshed = refreshDefaultBranchValue(context)();
       var quietRefresh = quietResult(refreshed);
-      var $213 = refreshed.exit !== 0;
-      if ($213) {
+      var $206 = refreshed.exit !== 0;
+      if ($206) {
         return new Left(append2(quietFetch)(quietRefresh));
       }
       ;
@@ -6435,8 +6384,8 @@ var fetchPhase = function(context) {
         ;
         return runVcsOp(context)(FastForwardIfSafe.value)();
       })();
-      var $215 = forwarded.exit !== 0;
-      if ($215) {
+      var $208 = forwarded.exit !== 0;
+      if ($208) {
         return new Left(append2(append2(quietFetch)(quietRefresh))(forwarded));
       }
       ;
@@ -6653,14 +6602,68 @@ var renderDoneMarkdown = function(summary) {
   })();
   var rows = map11(renderTimedRow(summary.totalSeconds))(summary.rows);
   var table = "| Step | Status | Duration | Verification |\n" + ("|------|--------|----------|--------------|\n" + (joinWith("\n")(rows) + ((function() {
-    var $256 = $$null(rows);
-    if ($256) {
+    var $249 = $$null(rows);
+    if ($249) {
       return "";
     }
     ;
     return "\n";
   })() + ("| **Total** | | **" + (fmtDur(summary.totalSeconds) + "** | |\n\n")))));
   return table + (slowLine + "\n");
+};
+var escapeNickelString = function(value) {
+  return replaceAll("\r")("\\r")(replaceAll("\n")("\\n")(replaceAll('"')('\\"')(replaceAll("\\")("\\\\")(value))));
+};
+var runNickelOp = function(context) {
+  return function(operation) {
+    return function __do2() {
+      var bundle = bundleDir();
+      var cwdWorkflow = context.stateDir + "/skills/do/workflow.ncl";
+      var bundleWorkflow = bundle + "/../../../skills/do/workflow.ncl";
+      var adjacentWorkflow = bundle + "/../../skills/do/workflow.ncl";
+      var bundleExists = exists2(bundleWorkflow)();
+      var adjacentExists = exists2(adjacentWorkflow)();
+      var workflowPath = (function() {
+        if (bundleExists) {
+          return bundleWorkflow;
+        }
+        ;
+        if (adjacentExists) {
+          return adjacentWorkflow;
+        }
+        ;
+        return cwdWorkflow;
+      })();
+      var workflow = realpath2(workflowPath)();
+      var statePath2 = statePath(context);
+      var expression = (function() {
+        if (operation instanceof NickelCli) {
+          return 'let workflow = import "' + (escapeNickelString(workflow) + ('" in\n  let state = workflow.normalize_state (import "' + (escapeNickelString(statePath2) + '") in\n  workflow.cli state\n')));
+        }
+        ;
+        if (operation instanceof NickelCliSeed) {
+          return 'let workflow = import "' + (escapeNickelString(workflow) + ('" in\n  let state = workflow.normalize_state (import "' + (escapeNickelString(statePath2) + ('") in\n  workflow.cli_seed "' + (escapeNickelString(operation.value0) + '" state\n')))));
+        }
+        ;
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 624, column 20 - line 626, column 261): " + [operation.constructor.name]);
+      })();
+      if (context.captureOutput) {
+        var result = execInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
+        return captured(result);
+      }
+      ;
+      var result = execInheritInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
+      if (result.error instanceof Just) {
+        return failure(1)("nickel-cli: nickel failed to spawn: " + (result.error.value0 + "\n"));
+      }
+      ;
+      if (result.error instanceof Nothing) {
+        return passthrough(result.code);
+      }
+      ;
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 632, column 10 - line 634, column 49): " + [result.error.constructor.name]);
+    };
+  };
 };
 var dominantName = function(totalDuration) {
   return function(v) {

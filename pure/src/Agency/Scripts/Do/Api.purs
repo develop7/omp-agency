@@ -43,7 +43,7 @@ runVcsWrite request = case parseVcsWrite request.args of
   Right operation -> runOperation request.captureOutput Vcs.runVcsOp operation
 
 runForge :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
-runForge request = runMessageParsed request.captureOutput (Forge.parseForgeOp request.args) Forge.runForgeOp
+runForge request = runParsed request.captureOutput (parseMessageError (Forge.parseForgeOp request.args)) Forge.runForgeOp
 
 runWorkflow :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
 runWorkflow request =
@@ -53,22 +53,37 @@ runWorkflow request =
     runParsed request.captureOutput (Ops.parseNickelOp request.args) Ops.runNickelOp
 
 runAgencyDriver :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
-runAgencyDriver request = case Array.head request.args of
-  Just "sync" -> runParsed request.captureOutput (Ops.parseSyncOp request.args) Ops.runSyncOp
-  Just "step-start" -> runParsed request.captureOutput (Ops.parseResultsOp request.args) Ops.runResultsOp
-  Just "step-end" -> runParsed request.captureOutput (Ops.parseResultsOp request.args) Ops.runResultsOp
-  Just "step" -> runParsed request.captureOutput (Ops.parseResultsOp request.args) Ops.runResultsOp
-  Just "init" -> runParsed request.captureOutput (Ops.parseDriverOp request.args) Ops.runDriverOp
-  Just "start" -> runParsed request.captureOutput (Ops.parseDriverOp request.args) Ops.runDriverOp
-  Just "end" -> runParsed request.captureOutput (Ops.parseDriverOp request.args) Ops.runDriverOp
-  Just "skip" -> runParsed request.captureOutput (Ops.parseDriverOp request.args) Ops.runDriverOp
-  Just "set" -> runParsed request.captureOutput (Ops.parseDriverOp request.args) Ops.runDriverOp
-  Just "summary" -> runParsed request.captureOutput (Ops.parseDriverOp request.args) Ops.runDriverOp
-  _ -> pure (failureResult 1 "agency_driver: operation required (init|start|end|skip|set|summary|sync|step-start|step-end|step)")
+runAgencyDriver request = case Array.uncons request.args of
+  -- The tool contract is {op, args}: op selects the subcommand and args
+  -- carries only its operands. Re-add the op for the legacy results and
+  -- driver parsers; sync consumes only its operands.
+  Nothing -> pure (failureResult 1 agencyDriverUsage)
+  Just { head: operation, tail: operands } -> case operation of
+    "sync" -> dispatchWith Ops.parseSyncOp Ops.runSyncOp operands
+    _ | Array.elem operation resultsOperationNames -> dispatchResults operation operands
+      | Array.elem operation driverOperationNames -> dispatchDriver operation operands
+      | otherwise -> pure (failureResult 1 agencyDriverUsage)
+  where
+  dispatchResults operation operands =
+    dispatchWith Ops.parseResultsOp Ops.runResultsOp (Array.cons operation operands)
+  dispatchDriver operation operands =
+    dispatchWith Ops.parseDriverOp Ops.runDriverOp (Array.cons operation operands)
+  dispatchWith :: forall op. (Array String -> Either Ops.ParseError op) -> (Context.WorkflowContext -> op -> Effect Outcome.OpOutcome) -> Array String -> Effect ToolResult
+  dispatchWith parser runner args = runParsed request.captureOutput (parser args) runner
+
+resultsOperationNames :: Array String
+resultsOperationNames = ["step-start", "step-end", "step"]
+
+driverOperationNames :: Array String
+driverOperationNames = ["init", "start", "end", "skip", "set", "summary"]
+
+agencyDriverUsage :: String
+agencyDriverUsage = "agency_driver: operation required (init|start|end|skip|set|summary|sync|step-start|step-end|step)"
 
 parseVcsRead :: Array String -> Either String Vcs.VcsOp
 parseVcsRead args = case Vcs.parseVcsOp args of
   Left message -> Left message
+  Right Vcs.Fetch -> Left "vcs_read: fetch updates remote-tracking refs; use agency_driver sync instead"
   Right operation -> if isReadOperation operation then Right operation else Left "vcs_read: mutating operation rejected; use vcs_write instead"
 
 parseVcsWrite :: Array String -> Either String Vcs.VcsOp
@@ -79,7 +94,6 @@ parseVcsWrite args = case Vcs.parseVcsOp args of
 isReadOperation :: Vcs.VcsOp -> Boolean
 isReadOperation operation = case operation of
   Vcs.Detect -> true
-  Vcs.Fetch -> true
   Vcs.RemoteUrl -> true
   Vcs.HeadRevision -> true
   Vcs.HeadCommitSha -> true
@@ -93,25 +107,50 @@ isReadOperation operation = case operation of
   Vcs.NewFiles _ -> true
   Vcs.LogRange _ -> true
   Vcs.LogHead -> true
-  _ -> false
+  Vcs.Fetch -> false
+  Vcs.Branch _ -> false
+  Vcs.Commit _ _ -> false
+  Vcs.Push _ -> false
+  Vcs.FixCommit _ _ -> false
+  Vcs.RefreshDefaultBranch -> false
+  Vcs.FastForwardIfSafe -> false
 
 isWriteOperation :: Vcs.VcsOp -> Boolean
 isWriteOperation operation = case operation of
+  Vcs.Detect -> false
+  Vcs.Fetch -> false
+  Vcs.RemoteUrl -> false
+  Vcs.HeadRevision -> false
+  Vcs.HeadCommitSha -> false
+  Vcs.DefaultBranch -> false
+  Vcs.CurrentBranch -> false
+  Vcs.Base -> false
+  Vcs.Dirty -> false
+  Vcs.DiffRange _ -> false
+  Vcs.DiffNames _ -> false
+  Vcs.DiffStat _ -> false
+  Vcs.NewFiles _ -> false
+  Vcs.LogRange _ -> false
+  Vcs.LogHead -> false
   Vcs.Branch _ -> true
   Vcs.Commit _ _ -> true
   Vcs.Push _ -> true
   Vcs.FixCommit _ _ -> true
-  _ -> false
+  Vcs.RefreshDefaultBranch -> false
+  Vcs.FastForwardIfSafe -> false
 
 runParsed :: forall a. Boolean -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect ToolResult
 runParsed captureOutput parsed runner = case parsed of
   Left error -> pure (failureResult error.code error.message)
   Right operation -> runOperation captureOutput runner operation
+parseMessageError :: forall a. Either String a -> Either Ops.ParseError a
+parseMessageError parsed = case parsed of
+  Left message -> Left (messageParseError message)
+  Right operation -> Right operation
+
+messageParseError :: String -> Ops.ParseError
+messageParseError message = { code: 1, message }
  
-runMessageParsed :: forall a. Boolean -> Either String a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect ToolResult
-runMessageParsed captureOutput parsed runner = case parsed of
-  Left message -> pure (failureResult 1 message)
-  Right operation -> runOperation captureOutput runner operation
 
 runOperation :: forall a. Boolean -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> Effect ToolResult
 runOperation captureOutput runner operation = do
