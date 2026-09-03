@@ -28,7 +28,7 @@ Instances [check-loop](../patterns/check-loop.md) with:
 Read `.agency/do.md` and look for a `## Test command` section. Run only the tests relevant to the code paths changed in
 this PR.
 
-Use `bash scripts/vcs-op diff-names` to identify changed files and determine which tests are
+Use the `vcs_read` tool with `{ args: ["diff-names"] }` to identify changed files and determine which tests are
 relevant.
 
 If changes are purely internal with no user-facing impact, unit tests may suffice — skip e2e if no relevant scenarios
@@ -53,7 +53,7 @@ loop:
   if no command configured:
     return { verdict: "no-command-configured" }
 
-  run tests relevant to changes (via bash scripts/vcs-op diff-names)
+  run tests relevant to changes (using the `vcs_read` tool with `{ args: ["diff-names"] }`)
   if exit 0:
     if coverage_check:
       confirm new behavior is exercised via test logs

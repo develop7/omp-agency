@@ -1,0 +1,27 @@
+package:
+  name: agency-do-scripts
+  dependencies:
+    - prelude
+    - effect
+    - console
+    - maybe
+    - either
+    - strings
+    - argonaut-core
+    - foreign-object
+    - arrays
+    - tuples
+    - ordered-collections
+    - node-fs
+    - node-process
+    - node-child-process
+    - node-buffer
+    - node-streams
+    - js-date
+  test:
+    main: Test.Main
+    dependencies: []
+workspace:
+  packageSet:
+    registry: 80.8.1
+  extraPackages: {}

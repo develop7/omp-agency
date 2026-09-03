@@ -97,7 +97,7 @@ Sub-agent prompt:
 >
 > Read the "Reviewing principles" and "Rules" sections of `skills/code-police/SKILL.md` for the built-in rule set. Also read `.agency/code-police.md` if it exists — its rules are additions to the built-in list (separate rows in the table, project-chosen rule IDs).
 >
-> **Scope:** the current diff against the merge base. When running under `/do`, use the diff provided in the sub-agent prompt (obtained via `.../skills/do/scripts/vcs-op diff-range`). For standalone invocation, run `.../skills/do/scripts/vcs-op diff-range` after setting up `.do-results.json` with the resolved base (see the `sync` step).
+> **Scope:** the current diff against the merge base. When running under `/do`, use the diff provided in the sub-agent prompt (obtained from the `vcs_read` tool with `{ args: ["diff-range"] }`). For standalone invocation, use the same tool with `{ args: ["diff-range"] }` after setting up `.do-results.json` with the resolved base (see the `sync` step).
 >
 > Produce a single table with **every rule** (built-in + project):
 >
@@ -121,7 +121,7 @@ Sub-agent prompt:
 >
 > Read the "Reviewing principles" section of `skills/code-police/SKILL.md` and apply them verbatim. This is **not** a style review — it is a logic review. Find places where the code lies to itself.
 >
-> **Scope:** the current diff against the merge base. When running under `/do`, use the diff provided in the sub-agent prompt. For standalone invocation, run `.../skills/do/scripts/vcs-op diff-range` after setting up `.do-results.json` with the resolved base (see the `sync` step).
+> **Scope:** the current diff against the merge base. When running under `/do`, use the diff provided in the sub-agent prompt. For standalone invocation, use the `vcs_read` tool with `{ args: ["diff-range"] }` after setting up `.do-results.json` with the resolved base (see the `sync` step).
 >
 > Flag:
 >
@@ -143,7 +143,7 @@ Sub-agent prompt:
 
 **Skip if `--no-elegance` was passed.** Do not run this pass; report `Elegance | – | Skipped (--no-elegance)` in the summary. The caller asserted the elegance pass already ran over this tree, so a second run is redundant. Pass 1 and Pass 2 are unaffected.
 
-**Skip on tiny diffs.** Get the shortstat: use `.../skills/do/scripts/vcs-op diff-stat`. If the diff is **under 10 lines**, skip this pass and report `Elegance | 0 | Skipped (tiny diff)` in the summary. The elegance pass's three-lens fan-out has overhead that's disproportionate to a few-line change; Pass 1 and Pass 2 still run. If the diff exceeds the threshold, proceed below.
+**Skip on tiny diffs.** Get the shortstat using the `vcs_read` tool with `{ args: ["diff-stat"] }`. If the diff is **under 10 lines**, skip this pass and report `Elegance | 0 | Skipped (tiny diff)` in the summary. The elegance pass's three-lens fan-out has overhead that's disproportionate to a few-line change; Pass 1 and Pass 2 still run. If the diff exceeds the threshold, proceed below.
 
 Review the changes for elegance and simplicity.
 

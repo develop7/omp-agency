@@ -9,7 +9,7 @@ description: Three-pass quality gate.
 
 - `--minimal` flag
 - `--no-vcs` flag
-- Diff `bash scripts/vcs-op diff-range`
+- Diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
 
 ## Ensures
 
@@ -25,7 +25,7 @@ Instances [check-loop](../patterns/check-loop.md) with:
 
 ## Strategies
 
-Use `bash scripts/vcs-op diff-names` to check if the PR contains code changes. If all changed files are documentation-only (e.g., `.md`, `.txt`, `README`, docs/) — skip this step with a note.
+Use the `vcs_read` tool with `{ args: ["diff-names"] }` to check if the PR contains code changes. If all changed files are documentation-only (e.g., `.md`, `.txt`, `README`, docs/) — skip this step with a note.
 
 Otherwise, read the `code-police` skill via `read skill://code-police`. It runs three passes: rule checklist, fact-check, and elegance.
 
@@ -37,10 +37,13 @@ For each violation reported by `/code-police` (across all three passes), in turn
 
 1. Apply the fix for that one violation — scope the edit tightly.
 2. Run the project's format command on changed files, if configured.
-3. `bash .../skills/do/scripts/vcs-op fix-commit "<prefix>: <short description>" <file1> <file2> ...` with the conventional prefix. Pass the files the violation fix touched.
+3. Call the `vcs_write` tool with `{ op: "fix-commit", message: "<prefix>: <short description>", files: ["<file1>", "<file2>", ...] }` with the conventional prefix. Pass the files the violation fix touched.
    - Rules pass: `fix(police): <rule-id> — <short description>`
    - Fact-check pass: `fix(police): fact-check — <short description>`
    - Elegance pass: `refactor(police): elegance — <short description>`
+
+The `fix-commit` variant requires both `message` and a non-empty `files` list;
+fields for `branch` or `push` are not valid in that request.
 
 **Under `--no-vcs`**: Skip commit/push. Apply fixes to working tree.
 
@@ -67,7 +70,7 @@ loop:
   for each violation reported:
     apply fix for that one violation
     run fmt on changed files
-    bash .../skills/do/scripts/vcs-op fix-commit with conventional prefix (fix/refactor(police): ...) <changed-files>
+    call the `vcs_write` tool with `{ op: "fix-commit", message: "fix/refactor(police): <short description>", files: ["<changed-files>"] }`
 
   continue  # re-invoke /code-police
 ```

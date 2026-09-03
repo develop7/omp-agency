@@ -33,7 +33,7 @@ run_lint() {
   run_lint
   [ "$status" -eq 1 ]
   [[ "$output" == *"gh pr create"* ]]
-  [[ "$output" == *"forge-op"* ]]
+  [[ "$output" == *"forge tool"* ]]
 }
 
 @test "gh issue view detected (forge pattern)" {

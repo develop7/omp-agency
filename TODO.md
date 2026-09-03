@@ -2,7 +2,7 @@
 
 This backlog audits the agency plugin against `@oh-my-pi/pi-coding-agent` **v17.2.12** at commit [`45e12e5`](https://github.com/can1357/oh-my-pi/tree/45e12e5bb758198a920c6070e7e64cb33b21beac). “Feasible” means the OMP API can support the behavior end to end; it does not by itself mean agency should add it.
 
-Agency’s current control plane remains the `/do` skill plus `skills/do/scripts/do-driver`, `do-results`, and Nickel. The extension currently contributes one `session_stop` guard in `src/stop-guard.ts`. New extension surfaces must adapt that existing workflow rather than create a second TypeScript state machine.
+Agency’s current control plane remains the `/do` skill plus the `agency_driver`, `workflow`, `vcs_read`, `vcs_write`, and `forge` tools over the PureScript core. The extension contributes those tools and the `session_stop` guard in `src/stop-guard.ts`; no second TypeScript workflow state machine is needed.
 
 ## Status vocabulary
 
@@ -17,7 +17,7 @@ Agency’s current control plane remains the `/do` skill plus `skills/do/scripts
 
 | # | OMP surface | API feasibility | Agency disposition |
 |---|---|---|---|
-| 1 | `registerTool` | Feasible | **Planned, narrowly**: typed adapters over the existing `/do` scripts; no second workflow engine |
+| 1 | `registerTool` | Feasible | **Done**: typed adapters over the existing PureScript workflow core; no second workflow engine |
 | 2 | `registerCommand` | Feasible | **Deferred**: OMP has no command-to-skill delegation primitive, and `/do` already owns the UX |
 | 3 | `before_agent_start` | Feasible | **Planned**: one bounded, model-visible workflow-state message per agent run |
 | 4 | `turn_end` / `agent_end` / `session_stop` | Feasible | **Partly done**: keep `session_stop`; reject hidden CI/test orchestration in lifecycle hooks |
@@ -41,30 +41,39 @@ A registered tool has a schema, approval tier, load mode, abort/progress-aware `
 
 **Agency implementation**
 
-Keep `do-results`, `do-driver`, and Nickel as the workflow engine. Add typed tools only where they replace fragile shell-shaped model calls:
+The extension registers `vcs_read`, `vcs_write`, `forge`, `workflow`, and
+`agency_driver` in `src/agency-tools.ts`. Each tool delegates to
+`Agency.Scripts.Do.Api.runTool`, so the PureScript parsers and runners remain
+the single workflow authority shared by the CLI and model-facing path.
 
-1. Add a read-only workflow snapshot command to the existing script boundary, or a single thin reader that returns the same `.do-results.json` data without reinterpreting the state machine.
-2. Register namespaced tools such as a read-only `agency_workflow_status` and mutation operations corresponding exactly to `do-driver start` and `do-driver end`.
-3. Give each mutation a schema that makes invalid states unrepresentable: `start` requires a step name; `end` requires `passed | failed | skipped`, verification text, and an optional reason.
-4. Invoke the existing scripts; do not port their transition rules into the extension. Return concise model-facing text plus structured `details` for future rendering.
-5. Propagate non-zero exit status as a tool error. Do not silently fall back to the old shell call after a caller has migrated.
-6. Migrate the `/do` skill one operation at a time, then remove the corresponding direct shell instruction. One operation must never have two supported mutation paths in the final state.
+The adapters expose operation-specific schemas rather than a flat optional
+argument bag:
 
-Do **not** create agency wrappers for GitHub, browser, security scanning, subagent spawning, or generic command execution: OMP already owns those capabilities. `run_police_pass` also remains orchestration in the skill, not a mechanical tool.
+1. `vcs_read` contains read-only VCS operations; sync owns fetching because
+   fetch updates remote-tracking refs.
+2. `vcs_write` makes branch `name`, commit/fix-commit `message` plus `files`,
+   and push `ref` explicit.
+3. `forge` accepts `body` only for `pr-create`, `pr-edit`, and `pr-comment`.
+4. `workflow` restricts `cli_seed` to the documented entry-point vocabulary.
+5. Non-zero adapter results become tool errors with useful predicate
+   diagnostics instead of empty messages.
 
-**Why this order matters**
+Keep the extension thin: preserve the PureScript state transitions, parsers,
+and evidence format; do not port workflow rules into TypeScript or add a
+second state machine. New tool operations should first land in the PureScript
+API, then be exposed through a matching schema and node example.
 
-The current skill explicitly initializes and advances workflow state through shell commands, and `do-results` already enforces transition invariants such as “one pending step.” A second TypeScript `WorkflowState` class would duplicate that authority. The extension is an adapter, not a replacement engine.
+**UX impact**: Medium. Fewer malformed state mutations and clearer tool errors;
+the visible `/do` workflow remains the same.
 
-**UX impact**: Medium. Fewer malformed state mutations and clearer tool errors; the visible `/do` workflow remains the same.
+**Complexity**: Medium, because the tools are thin adapters. It becomes high
+only if they absorb orchestration, forge behavior, or review policy.
 
-**Complexity**: Medium, not high, if the tools remain thin adapters. High if they absorb orchestration, forge behavior, or review policy.
-
-**Status**: **Planned, after the script boundary exposes a stable read contract.**
+**Status**: **Done** — the typed tools and PureScript API boundary are landed.
 
 **Sources**
 
-- Agency workflow calls and result persistence: `skills/do/SKILL.md:28-45`, `skills/do/SKILL.md:79-89`, `skills/do/scripts/do-results:4-18`, `skills/do/scripts/do-results:41-94`.
+- Agency workflow calls and result persistence: `skills/do/SKILL.md:22-45`, `skills/do/SKILL.md:78-89`, `.do-results.json`, and the `Agency.Scripts.Do.Api` adapter.
 - OMP tool contract: [`types.ts:547-590`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L547-L590), [`types.ts:1220-1232`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L1220-L1232).
 - Same-tool-only native delegation: [`types.ts:472-490`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L472-L490), [`wrapper.ts:52-81`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/wrapper.ts#L52-L81).
 
@@ -440,18 +449,34 @@ When a real producer exists, implement its exact `{server, method, params}` adap
 
 ## Recommended implementation order
 
-1. **Stabilize the existing workflow read boundary**: extend `do-results`/`do-driver` with one machine-readable snapshot contract; make `stop-guard` consume it. The scripts remain the authority.
-2. **Per-run context (#3)**: inject one bounded workflow-state message from that snapshot.
-3. **Typed workflow adapters (#1)**: migrate direct shell-shaped state calls one operation at a time; preserve the existing engine and evidence format.
-4. **Exact guards (#6), only if needed**: validate workflow transitions at the tool boundary; add a global hook only for a real cross-tool invariant.
-5. **Rendering (#9), only after typed events exist**: tool renderers first; custom message renderer only for events outside tools.
-6. **Optional command UX (#2)**: only after command and skill can call the same workflow service without replaying `/do` text.
-7. **Source-triggered work**: implement #5/#13 only when an MCP producer contract exists; implement #8 only after tool traces justify it; experiment with dynamic #11 only after a model policy and success metric exist.
-8. **Do not schedule**: semantic input routing (#7), a generic EventBus layer (#10), or cross-PR memory (#12).
+1. **Preserve the PureScript core authority**: `Agency.Scripts.Do.Api` and its
+  parsers/runners own workflow semantics; `src/agency-tools.ts` remains a thin
+  model-facing adapter.
+2. **Keep schemas and guidance aligned**: operation-specific tool schemas and
+  node examples must be updated together when the PureScript API changes.
+3. **Per-run context (#3)**: inject one bounded workflow-state message from the
+  existing state boundary; do not duplicate state in TypeScript.
+4. **Exact guards (#6), only if needed**: validate workflow transitions at the
+  tool boundary; add a global hook only for a real cross-tool invariant.
+5. **Rendering (#9), only after typed events exist**: tool renderers first;
+  custom message renderer only for events outside tools.
+6. **Optional command UX (#2)**: only after command and skill can call the same
+  workflow service without replaying `/do` text.
+7. **Source-triggered work**: implement #5/#13 only when an MCP producer
+  contract exists; implement #8 only after tool traces justify it; experiment
+  with dynamic #11 only after a model policy and success metric exist.
+8. **Do not schedule**: semantic input routing (#7), a generic EventBus layer
+  (#10), or cross-PR memory (#12).
 
 ## Review-driven boundary decisions
 
-- Do not add generic `WorkflowState`, `PolicyEngine`, `ContextComposer`, `WorkflowStateRenderer`, or `ExternalNotificationRouter` classes. They would shadow existing `/do` script/node responsibilities and bundle unrelated OMP mechanisms.
-- Keep the existing scripts as workflow authority; extension code is a thin source adapter.
-- Keep tool availability (#8), invocation guards (#6), request context (#3), and rendering (#9) separate. They change for different reasons.
-- Prefer pure functions and one handler per event over public “manager” objects. Introduce a module only when two real callers need the same logic.
+- Do not add generic `WorkflowState`, `PolicyEngine`, `ContextComposer`,
+  `WorkflowStateRenderer`, or `ExternalNotificationRouter` classes. They would
+  shadow existing `/do` node/core responsibilities and bundle unrelated OMP
+  mechanisms.
+- Keep the PureScript core as workflow authority; extension code is a thin
+  source adapter.
+- Keep tool availability (#8), invocation guards (#6), request context (#3),
+  and rendering (#9) separate. They change for different reasons.
+- Prefer pure functions and one handler per event over public “manager” objects.
+  Introduce a module only when two real callers need the same logic.

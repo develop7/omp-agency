@@ -1,0 +1,4 @@
+# PureScript build state (spago workspace)
+pure/.spago/
+pure/output/
+pure/spago.lock

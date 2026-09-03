@@ -5,7 +5,6 @@
 setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
   setup_test_dir
-  DO_DRIVER="$(repo_script skills/do/scripts/do-driver)"
 }
 
 teardown() {
@@ -13,7 +12,7 @@ teardown() {
 }
 
 run_driver() {
-  run bash "$DO_DRIVER" "$@"
+  run node "$REPO_ROOT/pure/dist/agency-do.js" do-driver "$@"
 }
 
 @test "init creates .do-results.json with default flags" {
