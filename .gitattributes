@@ -4,3 +4,4 @@
 pure/dist/*.js linguist-generated=true -diff -merge=ours
 
 # Keep the checked-in bundles out of the language statistics too.
+nickel-vm/dist/* linguist-generated=true -diff -merge=ours

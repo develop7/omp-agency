@@ -31,6 +31,63 @@ async function loadApi(): Promise<AgencyApi> {
   return apiPromise;
 }
 
+let nickelPromise: Promise<{ eval_workflow(req: any): any }> | undefined;
+async function loadNickel() {
+  nickelPromise ??= import("../nickel-vm/dist/nickel_vm.js") as any;
+  return nickelPromise;
+}
+
+async function executeWorkflow(
+  params: { field: string; from?: string },
+  ctx: ToolContext,
+): Promise<{
+  content: Array<{ type: "text"; text: string }>;
+  details: ApiResult;
+}> {
+  const nickel = await loadNickel();
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+
+  const pluginRoot = join(fileURLToPath(import.meta.url), "../..");
+  const workflowPath = join(pluginRoot, "skills/do/workflow.ncl");
+  const statePath = join(ctx.cwd, ".do-results.json");
+
+  let workflowSource: string;
+  try {
+    workflowSource = await readFile(workflowPath, "utf8");
+  } catch {
+    try {
+      workflowSource = await readFile(join(ctx.cwd, "skills/do/workflow.ncl"), "utf8");
+    } catch (e) {
+      throw new Error(`workflow: cannot read workflow.ncl at ${workflowPath} or in cwd: ${e}`);
+    }
+  }
+
+  let stateSource: string;
+  try {
+    stateSource = await readFile(statePath, "utf8");
+  } catch (e) {
+    throw new Error(`workflow: cannot read state file .do-results.json at ${statePath}: ${e}`);
+  }
+
+  const result = await nickel.eval_workflow({
+    workflow_source: workflowSource,
+    state_source: stateSource,
+    operation: params.field,
+    seed: params.from,
+  });
+
+  if (result.exit !== 0) {
+    throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
+  }
+
+  return {
+    content: [{ type: "text", text: result.stdout || "ok" }],
+    details: result,
+  };
+}
+
 async function executeApi(tool: string, args: string[]): Promise<{
   content: Array<{ type: "text"; text: string }>;
   details: ApiResult;
@@ -229,8 +286,11 @@ export default function (pi: ExtensionAPI) {
         from: z.enum(["default", "followup", "post-implement", "polish", "ci-only"]),
       }).strict(),
     ]),
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      return executeApi("workflow", [params.field, ...(params.field === "cli_seed" ? [params.from] : [])]);
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (params.field === "cli") {
+        return executeWorkflow({ field: params.field }, ctx);
+      }
+      return executeWorkflow({ field: params.field, from: params.from }, ctx);
     },
   });
 
