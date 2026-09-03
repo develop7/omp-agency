@@ -9,7 +9,7 @@ just test
 ## Test coverage-gap resolution
 This repo's tests run as subprocess-style black-box tests (bats) without coverage
 instrumentation. Resolve the coverage-gap check from the `/do` test node by **path
-intersection**: compare `bash .../skills/do/scripts/vcs-op diff-names`
+intersection**: compare the `vcs_read` tool with `{ args: ["diff-names"] }`
 (changed source files) against the test files' mirrored paths.
 
 Test files live under `tests/` mirroring the repo-root `skills/` structure — a test at

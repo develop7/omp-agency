@@ -5,6 +5,7 @@ module Agency.Scripts.Do.Sys
   ( ExecResult
   , InheritResult
   , exec
+  , execInput
   , execInherit
   , execInheritInput
   , readUtf8
@@ -65,6 +66,26 @@ exec :: String -> Array String -> Effect ExecResult
 exec command args = do
   result <- Child.spawnSync' command args
     { encoding: "utf8"
+    , maxBuffer: 64.0 * 1024.0 * 1024.0
+    }
+  let stdout = Child.unsafeSOBToString result.stdout
+      stderr = Child.unsafeSOBToString result.stderr
+      code = fromMaybe 1 (toMaybe result.status)
+  case toMaybe result.error of
+    Nothing -> pure { code, stdout, stderr }
+    Just error -> pure
+      { code: 1
+      , stdout
+      , stderr: if stderr == "" then SystemError.message error else stderr
+      }
+
+-- | Run a command with supplied text on stdin and captured output.
+execInput :: String -> Array String -> String -> Effect ExecResult
+execInput command args input = do
+  inputBuffer <- Buffer.fromString input UTF8
+  result <- Child.spawnSync' command args
+    { input: inputBuffer
+    , encoding: "utf8"
     , maxBuffer: 64.0 * 1024.0 * 1024.0
     }
   let stdout = Child.unsafeSOBToString result.stdout

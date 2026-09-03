@@ -5,6 +5,6 @@
   "author": "srid",
   "license": "MIT",
   "omp": {
-    "extensions": ["./src/stop-guard.ts"]
+    "extensions": ["./src/stop-guard.ts", "./src/agency-tools.ts"]
   }
 }

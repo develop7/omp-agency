@@ -27,11 +27,13 @@ Read `.agency/do.md` and look for a `## CI command` section, plus any verificati
 
 **Never pipe CI to `tail`/`head`**, and **never append `2>&1`** — async mode captures both streams.
 
-**Active state**: Before waiting for background CI, run `bash scripts/do-results set active waiting`. When CI returns, run `bash scripts/do-results set active working` before proceeding.
+**Active state**: Before waiting for background CI, call `agency_driver` with `{ op: "set", args: ["active", "waiting"] }`. When CI returns, call
+`agency_driver` with `{ op: "set", args: ["active", "working"] }` before proceeding.
 
 CI commands are typically local (e.g. `nix flake check`, `just ci`, `make ci`) and are **forge-independent — run them regardless of forge**. Only the *verification method* may be forge-specific: if `.agency/do.md` describes verification via `gh` commit-status checks and `supportsPrChecks` is false (read from state; non-github forges), fall back to exit code + command output.
 
-**Verify coverage of `HEAD`.** Before recording the step as passed, compare the commit SHA CI ran against with `bash scripts/vcs-op head-commit-sha`. If they differ, **re-run CI against the current HEAD**. CI passing on a stale commit does not satisfy verification.
+**Verify coverage of `HEAD`.** Before recording the step as passed, compare the commit SHA CI ran against with a call to
+the `vcs_read` tool using `{ args: ["head-commit-sha"] }`. If they differ, **re-run CI against the current HEAD**. CI passing on a stale commit does not satisfy verification.
 
 **On failure** — read logs or output to diagnose.
 

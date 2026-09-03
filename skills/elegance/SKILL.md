@@ -14,7 +14,7 @@ Run for **3 iterations** (or as specified by the user — can be a number or a d
 
 - Before starting, use the `ask` tool to ask: should this operate on the **whole codebase** or only on *
   *changes in the current branch/PR**?
-- If scoped to current branch/PR, get the diff: use `bash .../skills/do/scripts/vcs-op diff-range` to identify changed
+- If scoped to current branch/PR, get the diff using the `vcs_read` tool with `{ args: ["diff-range"] }` to identify changed
   files and limit all subsequent steps to those files only.
 
 ## For each iteration (1 to N):

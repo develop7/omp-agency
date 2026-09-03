@@ -12,7 +12,7 @@ omp plugin install agency@agency
 This installs:
 - **Skills** (`talk`, `do`, `hickey`, `lowy`, `code-police`, `fact-check`, `elegance`, `ralph`, `forge-pr`) — discovered from the plugin's `skills/` directory
 - **Agents** (`hickey`, `lowy`) — discovered from the plugin's `agents/` directory, available as `task` tool agent types
-- **Extension** (`stop-guard`) — a `session_stop` handler that prevents the agent from stopping mid-`/do` workflow
+- **Extensions** (`stop-guard`, `agency-tools`) — `stop-guard` is a `session_stop` handler that prevents the agent from stopping mid-`/do` workflow; `agency-tools` registers the five `/do` operation tools (`vcs_read`, `vcs_write`, `forge`, `workflow`, `agency_driver`) over the PureScript core
 
 For local development:
 

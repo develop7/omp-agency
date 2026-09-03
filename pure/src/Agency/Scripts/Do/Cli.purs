@@ -77,7 +77,7 @@ runParsed parsed runner = case parsed of
 
 runWithContext :: forall a. (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> Effect Int
 runWithContext runner operation = do
-  resolved <- Ops.resolveWorkflowContext
+  resolved <- Ops.resolveWorkflowContext false
   case resolved of
     Left error -> do
       Sys.stderrWrite (error <> "\n")

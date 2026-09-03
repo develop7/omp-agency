@@ -2,12 +2,12 @@
 #
 # Three boundaries:
 #   Sequence: this file (step order, skip rules, pattern configs)
-#   State:    .do-results.json managed by scripts/do-results (bash + jq)
+#   State:    .do-results.json managed by the agency_driver tool
 #   Activity: nodes/*.md (what each step does)
 #
-# Agent interaction (via scripts/nickel-cli wrapper):
-#   scripts/nickel-cli cli           → { step, skip, pattern, ... }
-#   scripts/nickel-cli cli_seed ""   → [{ name, initial_status }]
+# Agent interaction (via the workflow tool):
+#   workflow cli           → { step, skip, pattern, ... }
+#   workflow cli_seed ""   → [{ name, initial_status }]
 #
 # Direct invocation (stdin expression):
 #   cat <<'NICKEL' | nickel eval --stdin-format nickel --import-path .
@@ -62,7 +62,7 @@
   # ── State contract ──────────────────────────────────────────────────────────
   # Contract for workflow state, accepting both JSON strings and Nickel tags.
   # std.enum.TagOrString converts "github" → 'github at contract application.
-  # The contract is open (..) to allow extra fields from bash driver.
+  # The contract is open (..) to allow extra fields from the agency_driver.
 
   State = fun raw =>
     raw
@@ -72,12 +72,12 @@
         noVcs | Bool,
         # `base` is the resolved branch to branch from, diff against, and
         # target the PR at (enables stacked PRs via --base / --stack).
-        # Written by sync; read by vcs-op. Empty until sync runs.
+        # Written by sync; read by vcs_read. Empty until sync runs.
         base | String | default = "",
         minimal | Bool,
         review | Bool | default = false,
         has_evidence | Bool | default = false,
-        # Entry point ID (e.g. "followup", "polish") set by `do-driver init --from`.
+        # Entry point ID (e.g. "followup", "polish") set by agency_driver init --from.
         # Read by compute_next when steps is empty to start at the entry point
         # instead of always defaulting to "sync". Empty or "default" → "sync".
         from | String | default = "",
@@ -85,12 +85,12 @@
         active | String | default = "idle",
         status | std.enum.TagOrString | default = 'idle,
         # Forge capability booleans — written by sync (which calls
-        # `forge-op supports <op>` for each op nodes branch on). Nodes and
+        # the forge tool's supports operation for each op nodes branch on). Nodes and
         # skip predicates branch on these instead of on the forge string, so
-        # the forge → supported-ops map lives in one place (forge-op's
+        # the forge → supported-ops map lives in one place (the forge tool's
         # capability table). Only ops with readers are pre-computed;
         # pr-view/pr-edit are trusted to follow pr-create. When #10 lands,
-        # only forge-op's table + dispatch arms change.
+        # only the forge tool's table + dispatch arms change.
         supportsPrCreate | Bool | default = false,
         supportsPrComment | Bool | default = false,
         supportsIssueView | Bool | default = false,

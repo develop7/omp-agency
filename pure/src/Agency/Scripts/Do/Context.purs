@@ -18,6 +18,7 @@ type WorkflowContext =
   , base :: Maybe String
   , vcsOverride :: Maybe String
   , forgeOverride :: Maybe String
+  , captureOutput :: Boolean
   }
 
 -- | Resolve the state file below the run's working directory.
