@@ -2,3 +2,8 @@
 pure/.spago/
 pure/output/
 pure/spago.lock
+
+# Nix development results
+result
+result-*
+.#*
