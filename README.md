@@ -150,10 +150,14 @@ See [Kolu's `.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for 
 
 ## Development
 
+`nix develop` provides the pinned PureScript, Spago, esbuild, bats, Nickel, Node.js, and just toolchain for contributors:
+
 ```bash
+nix develop
 just test      # run bats tests (unit + integration)
 just lint      # run shellcheck on bash scripts
-just ci        # full CI: tests + lint
+just build     # compile and bundle the PureScript core
+just ci        # full CI: tests + lint + bundle freshness
 ```
 
 Testing requires [bats-core](https://github.com/bats-core/bats-core): `sudo apt-get install bats`, `brew install bats-core`, or `nix profile install nixpkgs#bats`.

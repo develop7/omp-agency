@@ -20,6 +20,10 @@ For local development:
 omp plugin link ./path/to/agency
 ```
 
+For PureScript development, the repository root also provides a pinned Nix dev shell:
+`nix develop` enters the complete toolchain, or `nix develop -c just build` builds the
+bundles in one command.
+
 ## Configure model tiers
 
 Agency's sub-agents use the `@task` model role. Set it in your OMP config:
