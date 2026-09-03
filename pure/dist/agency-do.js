@@ -1080,7 +1080,7 @@ var traverseArrayImpl = /* @__PURE__ */ (function() {
     };
   }
   return function(apply2) {
-    return function(map11) {
+    return function(map14) {
       return function(pure8) {
         return function(f) {
           return function(array) {
@@ -1089,14 +1089,14 @@ var traverseArrayImpl = /* @__PURE__ */ (function() {
                 case 0:
                   return pure8([]);
                 case 1:
-                  return map11(array1)(f(array[bot]));
+                  return map14(array1)(f(array[bot]));
                 case 2:
-                  return apply2(map11(array2)(f(array[bot])))(f(array[bot + 1]));
+                  return apply2(map14(array2)(f(array[bot])))(f(array[bot + 1]));
                 case 3:
-                  return apply2(apply2(map11(array3)(f(array[bot])))(f(array[bot + 1])))(f(array[bot + 2]));
+                  return apply2(apply2(map14(array3)(f(array[bot])))(f(array[bot + 1])))(f(array[bot + 2]));
                 default:
                   var pivot = bot + Math.floor((top3 - bot) / 4) * 2;
-                  return apply2(map11(concat22)(go(bot, pivot)))(go(pivot, top3));
+                  return apply2(map14(concat22)(go(bot, pivot)))(go(pivot, top3));
               }
             }
             return go(0, array.length);
@@ -1383,6 +1383,12 @@ var nonEmpty = function(value) {
   ;
   return new Just(value);
 };
+
+// output/Agency.Scripts.Do.Binaries/index.js
+var nickel = "nickel";
+var jj = "jj";
+var git = "git";
+var gh = "gh";
 
 // output/Agency.Scripts.Do.ForgeKind/index.js
 var Github = /* @__PURE__ */ (function() {
@@ -2053,7 +2059,7 @@ var $$void2 = /* @__PURE__ */ $$void(functorST);
 var thawST = _copyST;
 var mutate = function(f) {
   return function(m) {
-    return runST(function __do3() {
+    return runST(function __do2() {
       var s = thawST(m)();
       f(s)();
       return s;
@@ -2071,7 +2077,7 @@ var insert = function(k) {
 var fromFoldable3 = function(dictFoldable) {
   var fromFoldable1 = fromFoldable(dictFoldable);
   return function(l) {
-    return runST(function __do3() {
+    return runST(function __do2() {
       var s = newImpl();
       foreach(fromFoldable1(l))(function(v) {
         return $$void2(poke2(v.value0)(v.value1)(s));
@@ -2152,13 +2158,13 @@ var writeUtf8 = function(path) {
   };
 };
 var stdoutWrite = function(value) {
-  return function __do3() {
+  return function __do2() {
     writeString(stdout)(UTF8.value)(value)();
     return unit;
   };
 };
 var stderrWrite = function(value) {
-  return function __do3() {
+  return function __do2() {
     writeString(stderr)(UTF8.value)(value)();
     return unit;
   };
@@ -2169,7 +2175,7 @@ var readUtf8 = /* @__PURE__ */ (function() {
   return readTextFile(UTF8.value);
 })();
 var isoToEpoch = function(value) {
-  return function __do3() {
+  return function __do2() {
     var parsed = parse(value)();
     var v = toInstant(parsed);
     if (v instanceof Nothing) {
@@ -2181,11 +2187,11 @@ var isoToEpoch = function(value) {
       return new Right(floor2(v1 / 1e3));
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Sys (line 160, column 8 - line 164, column 47): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Sys (line 181, column 8 - line 185, column 47): " + [v.constructor.name]);
   };
 };
 var isDir = function(path) {
-  return function __do3() {
+  return function __do2() {
     var result = $$try(stat(path))();
     if (result instanceof Left) {
       return false;
@@ -2195,7 +2201,7 @@ var isDir = function(path) {
       return isDirectory(result.value0);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Sys (line 122, column 8 - line 124, column 43): " + [result.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Sys (line 143, column 8 - line 145, column 43): " + [result.constructor.name]);
   };
 };
 var getEnv2 = function(key) {
@@ -2205,10 +2211,52 @@ var exit2 = function(code2) {
   return exit$prime(code2);
 };
 var exists2 = exists;
+var execInput = function(command) {
+  return function(args) {
+    return function(input) {
+      return function __do2() {
+        var inputBuffer = fromString3(input)(UTF8.value)();
+        var result = spawnSync$prime2(command)(args)({
+          input: inputBuffer,
+          encoding: "utf8",
+          maxBuffer: 64 * 1024 * 1024
+        })();
+        var stdout2 = unsafeSOBToString(result.stdout);
+        var stderr2 = unsafeSOBToString(result.stderr);
+        var code2 = fromMaybe(1)(toMaybe(result.status));
+        var v = toMaybe(result.error);
+        if (v instanceof Nothing) {
+          return {
+            code: code2,
+            stdout: stdout2,
+            stderr: stderr2
+          };
+        }
+        ;
+        if (v instanceof Just) {
+          return {
+            code: 1,
+            stdout: stdout2,
+            stderr: (function() {
+              var $20 = stderr2 === "";
+              if ($20) {
+                return message2(v.value0);
+              }
+              ;
+              return stderr2;
+            })()
+          };
+        }
+        ;
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Sys (line 94, column 3 - line 100, column 8): " + [v.constructor.name]);
+      };
+    };
+  };
+};
 var execInheritInput = function(command) {
   return function(args) {
     return function(input) {
-      return function __do3() {
+      return function __do2() {
         var inputBuffer = fromString3(input)(UTF8.value)();
         var result = spawnSync$prime2(command)(args)({
           input: inputBuffer,
@@ -2224,7 +2272,7 @@ var execInheritInput = function(command) {
 };
 var execInherit = function(command) {
   return function(args) {
-    return function __do3() {
+    return function __do2() {
       var result = spawnSync$prime2(command)(args)({
         stdio: [inherit, inherit, inherit]
       })();
@@ -2237,7 +2285,7 @@ var execInherit = function(command) {
 };
 var exec5 = function(command) {
   return function(args) {
-    return function __do3() {
+    return function __do2() {
       var result = spawnSync$prime2(command)(args)({
         encoding: "utf8",
         maxBuffer: 64 * 1024 * 1024
@@ -2259,8 +2307,8 @@ var exec5 = function(command) {
           code: 1,
           stdout: stdout2,
           stderr: (function() {
-            var $19 = stderr2 === "";
-            if ($19) {
+            var $23 = stderr2 === "";
+            if ($23) {
               return message2(v.value0);
             }
             ;
@@ -2269,7 +2317,7 @@ var exec5 = function(command) {
         };
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Sys (line 73, column 3 - line 79, column 8): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Sys (line 74, column 3 - line 80, column 8): " + [v.constructor.name]);
     };
   };
 };
@@ -2278,6 +2326,7 @@ var argv2 = /* @__PURE__ */ map7(/* @__PURE__ */ drop(2))(argv);
 
 // output/Agency.Scripts.Do.Forge/index.js
 var elem3 = /* @__PURE__ */ elem2(eqString);
+var map8 = /* @__PURE__ */ map(functorEffect);
 var append3 = /* @__PURE__ */ append(semigroupArray);
 var pure4 = /* @__PURE__ */ pure(applicativeEffect);
 var Detect = /* @__PURE__ */ (function() {
@@ -2372,7 +2421,7 @@ var supports = function(forge) {
       return false;
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 79, column 28 - line 82, column 19): " + [forge.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 80, column 28 - line 83, column 19): " + [forge.constructor.name]);
   };
 };
 var forgeName = function(kind) {
@@ -2388,7 +2437,7 @@ var forgeName = function(kind) {
     return "unknown";
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 38, column 18 - line 41, column 23): " + [kind.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 39, column 18 - line 42, column 23): " + [kind.constructor.name]);
 };
 var runForgeOp = function(context) {
   return function(operation) {
@@ -2398,8 +2447,12 @@ var runForgeOp = function(context) {
           return function(subcommand) {
             return function(args) {
               if (forge instanceof Github) {
-                return function __do3() {
-                  var result = execInherit("gh")(append3([command, subcommand])(args))();
+                if (context.captureOutput) {
+                  return map8(captured)(exec5(gh)(append3([command, subcommand])(args)));
+                }
+                ;
+                return function __do2() {
+                  var result = execInherit(gh)(append3([command, subcommand])(args))();
                   if (result.error instanceof Just) {
                     return failure(1)("forge-op: gh failed to spawn: " + (result.error.value0 + "\n"));
                   }
@@ -2408,7 +2461,7 @@ var runForgeOp = function(context) {
                     return passthrough(result.code);
                   }
                   ;
-                  throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 117, column 7 - line 119, column 58): " + [result.error.constructor.name]);
+                  throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 121, column 9 - line 123, column 60): " + [result.error.constructor.name]);
                 };
               }
               ;
@@ -2424,8 +2477,8 @@ var runForgeOp = function(context) {
     ;
     if (operation instanceof Supports) {
       return pure4((function() {
-        var $13 = supports(context.forge)(operation.value0);
-        if ($13) {
+        var $15 = supports(context.forge)(operation.value0);
+        if ($15) {
           return success;
         }
         ;
@@ -2457,7 +2510,7 @@ var runForgeOp = function(context) {
       return dispatch2(context.forge)("pr-checks")("pr")("checks")(operation.value0);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 104, column 32 - line 112, column 73): " + [operation.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 105, column 32 - line 113, column 73): " + [operation.constructor.name]);
   };
 };
 var commandNames = /* @__PURE__ */ append3(["detect", "supports"])(operationNames);
@@ -2474,7 +2527,7 @@ var classifyUrl = function(url) {
     return Unknown.value;
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 52, column 1 - line 52, column 35): " + [url.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 53, column 1 - line 53, column 35): " + [url.constructor.name]);
 };
 var detectForge = function(override) {
   return function(fromState) {
@@ -2508,13 +2561,13 @@ var detectForge = function(override) {
             return Unknown.value;
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 92, column 18 - line 94, column 26): " + [remote.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 93, column 18 - line 95, column 26): " + [remote.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 90, column 16 - line 94, column 26): " + [fromState.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 91, column 16 - line 95, column 26): " + [fromState.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 88, column 3 - line 94, column 26): " + [override.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 89, column 3 - line 95, column 26): " + [override.constructor.name]);
     };
   };
 };
@@ -2526,8 +2579,8 @@ var parseForgeOp = function(args) {
   }
   ;
   if (v instanceof Just) {
-    var $31 = elem3(v.value0.value)(commandNames);
-    if ($31) {
+    var $33 = elem3(v.value0.value)(commandNames);
+    if ($33) {
       if (v.value0.value === "detect") {
         return new Right(Detect.value);
       }
@@ -2542,7 +2595,7 @@ var parseForgeOp = function(args) {
           return new Left("forge-op: supports requires an operation (e.g. forge-op supports pr-create)");
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 66, column 25 - line 68, column 106): " + [v1.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 67, column 25 - line 69, column 106): " + [v1.constructor.name]);
       }
       ;
       if (v.value0.value === "pr-view") {
@@ -2575,7 +2628,7 @@ var parseForgeOp = function(args) {
     return new Left("forge-op: unknown operation '" + (v.value0.value + ("'\nAvailable: " + availableOps)));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 60, column 3 - line 76, column 94): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Forge (line 61, column 3 - line 77, column 94): " + [v.constructor.name]);
 };
 
 // output/Agency.Scripts.Do.Context/index.js
@@ -3000,7 +3053,7 @@ var empty3 = /* @__PURE__ */ (function() {
 // output/Agency.Scripts.Do.State/index.js
 var bind2 = /* @__PURE__ */ bind(bindEither);
 var fromFoldable4 = /* @__PURE__ */ fromFoldable3(foldableArray);
-var map8 = /* @__PURE__ */ map(functorArray);
+var map9 = /* @__PURE__ */ map(functorArray);
 var map12 = /* @__PURE__ */ map(functorMaybe);
 var lookup3 = /* @__PURE__ */ lookup2(ordString);
 var bind1 = /* @__PURE__ */ bind(bindMaybe);
@@ -3259,7 +3312,7 @@ var stateGetJson = function(key) {
     }
     ;
     if (key === "steps") {
-      return new Just(id(map8(stepJson)(state2.steps)));
+      return new Just(id(map9(stepJson)(state2.steps)));
     }
     ;
     if (key === "pendingStep") {
@@ -3284,7 +3337,7 @@ var stateGet = function(key) {
   };
 };
 var stringifyState = function(state2) {
-  var known = [new Tuple("workflow", id(state2.workflow)), new Tuple("startedAt", id(state2.startedAt)), new Tuple("active", id(renderActiveStatus(state2.active))), new Tuple("status", id(renderWorkflowStatus(state2.status))), new Tuple("steps", id(map8(stepJson)(state2.steps)))];
+  var known = [new Tuple("workflow", id(state2.workflow)), new Tuple("startedAt", id(state2.startedAt)), new Tuple("active", id(renderActiveStatus(state2.active))), new Tuple("status", id(renderWorkflowStatus(state2.status))), new Tuple("steps", id(map9(stepJson)(state2.steps)))];
   var withPending = (function() {
     if (state2.pendingStep instanceof Nothing) {
       return known;
@@ -3301,7 +3354,7 @@ var stringifyState = function(state2) {
 };
 var writeState = function(path) {
   return function(state2) {
-    return function __do3() {
+    return function __do2() {
       writeUtf8(path + ".tmp")(stringifyState(state2))();
       return rename2(path + ".tmp")(path)();
     };
@@ -3653,7 +3706,7 @@ var parseState = function(source) {
   });
 };
 var readState = function(path) {
-  return function __do3() {
+  return function __do2() {
     var readResult = $$try(readUtf8(path))();
     if (readResult instanceof Left) {
       var $105 = code(readResult.value0) === "ENOENT";
@@ -3774,13 +3827,13 @@ var Unknown2 = /* @__PURE__ */ (function() {
 })();
 
 // output/Agency.Scripts.Do.Vcs/index.js
+var map10 = /* @__PURE__ */ map(functorEffect);
 var pure6 = /* @__PURE__ */ pure(applicativeEffect);
 var filterA2 = /* @__PURE__ */ filterA(applicativeEffect);
-var map9 = /* @__PURE__ */ map(functorMaybe);
+var map13 = /* @__PURE__ */ map(functorMaybe);
 var append12 = /* @__PURE__ */ append(semigroupArray);
 var eq22 = /* @__PURE__ */ eq(/* @__PURE__ */ eqMaybe(eqString));
-var map13 = /* @__PURE__ */ map(functorArray);
-var map23 = /* @__PURE__ */ map(functorEffect);
+var map23 = /* @__PURE__ */ map(functorArray);
 var traverse4 = /* @__PURE__ */ traverse(traversableArray);
 var traverse12 = /* @__PURE__ */ traverse4(applicativeEffect);
 var traverse22 = /* @__PURE__ */ traverse4(applicativeEither);
@@ -4004,7 +4057,7 @@ var vcsName = function(kind) {
     return "unknown";
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 106, column 16 - line 109, column 23): " + [kind.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 107, column 16 - line 110, column 23): " + [kind.constructor.name]);
 };
 var valueResult = function(result) {
   return function(value) {
@@ -4047,19 +4100,25 @@ var renderValue = function(result) {
     })
   };
 };
-var passthroughCommand = function(command) {
-  return function(args) {
-    return function __do3() {
-      var result = execInherit(command)(args)();
-      if (result.error instanceof Just) {
-        return failure(1)("vcs-op: " + (command + (" failed to spawn: " + (result.error.value0 + "\n"))));
+var passthroughCommand = function(context) {
+  return function(command) {
+    return function(args) {
+      if (context.captureOutput) {
+        return map10(captured)(exec5(command)(args));
       }
       ;
-      if (result.error instanceof Nothing) {
-        return passthrough(result.code);
-      }
-      ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 614, column 3 - line 616, column 54): " + [result.error.constructor.name]);
+      return function __do2() {
+        var result = execInherit(command)(args)();
+        if (result.error instanceof Just) {
+          return failure(1)("vcs-op: " + (command + (" failed to spawn: " + (result.error.value0 + "\n"))));
+        }
+        ;
+        if (result.error instanceof Nothing) {
+          return passthrough(result.code);
+        }
+        ;
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 618, column 5 - line 620, column 56): " + [result.error.constructor.name]);
+      };
     };
   };
 };
@@ -4074,16 +4133,16 @@ var joinWithSpace = function(values) {
 var joinLines = /* @__PURE__ */ joinWith("\n");
 var validateDirty = function(vcs) {
   return function(files) {
-    return function __do3() {
+    return function __do2() {
       var bad = filterA2(function(file) {
-        return function __do4() {
+        return function __do3() {
           var result = (function() {
             if (vcs instanceof Git) {
-              return exec5("git")(["status", "--porcelain", "--", file])();
+              return exec5(git)(["status", "--porcelain", "--", file])();
             }
             ;
             if (vcs instanceof Jj) {
-              return exec5("jj")(["diff", "--name-only", "--", file])();
+              return exec5(jj)(["diff", "--name-only", "--", file])();
             }
             ;
             if (vcs instanceof Unknown2) {
@@ -4094,13 +4153,13 @@ var validateDirty = function(vcs) {
               };
             }
             ;
-            throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 453, column 15 - line 456, column 58): " + [vcs.constructor.name]);
+            throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 454, column 15 - line 457, column 58): " + [vcs.constructor.name]);
           })();
           return result.code !== 0 || trim(result.stdout) === "";
         };
       })(files)();
-      var $47 = $$null(bad);
-      if ($47) {
+      var $48 = $$null(bad);
+      if ($48) {
         return new Right(unit);
       }
       ;
@@ -4127,24 +4186,24 @@ var jjRemote = function(output) {
       return fromMaybe("")(head(v2.value0.tail));
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 636, column 15 - line 638, column 70): " + [v2.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 639, column 15 - line 641, column 70): " + [v2.constructor.name]);
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 633, column 19 - line 638, column 70): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 636, column 19 - line 641, column 70): " + [v.constructor.name]);
 };
 var remoteUrlResult = function(context) {
   if (context.vcs instanceof Git) {
-    return function __do3() {
-      var result = exec5("git")(["remote", "get-url", "origin"])();
+    return function __do2() {
+      var result = exec5(git)(["remote", "get-url", "origin"])();
       return valueResult(result)(trim(result.stdout));
     };
   }
   ;
   if (context.vcs instanceof Jj) {
-    return function __do3() {
-      var result = exec5("jj")(["git", "remote", "list"])();
-      var $55 = result.code !== 0;
-      if ($55) {
+    return function __do2() {
+      var result = exec5(jj)(["git", "remote", "list"])();
+      var $56 = result.code !== 0;
+      if ($56) {
         return valueResult(result)("");
       }
       ;
@@ -4161,19 +4220,19 @@ var remoteUrlResult = function(context) {
     });
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 259, column 27 - line 267, column 90): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 260, column 27 - line 268, column 90): " + [context.vcs.constructor.name]);
 };
 var remoteUrlValue = function(context) {
-  return function __do3() {
+  return function __do2() {
     var result = remoteUrlResult(context)();
-    var $56 = result.code === 0;
-    if ($56) {
+    var $57 = result.code === 0;
+    if ($57) {
       return new Right(result.value);
     }
     ;
     return new Left((function() {
-      var $57 = result.stderr === "";
-      if ($57) {
+      var $58 = result.stderr === "";
+      if ($58) {
         return "vcs-op: unable to read remote URL";
       }
       ;
@@ -4182,31 +4241,31 @@ var remoteUrlValue = function(context) {
   };
 };
 var firstLine = function(output) {
-  return fromMaybe("")(map9(trim)(head(split("\n")(output))));
+  return fromMaybe("")(map13(trim)(head(split("\n")(output))));
 };
 var headRevisionValue = function(context) {
   if (context.vcs instanceof Git) {
-    return function __do3() {
-      var result = exec5("git")(["rev-parse", "--abbrev-ref", "HEAD"])();
+    return function __do2() {
+      var result = exec5(git)(["rev-parse", "--abbrev-ref", "HEAD"])();
       return valueResult(result)(trim(result.stdout));
     };
   }
   ;
   if (context.vcs instanceof Jj) {
-    return function __do3() {
-      var bookmark = exec5("jj")(["bookmark", "list", "--revision", "@", "--template", 'name ++ "\\n"'])();
+    return function __do2() {
+      var bookmark = exec5(jj)(["bookmark", "list", "--revision", "@", "--template", 'name ++ "\\n"'])();
       var name2 = firstLine(bookmark.stdout);
-      var $59 = bookmark.code !== 0;
-      if ($59) {
+      var $60 = bookmark.code !== 0;
+      if ($60) {
         return valueResult(bookmark)("");
       }
       ;
-      var $60 = name2 !== "";
-      if ($60) {
+      var $61 = name2 !== "";
+      if ($61) {
         return valueResult(bookmark)(name2);
       }
       ;
-      var fallback = exec5("jj")(["log", "--revision", "@", "--no-graph", "--template", "change_id"])();
+      var fallback = exec5(jj)(["log", "--revision", "@", "--no-graph", "--template", "change_id"])();
       return valueResult(fallback)(firstLine(fallback.stdout));
     };
   }
@@ -4220,7 +4279,7 @@ var headRevisionValue = function(context) {
     });
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 271, column 29 - line 283, column 90): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 272, column 29 - line 284, column 90): " + [context.vcs.constructor.name]);
 };
 var failureLines = function(values) {
   return failure(1)(joinLines(values) + "\n");
@@ -4234,20 +4293,20 @@ var resolveBase = function(context) {
     return pure6(failureLines(["vcs-op: base is not set. sync must run first to resolve the base", "        (from --base <branch>, --stack, or the default branch).", "        If this was a --from re-run, the parent run did not persist base.", "        (Same error fires if jq is unavailable or .do-results.json is corrupt \u2014 check 'command -v jq'.)"]));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 242, column 23 - line 249, column 7): " + [context.base.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 243, column 23 - line 250, column 7): " + [context.base.constructor.name]);
 };
 var failureLine = function(value) {
   return failure(1)(value + "\n");
 };
 var inspectDirty = function(context) {
   if (context.vcs instanceof Git) {
-    return function __do3() {
-      var result = exec5("git")(["status", "--porcelain"])();
-      var $64 = result.code !== 0;
-      if ($64) {
+    return function __do2() {
+      var result = exec5(git)(["status", "--porcelain"])();
+      var $65 = result.code !== 0;
+      if ($65) {
         return new InspectionFailed((function() {
-          var $65 = result.stderr === "";
-          if ($65) {
+          var $66 = result.stderr === "";
+          if ($66) {
             return failureLine("vcs-op: unable to inspect git working copy");
           }
           ;
@@ -4255,8 +4314,8 @@ var inspectDirty = function(context) {
         })());
       }
       ;
-      var $66 = trim(result.stdout) !== "";
-      if ($66) {
+      var $67 = trim(result.stdout) !== "";
+      if ($67) {
         return DirtyDetected.value;
       }
       ;
@@ -4265,15 +4324,15 @@ var inspectDirty = function(context) {
   }
   ;
   if (context.vcs instanceof Jj) {
-    return function __do3() {
-      var result = exec5("jj")(["diff", "--revisions", "@", "--summary"])();
-      var $67 = result.code !== 0;
-      if ($67) {
+    return function __do2() {
+      var result = exec5(jj)(["diff", "--revisions", "@", "--summary"])();
+      var $68 = result.code !== 0;
+      if ($68) {
         return new InspectionFailed(failureLine("vcs-op: unable to inspect jj working copy"));
       }
       ;
-      var $68 = trim(result.stdout) !== "";
-      if ($68) {
+      var $69 = trim(result.stdout) !== "";
+      if ($69) {
         return DirtyDetected.value;
       }
       ;
@@ -4285,20 +4344,20 @@ var inspectDirty = function(context) {
     return pure6(Clean.value);
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 319, column 24 - line 330, column 24): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 320, column 24 - line 331, column 24): " + [context.vcs.constructor.name]);
 };
 var jjRangeFrom = function(base) {
   var revset = "heads(ancestors(@) & ancestors(" + (base + "))");
-  return function __do3() {
-    var result = exec5("jj")(["log", "--revision", revset, "--no-graph", "--template", "change_id"])();
-    var $69 = result.code !== 0;
-    if ($69) {
+  return function __do2() {
+    var result = exec5(jj)(["log", "--revision", revset, "--no-graph", "--template", "change_id"])();
+    var $70 = result.code !== 0;
+    if ($70) {
       return new Left(failureLine("vcs-op: unable to resolve merge-base for base '" + (base + "'")));
     }
     ;
     return new Right((function() {
-      var $70 = trim(result.stdout) === "";
-      if ($70) {
+      var $71 = trim(result.stdout) === "";
+      if ($71) {
         return base;
       }
       ;
@@ -4309,18 +4368,18 @@ var jjRangeFrom = function(base) {
 var noVcsOutcome = /* @__PURE__ */ failureLine("vcs-op: no VCS detected");
 var logHead = function(context) {
   if (context.vcs instanceof Git) {
-    return passthroughCommand("git")(["log", "--max-count=1", "--oneline"]);
+    return passthroughCommand(context)(git)(["log", "--max-count=1", "--oneline"]);
   }
   ;
   if (context.vcs instanceof Jj) {
-    return passthroughCommand("jj")(["log", "--revision", "@-", "--no-graph", "--limit", "1", "--template", 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ "\\n"']);
+    return passthroughCommand(context)(jj)(["log", "--revision", "@-", "--no-graph", "--limit", "1", "--template", 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ "\\n"']);
   }
   ;
   if (context.vcs instanceof Unknown2) {
     return pure6(noVcsOutcome);
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 411, column 19 - line 414, column 31): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 412, column 19 - line 415, column 31): " + [context.vcs.constructor.name]);
 };
 var logRange = function(context) {
   return function(paths) {
@@ -4330,26 +4389,26 @@ var logRange = function(context) {
     ;
     if (context.base instanceof Just) {
       if (context.vcs instanceof Git) {
-        return passthroughCommand("git")(append12(["log", "origin/" + (context.base.value0 + "..HEAD"), "--oneline", "--"])(paths));
+        return passthroughCommand(context)(git)(append12(["log", "origin/" + (context.base.value0 + "..HEAD"), "--oneline", "--"])(paths));
       }
       ;
       if (context.vcs instanceof Jj) {
-        return function __do3() {
-          var probe = exec5("jj")(["diff", "--revisions", "@", "--summary"])();
-          var $74 = probe.code !== 0;
-          if ($74) {
+        return function __do2() {
+          var probe = exec5(jj)(["diff", "--revisions", "@", "--summary"])();
+          var $75 = probe.code !== 0;
+          if ($75) {
             return failureLine("vcs-op: unable to inspect jj working copy for log-range");
           }
           ;
           var target = (function() {
-            var $75 = trim(probe.stdout) !== "";
-            if ($75) {
+            var $76 = trim(probe.stdout) !== "";
+            if ($76) {
               return "@";
             }
             ;
             return "@-";
           })();
-          return passthroughCommand("jj")(["log", "--revision", context.base.value0 + (".." + target), "--no-graph", "--template", 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ "\\n"'])();
+          return passthroughCommand(context)(jj)(["log", "--revision", context.base.value0 + (".." + target), "--no-graph", "--template", 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ "\\n"'])();
         };
       }
       ;
@@ -4357,10 +4416,10 @@ var logRange = function(context) {
         return pure6(noVcsOutcome);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 400, column 17 - line 408, column 33): " + [context.vcs.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 401, column 17 - line 409, column 33): " + [context.vcs.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 398, column 26 - line 408, column 33): " + [context.base.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 399, column 26 - line 409, column 33): " + [context.base.constructor.name]);
   };
 };
 var newFiles = function(context) {
@@ -4369,8 +4428,8 @@ var newFiles = function(context) {
       var tokens = filter(function(v) {
         return v !== "";
       })(split(" ")(trim(line)));
-      var $77 = eq22(head(tokens))(new Just("A"));
-      if ($77) {
+      var $78 = eq22(head(tokens))(new Just("A"));
+      if ($78) {
         return index(tokens)(1);
       }
       ;
@@ -4382,27 +4441,27 @@ var newFiles = function(context) {
     ;
     if (context.base instanceof Just) {
       if (context.vcs instanceof Git) {
-        return passthroughCommand("git")(append12(["diff", "--diff-filter=A", "--name-only", "origin/" + (context.base.value0 + "...HEAD"), "--"])(paths));
+        return passthroughCommand(context)(git)(append12(["diff", "--diff-filter=A", "--name-only", "origin/" + (context.base.value0 + "...HEAD"), "--"])(paths));
       }
       ;
       if (context.vcs instanceof Jj) {
-        return function __do3() {
+        return function __do2() {
           var source = jjRangeFrom(context.base.value0)();
           if (source instanceof Left) {
             return source.value0;
           }
           ;
           if (source instanceof Right) {
-            var result = exec5("jj")(append12(["diff", "--from", source.value0, "--to", "@", "--summary", "--"])(paths))();
-            var $82 = result.code !== 0;
-            if ($82) {
+            var result = exec5(jj)(append12(["diff", "--from", source.value0, "--to", "@", "--summary", "--"])(paths))();
+            var $83 = result.code !== 0;
+            if ($83) {
               return captured(result);
             }
             ;
             var added = mapMaybe(addedName)(split("\n")(result.stdout));
             return withStdout((function() {
-              var $83 = $$null(added);
-              if ($83) {
+              var $84 = $$null(added);
+              if ($84) {
                 return "";
               }
               ;
@@ -4410,7 +4469,7 @@ var newFiles = function(context) {
             })());
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 383, column 7 - line 390, column 104): " + [source.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 384, column 7 - line 391, column 104): " + [source.constructor.name]);
         };
       }
       ;
@@ -4418,47 +4477,47 @@ var newFiles = function(context) {
         return pure6(noVcsOutcome);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 379, column 17 - line 391, column 33): " + [context.vcs.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 380, column 17 - line 392, column 33): " + [context.vcs.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 377, column 26 - line 391, column 33): " + [context.base.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 378, column 26 - line 392, column 33): " + [context.base.constructor.name]);
   };
 };
 var push2 = function(context) {
   return function(ref) {
     if (context.vcs instanceof Git) {
       if (ref instanceof Just) {
-        return passthroughCommand("git")(["push", "--set-upstream", "origin", ref.value0]);
+        return passthroughCommand(context)(git)(["push", "--set-upstream", "origin", ref.value0]);
       }
       ;
       if (ref instanceof Nothing) {
-        return passthroughCommand("git")(["push"]);
+        return passthroughCommand(context)(git)(["push"]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 568, column 10 - line 570, column 51): " + [ref.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 569, column 10 - line 571, column 66): " + [ref.constructor.name]);
     }
     ;
     if (context.vcs instanceof Jj) {
       if (ref instanceof Just) {
-        return passthroughCommand("jj")(["git", "push", "--bookmark", ref.value0]);
+        return passthroughCommand(context)(jj)(["git", "push", "--bookmark", ref.value0]);
       }
       ;
       if (ref instanceof Nothing) {
-        return passthroughCommand("jj")(["git", "push"]);
+        return passthroughCommand(context)(jj)(["git", "push"]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 571, column 9 - line 573, column 57): " + [ref.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 572, column 9 - line 574, column 72): " + [ref.constructor.name]);
     }
     ;
     if (context.vcs instanceof Unknown2) {
       return pure6(noVcsOutcome);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 567, column 20 - line 574, column 31): " + [context.vcs.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 568, column 20 - line 575, column 31): " + [context.vcs.constructor.name]);
   };
 };
 var dirty = function(context) {
-  return function __do3() {
+  return function __do2() {
     var state2 = inspectDirty(context)();
     if (state2 instanceof Clean) {
       return failure(1)("");
@@ -4472,7 +4531,7 @@ var dirty = function(context) {
       return state2.value0;
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 335, column 8 - line 338, column 40): " + [state2.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 336, column 8 - line 339, column 40): " + [state2.constructor.name]);
   };
 };
 var diffStat = function(context) {
@@ -4483,21 +4542,21 @@ var diffStat = function(context) {
     ;
     if (context.base instanceof Just) {
       if (context.vcs instanceof Git) {
-        return passthroughCommand("git")(append12(["diff", "origin/" + (context.base.value0 + "...HEAD"), "--shortstat", "--"])(paths));
+        return passthroughCommand(context)(git)(append12(["diff", "origin/" + (context.base.value0 + "...HEAD"), "--shortstat", "--"])(paths));
       }
       ;
       if (context.vcs instanceof Jj) {
-        return function __do3() {
+        return function __do2() {
           var source = jjRangeFrom(context.base.value0)();
           if (source instanceof Left) {
             return source.value0;
           }
           ;
           if (source instanceof Right) {
-            return passthroughCommand("jj")(append12(["diff", "--from", source.value0, "--to", "@", "--summary", "--"])(paths))();
+            return passthroughCommand(context)(jj)(append12(["diff", "--from", source.value0, "--to", "@", "--summary", "--"])(paths))();
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 371, column 7 - line 373, column 116): " + [source.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 372, column 7 - line 374, column 131): " + [source.constructor.name]);
         };
       }
       ;
@@ -4505,10 +4564,10 @@ var diffStat = function(context) {
         return pure6(noVcsOutcome);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 367, column 17 - line 374, column 33): " + [context.vcs.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 368, column 17 - line 375, column 33): " + [context.vcs.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 365, column 26 - line 374, column 33): " + [context.base.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 366, column 26 - line 375, column 33): " + [context.base.constructor.name]);
   };
 };
 var diffRange = function(context) {
@@ -4519,21 +4578,21 @@ var diffRange = function(context) {
     ;
     if (context.base instanceof Just) {
       if (context.vcs instanceof Git) {
-        return passthroughCommand("git")(append12(["diff", "origin/" + (context.base.value0 + "...HEAD"), "--"])(paths));
+        return passthroughCommand(context)(git)(append12(["diff", "origin/" + (context.base.value0 + "...HEAD"), "--"])(paths));
       }
       ;
       if (context.vcs instanceof Jj) {
-        return function __do3() {
+        return function __do2() {
           var source = jjRangeFrom(context.base.value0)();
           if (source instanceof Left) {
             return source.value0;
           }
           ;
           if (source instanceof Right) {
-            return passthroughCommand("jj")(append12(["diff", "--from", source.value0, "--to", "@", "--"])(paths))();
+            return passthroughCommand(context)(jj)(append12(["diff", "--from", source.value0, "--to", "@", "--"])(paths))();
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 347, column 7 - line 349, column 103): " + [source.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 348, column 7 - line 350, column 118): " + [source.constructor.name]);
         };
       }
       ;
@@ -4541,10 +4600,10 @@ var diffRange = function(context) {
         return pure6(noVcsOutcome);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 343, column 17 - line 350, column 33): " + [context.vcs.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 344, column 17 - line 351, column 33): " + [context.vcs.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 341, column 27 - line 350, column 33): " + [context.base.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 342, column 27 - line 351, column 33): " + [context.base.constructor.name]);
   };
 };
 var diffNames = function(context) {
@@ -4555,21 +4614,21 @@ var diffNames = function(context) {
     ;
     if (context.base instanceof Just) {
       if (context.vcs instanceof Git) {
-        return passthroughCommand("git")(append12(["diff", "origin/" + (context.base.value0 + "...HEAD"), "--name-only", "--"])(paths));
+        return passthroughCommand(context)(git)(append12(["diff", "origin/" + (context.base.value0 + "...HEAD"), "--name-only", "--"])(paths));
       }
       ;
       if (context.vcs instanceof Jj) {
-        return function __do3() {
+        return function __do2() {
           var source = jjRangeFrom(context.base.value0)();
           if (source instanceof Left) {
             return source.value0;
           }
           ;
           if (source instanceof Right) {
-            return passthroughCommand("jj")(append12(["diff", "--from", source.value0, "--to", "@", "--name-only", "--"])(paths))();
+            return passthroughCommand(context)(jj)(append12(["diff", "--from", source.value0, "--to", "@", "--name-only", "--"])(paths))();
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 359, column 7 - line 361, column 118): " + [source.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 360, column 7 - line 362, column 133): " + [source.constructor.name]);
         };
       }
       ;
@@ -4577,10 +4636,10 @@ var diffNames = function(context) {
         return pure6(noVcsOutcome);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 355, column 17 - line 362, column 33): " + [context.vcs.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 356, column 17 - line 363, column 33): " + [context.vcs.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 353, column 27 - line 362, column 33): " + [context.base.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 354, column 27 - line 363, column 33): " + [context.base.constructor.name]);
   };
 };
 var detectVcs = function(override) {
@@ -4619,20 +4678,20 @@ var detectVcs = function(override) {
             return Unknown2.value;
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 117, column 16 - line 119, column 79): " + [fromState.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 118, column 16 - line 120, column 79): " + [fromState.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 115, column 3 - line 119, column 79): " + [override.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 116, column 3 - line 120, column 79): " + [override.constructor.name]);
       };
     };
   };
 };
 var defaultBranchValue = function(context) {
   if (context.vcs instanceof Git) {
-    return function __do3() {
-      var result = exec5("git")(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])();
-      var $119 = result.code === 0 && firstLine(result.stdout) !== "";
-      if ($119) {
+    return function __do2() {
+      var result = exec5(git)(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])();
+      var $120 = result.code === 0 && firstLine(result.stdout) !== "";
+      if ($120) {
         return stripOrigin(firstLine(result.stdout));
       }
       ;
@@ -4641,16 +4700,16 @@ var defaultBranchValue = function(context) {
   }
   ;
   if (context.vcs instanceof Jj) {
-    return function __do3() {
-      var result = exec5("jj")(["bookmark", "list", "--remote", "origin", "--template", 'name ++ "\\n"'])();
-      var $120 = result.code !== 0;
-      if ($120) {
+    return function __do2() {
+      var result = exec5(jj)(["bookmark", "list", "--remote", "origin", "--template", 'name ++ "\\n"'])();
+      var $121 = result.code !== 0;
+      if ($121) {
         return "master";
       }
       ;
       return fromMaybe("master")(find2(function(line) {
         return startsWith("main")(line) || startsWith("master")(line);
-      })(map13(trim)(split("\n")(result.stdout))));
+      })(map23(trim)(split("\n")(result.stdout))));
     };
   }
   ;
@@ -4658,31 +4717,31 @@ var defaultBranchValue = function(context) {
     return pure6("master");
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 288, column 30 - line 296, column 27): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 289, column 30 - line 297, column 27): " + [context.vcs.constructor.name]);
 };
 var currentBranchValue = function(context) {
   if (context.vcs instanceof Git) {
-    return function __do3() {
-      var result = exec5("git")(["rev-parse", "--abbrev-ref", "HEAD"])();
+    return function __do2() {
+      var result = exec5(git)(["rev-parse", "--abbrev-ref", "HEAD"])();
       return valueResult(result)(trim(result.stdout));
     };
   }
   ;
   if (context.vcs instanceof Jj) {
-    return function __do3() {
-      var at = exec5("jj")(["bookmark", "list", "--revision", "@", "--template", 'name ++ "\\n"'])();
+    return function __do2() {
+      var at = exec5(jj)(["bookmark", "list", "--revision", "@", "--template", 'name ++ "\\n"'])();
       var atName = firstLine(at.stdout);
-      var $122 = at.code !== 0;
-      if ($122) {
+      var $123 = at.code !== 0;
+      if ($123) {
         return valueResult(at)("");
       }
       ;
-      var $123 = atName !== "";
-      if ($123) {
+      var $124 = atName !== "";
+      if ($124) {
         return valueResult(at)(atName);
       }
       ;
-      var parent = exec5("jj")(["bookmark", "list", "--revision", "@-", "--template", 'name ++ "\\n"'])();
+      var parent = exec5(jj)(["bookmark", "list", "--revision", "@-", "--template", 'name ++ "\\n"'])();
       return valueResult(parent)(firstLine(parent.stdout));
     };
   }
@@ -4696,12 +4755,12 @@ var currentBranchValue = function(context) {
     });
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 300, column 30 - line 314, column 65): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 301, column 30 - line 315, column 65): " + [context.vcs.constructor.name]);
 };
 var capturedCommand = function(command) {
   return function(args) {
     return function(v) {
-      return map23(captured)(exec5(command)(args));
+      return map10(captured)(exec5(command)(args));
     };
   };
 };
@@ -4715,12 +4774,12 @@ var fastForwardIfSafe = function(context) {
   }
   ;
   if (context.vcs instanceof Git) {
-    return function __do3() {
-      var upstream = exec5("git")(["rev-parse", "--abbrev-ref", "@{u}"])();
-      var $125 = upstream.code !== 0;
-      if ($125) {
-        var $126 = noUpstream(upstream);
-        if ($126) {
+    return function __do2() {
+      var upstream = exec5(git)(["rev-parse", "--abbrev-ref", "@{u}"])();
+      var $126 = upstream.code !== 0;
+      if ($126) {
+        var $127 = noUpstream(upstream);
+        if ($127) {
           return success;
         }
         ;
@@ -4728,44 +4787,44 @@ var fastForwardIfSafe = function(context) {
       }
       ;
       var upstreamName = trim(upstream.stdout);
-      var $127 = upstreamName === "";
-      if ($127) {
+      var $128 = upstreamName === "";
+      if ($128) {
         return success;
       }
       ;
-      var behind = exec5("git")(["rev-list", "--count", "HEAD.." + upstreamName])();
-      var ahead = exec5("git")(["rev-list", "--count", upstreamName + "..HEAD"])();
+      var behind = exec5(git)(["rev-list", "--count", "HEAD.." + upstreamName])();
+      var ahead = exec5(git)(["rev-list", "--count", upstreamName + "..HEAD"])();
       var behindCount = fromMaybe(0)(fromString(trim(behind.stdout)));
       var aheadCount = fromMaybe(0)(fromString(trim(ahead.stdout)));
-      var $128 = behind.code === 0 && (ahead.code === 0 && (behindCount > 0 && aheadCount === 0));
-      if ($128) {
-        return capturedCommand("git")(["pull", "--ff-only"])(context)();
+      var $129 = behind.code === 0 && (ahead.code === 0 && (behindCount > 0 && aheadCount === 0));
+      if ($129) {
+        return capturedCommand(git)(["pull", "--ff-only"])(context)();
       }
       ;
       return success;
     };
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 213, column 29 - line 230, column 34): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 214, column 29 - line 231, column 34): " + [context.vcs.constructor.name]);
 };
 var fetchValue = function(context) {
   if (context.vcs instanceof Git) {
-    return capturedCommand("git")(["fetch", "origin"])(context);
+    return capturedCommand(git)(["fetch", "origin"])(context);
   }
   ;
   if (context.vcs instanceof Jj) {
-    return capturedCommand("jj")(["git", "fetch"])(context);
+    return capturedCommand(jj)(["git", "fetch"])(context);
   }
   ;
   if (context.vcs instanceof Unknown2) {
     return pure6(noVcsOutcome);
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 200, column 22 - line 203, column 33): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 201, column 22 - line 204, column 33): " + [context.vcs.constructor.name]);
 };
 var refreshDefaultBranchValue = function(context) {
   if (context.vcs instanceof Git) {
-    return capturedCommand("git")(["remote", "set-head", "origin", "--auto"])(context);
+    return capturedCommand(git)(["remote", "set-head", "origin", "--auto"])(context);
   }
   ;
   if (context.vcs instanceof Jj) {
@@ -4776,7 +4835,7 @@ var refreshDefaultBranchValue = function(context) {
     return pure6(success);
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 207, column 37 - line 210, column 34): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 208, column 37 - line 211, column 34): " + [context.vcs.constructor.name]);
 };
 var branch = function(context) {
   return function(name2) {
@@ -4786,23 +4845,23 @@ var branch = function(context) {
     ;
     if (context.base instanceof Just) {
       if (context.vcs instanceof Git) {
-        return function __do3() {
-          var verify = exec5("git")(["rev-parse", "--verify", "refs/remotes/origin/" + context.base.value0])();
-          var $133 = verify.code !== 0;
-          if ($133) {
+        return function __do2() {
+          var verify = exec5(git)(["rev-parse", "--verify", "refs/remotes/origin/" + context.base.value0])();
+          var $134 = verify.code !== 0;
+          if ($134) {
             return failureLine("vcs-op branch: origin/" + (context.base.value0 + " not found. Push the parent branch before stacking."));
           }
           ;
-          return passthroughCommand("git")(["branch", name2, "origin/" + context.base.value0])();
+          return passthroughCommand(context)(git)(["branch", name2, "origin/" + context.base.value0])();
         };
       }
       ;
       if (context.vcs instanceof Jj) {
-        return function __do3() {
-          var first = passthroughCommand("jj")(["new", context.base.value0])();
-          var $134 = first.exit === 0;
-          if ($134) {
-            return passthroughCommand("jj")(["bookmark", "create", name2, "--revision", "@"])();
+        return function __do2() {
+          var first = passthroughCommand(context)(jj)(["new", context.base.value0])();
+          var $135 = first.exit === 0;
+          if ($135) {
+            return passthroughCommand(context)(jj)(["bookmark", "create", name2, "--revision", "@"])();
           }
           ;
           return first;
@@ -4813,20 +4872,20 @@ var branch = function(context) {
         return pure6(noVcsOutcome);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 426, column 17 - line 434, column 33): " + [context.vcs.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 427, column 17 - line 435, column 33): " + [context.vcs.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 424, column 23 - line 434, column 33): " + [context.base.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 425, column 23 - line 435, column 33): " + [context.base.constructor.name]);
   };
 };
 var bookmarkAt = function(revision) {
-  return function __do3() {
-    var result = exec5("jj")(["bookmark", "list", "--revision", revision, "--template", 'name ++ "\\n"'])();
-    var $136 = result.code !== 0;
-    if ($136) {
+  return function __do2() {
+    var result = exec5(jj)(["bookmark", "list", "--revision", revision, "--template", 'name ++ "\\n"'])();
+    var $137 = result.code !== 0;
+    if ($137) {
       return new Left((function() {
-        var $137 = result.stderr === "";
-        if ($137) {
+        var $138 = result.stderr === "";
+        if ($138) {
           return failureLine("vcs-op: unable to inspect bookmark at '" + (revision + "'"));
         }
         ;
@@ -4839,8 +4898,8 @@ var bookmarkAt = function(revision) {
 };
 var bestEffortBookmarkMove = function(name2) {
   return function(target) {
-    return function __do3() {
-      var result = execInherit("jj")(["bookmark", "move", name2, "--to", target])();
+    return function __do2() {
+      var result = execInherit(jj)(["bookmark", "move", name2, "--to", target])();
       (function() {
         if (result.error instanceof Just) {
           return stderrWrite("vcs-op: jj failed to spawn: " + (result.error.value0 + "\n"))();
@@ -4850,10 +4909,10 @@ var bestEffortBookmarkMove = function(name2) {
           return unit;
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 560, column 3 - line 562, column 25): " + [result.error.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 561, column 3 - line 563, column 25): " + [result.error.constructor.name]);
       })();
-      var $140 = result.code === 0;
-      if ($140) {
+      var $141 = result.code === 0;
+      if ($141) {
         return unit;
       }
       ;
@@ -4864,12 +4923,12 @@ var bestEffortBookmarkMove = function(name2) {
 var moveBookmarkToDescribedChange = /* @__PURE__ */ (function() {
   var walk = function(remaining) {
     return function(rev) {
-      var $141 = remaining <= 0;
-      if ($141) {
+      var $142 = remaining <= 0;
+      if ($142) {
         return pure6(new Right(unit));
       }
       ;
-      return function __do3() {
+      return function __do2() {
         var bookmark = bookmarkAt(rev + "-")();
         if (bookmark instanceof Left) {
           return new Left(bookmark.value0);
@@ -4884,47 +4943,49 @@ var moveBookmarkToDescribedChange = /* @__PURE__ */ (function() {
           return new Right(unit);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 525, column 7 - line 530, column 28): " + [bookmark.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 526, column 7 - line 531, column 28): " + [bookmark.constructor.name]);
       };
     };
   };
   return walk(20)("@");
 })();
-var describeAndMove = function(message3) {
-  return function __do3() {
-    var described = passthroughCommand("jj")(["describe", "--message", message3])();
-    var $147 = described.exit !== 0;
-    if ($147) {
-      return described;
-    }
-    ;
-    var newCode = passthroughCommand("jj")(["new"])();
-    var $148 = newCode.exit !== 0;
-    if ($148) {
-      return newCode;
-    }
-    ;
-    var moved = moveBookmarkToDescribedChange();
-    if (moved instanceof Left) {
-      return moved.value0;
-    }
-    ;
-    if (moved instanceof Right) {
-      return newCode;
-    }
-    ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 514, column 7 - line 516, column 32): " + [moved.constructor.name]);
+var describeAndMove = function(context) {
+  return function(message3) {
+    return function __do2() {
+      var described = passthroughCommand(context)(jj)(["describe", "--message", message3])();
+      var $148 = described.exit !== 0;
+      if ($148) {
+        return described;
+      }
+      ;
+      var newCode = passthroughCommand(context)(jj)(["new"])();
+      var $149 = newCode.exit !== 0;
+      if ($149) {
+        return newCode;
+      }
+      ;
+      var moved = moveBookmarkToDescribedChange();
+      if (moved instanceof Left) {
+        return moved.value0;
+      }
+      ;
+      if (moved instanceof Right) {
+        return newCode;
+      }
+      ;
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 515, column 7 - line 517, column 32): " + [moved.constructor.name]);
+    };
   };
 };
 var moveBookmarkToWorkingChange = /* @__PURE__ */ (function() {
   var walk = function(remaining) {
     return function(rev) {
-      var $152 = remaining <= 0;
-      if ($152) {
+      var $153 = remaining <= 0;
+      if ($153) {
         return pure6(new Right(Nothing.value));
       }
       ;
-      return function __do3() {
+      return function __do2() {
         var bookmark = bookmarkAt(rev)();
         if (bookmark instanceof Left) {
           return new Left(bookmark.value0);
@@ -4939,107 +5000,109 @@ var moveBookmarkToWorkingChange = /* @__PURE__ */ (function() {
           return new Right(new Just(bookmark.value0.value0));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 543, column 7 - line 548, column 35): " + [bookmark.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 544, column 7 - line 549, column 35): " + [bookmark.constructor.name]);
       };
     };
   };
   return walk(20)("@-");
 })();
-var jjCommit = function(message3) {
-  return function(files) {
-    var lines = function(value) {
-      return filter(function(v) {
-        return v !== "";
-      })(map13(trim)(split("\n")(value)));
-    };
-    var canonicalFiles = function(file) {
-      return function __do3() {
-        var result = exec5("jj")(["diff", "--name-only", "--", file])();
-        var $158 = result.code !== 0;
-        if ($158) {
-          return new Left(captured(result));
-        }
-        ;
-        return new Right(lines(result.stdout));
+var jjCommit = function(context) {
+  return function(message3) {
+    return function(files) {
+      var lines = function(value) {
+        return filter(function(v) {
+          return v !== "";
+        })(map23(trim)(split("\n")(value)));
       };
-    };
-    return function __do3() {
-      var allResult = exec5("jj")(["diff", "--name-only"])();
-      var $159 = allResult.code !== 0;
-      if ($159) {
-        return captured(allResult);
-      }
-      ;
-      var canonicalResults = traverse12(canonicalFiles)(files)();
-      var v = traverse22(identity4)(canonicalResults);
-      if (v instanceof Left) {
-        return v.value0;
-      }
-      ;
-      if (v instanceof Right) {
-        var canonical = concat(v.value0);
-        var allChanged = lines(allResult.stdout);
-        var unrelated = filter(function(changed) {
-          return !any2(function(file) {
-            return file === changed;
-          })(canonical);
-        })(allChanged);
-        var $162 = $$null(unrelated);
-        if ($162) {
-          return describeAndMove(message3)();
-        }
-        ;
-        var described = passthroughCommand("jj")(["describe", "--message", message3])();
-        var $163 = described.exit !== 0;
-        if ($163) {
-          return described;
-        }
-        ;
-        var splitCode = passthroughCommand("jj")(append12(["split"])(append12(unrelated)(["--message", "chore: unrelated changes"])))();
-        var $164 = splitCode.exit !== 0;
-        if ($164) {
-          return splitCode;
-        }
-        ;
-        var rebase = passthroughCommand("jj")(["rebase", "--revision", "@-", "--insert-after", "@"])();
-        var $165 = rebase.exit !== 0;
-        if ($165) {
-          return rebase;
-        }
-        ;
-        var bookmarkResult = moveBookmarkToWorkingChange();
-        if (bookmarkResult instanceof Left) {
-          return bookmarkResult.value0;
-        }
-        ;
-        if (bookmarkResult instanceof Right) {
-          if (bookmarkResult.value0 instanceof Nothing) {
-            return passthroughCommand("jj")(["new"])();
+      var canonicalFiles = function(file) {
+        return function __do2() {
+          var result = exec5(jj)(["diff", "--name-only", "--", file])();
+          var $159 = result.code !== 0;
+          if ($159) {
+            return new Left(captured(result));
           }
           ;
-          if (bookmarkResult.value0 instanceof Just) {
-            return passthroughCommand("jj")(["new", bookmarkResult.value0.value0])();
-          }
-          ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 493, column 37 - line 495, column 73): " + [bookmarkResult.value0.constructor.name]);
+          return new Right(lines(result.stdout));
+        };
+      };
+      return function __do2() {
+        var allResult = exec5(jj)(["diff", "--name-only"])();
+        var $160 = allResult.code !== 0;
+        if ($160) {
+          return captured(allResult);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 491, column 17 - line 495, column 73): " + [bookmarkResult.constructor.name]);
-      }
-      ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 470, column 5 - line 495, column 73): " + [v.constructor.name]);
+        var canonicalResults = traverse12(canonicalFiles)(files)();
+        var v = traverse22(identity4)(canonicalResults);
+        if (v instanceof Left) {
+          return v.value0;
+        }
+        ;
+        if (v instanceof Right) {
+          var canonical = concat(v.value0);
+          var allChanged = lines(allResult.stdout);
+          var unrelated = filter(function(changed) {
+            return !any2(function(file) {
+              return file === changed;
+            })(canonical);
+          })(allChanged);
+          var $163 = $$null(unrelated);
+          if ($163) {
+            return describeAndMove(context)(message3)();
+          }
+          ;
+          var described = passthroughCommand(context)(jj)(["describe", "--message", message3])();
+          var $164 = described.exit !== 0;
+          if ($164) {
+            return described;
+          }
+          ;
+          var splitCode = passthroughCommand(context)(jj)(append12(["split"])(append12(unrelated)(["--message", "chore: unrelated changes"])))();
+          var $165 = splitCode.exit !== 0;
+          if ($165) {
+            return splitCode;
+          }
+          ;
+          var rebase = passthroughCommand(context)(jj)(["rebase", "--revision", "@-", "--insert-after", "@"])();
+          var $166 = rebase.exit !== 0;
+          if ($166) {
+            return rebase;
+          }
+          ;
+          var bookmarkResult = moveBookmarkToWorkingChange();
+          if (bookmarkResult instanceof Left) {
+            return bookmarkResult.value0;
+          }
+          ;
+          if (bookmarkResult instanceof Right) {
+            if (bookmarkResult.value0 instanceof Nothing) {
+              return passthroughCommand(context)(jj)(["new"])();
+            }
+            ;
+            if (bookmarkResult.value0 instanceof Just) {
+              return passthroughCommand(context)(jj)(["new", bookmarkResult.value0.value0])();
+            }
+            ;
+            throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 494, column 37 - line 496, column 88): " + [bookmarkResult.value0.constructor.name]);
+          }
+          ;
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 492, column 17 - line 496, column 88): " + [bookmarkResult.constructor.name]);
+        }
+        ;
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 471, column 5 - line 496, column 88): " + [v.constructor.name]);
+      };
     };
   };
 };
 var commit = function(context) {
   return function(message3) {
     return function(files) {
-      var $172 = $$null(files);
-      if ($172) {
+      var $173 = $$null(files);
+      if ($173) {
         return pure6(failureLine("vcs-op: at least one file required (got none \u2014 pass the files you changed)"));
       }
       ;
-      return function __do3() {
+      return function __do2() {
         var valid = validateDirty(context.vcs)(files)();
         if (valid instanceof Left) {
           return failure(1)(valid.value0 + "\n");
@@ -5047,27 +5110,27 @@ var commit = function(context) {
         ;
         if (valid instanceof Right) {
           if (context.vcs instanceof Git) {
-            var added = passthroughCommand("git")(append12(["add", "--"])(files))();
-            var $176 = added.exit === 0;
-            if ($176) {
-              return passthroughCommand("git")(["commit", "--message", message3])();
+            var added = passthroughCommand(context)(git)(append12(["add", "--"])(files))();
+            var $177 = added.exit === 0;
+            if ($177) {
+              return passthroughCommand(context)(git)(["commit", "--message", message3])();
             }
             ;
             return added;
           }
           ;
           if (context.vcs instanceof Jj) {
-            return jjCommit(message3)(files)();
+            return jjCommit(context)(message3)(files)();
           }
           ;
           if (context.vcs instanceof Unknown2) {
             return noVcsOutcome;
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 443, column 18 - line 448, column 37): " + [context.vcs.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 444, column 18 - line 449, column 37): " + [context.vcs.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 441, column 5 - line 448, column 37): " + [valid.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 442, column 5 - line 449, column 37): " + [valid.constructor.name]);
       };
     };
   };
@@ -5075,26 +5138,26 @@ var commit = function(context) {
 var fixCommit = function(context) {
   return function(message3) {
     return function(files) {
-      return function __do3() {
+      return function __do2() {
         var committed = commit(context)(message3)(files)();
-        var $178 = committed.exit !== 0;
-        if ($178) {
+        var $179 = committed.exit !== 0;
+        if ($179) {
           return committed;
         }
         ;
         if (context.vcs instanceof Git) {
-          return passthroughCommand("git")(["push"])();
+          return passthroughCommand(context)(git)(["push"])();
         }
         ;
         if (context.vcs instanceof Jj) {
-          return passthroughCommand("jj")(["git", "push"])();
+          return passthroughCommand(context)(jj)(["git", "push"])();
         }
         ;
         if (context.vcs instanceof Unknown2) {
           return noVcsOutcome;
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 580, column 8 - line 583, column 33): " + [context.vcs.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 581, column 8 - line 584, column 33): " + [context.vcs.constructor.name]);
       };
     };
   };
@@ -5110,38 +5173,38 @@ var runVcsOp = function(context) {
     }
     ;
     if (operation instanceof RemoteUrl) {
-      return map23(renderValue)(remoteUrlResult(context));
+      return map10(renderValue)(remoteUrlResult(context));
     }
     ;
     if (operation instanceof HeadRevision) {
-      return map23(renderValue)(headRevisionValue(context));
+      return map10(renderValue)(headRevisionValue(context));
     }
     ;
     if (operation instanceof HeadCommitSha) {
       if (context.vcs instanceof Git) {
-        return capturedCommand("git")(["rev-parse", "HEAD"])(context);
+        return capturedCommand(git)(["rev-parse", "HEAD"])(context);
       }
       ;
       if (context.vcs instanceof Jj) {
-        return capturedCommand("jj")(["log", "--revision", "@-", "--no-graph", "--template", "commit_id"])(context);
+        return capturedCommand(jj)(["log", "--revision", "@-", "--no-graph", "--template", "commit_id"])(context);
       }
       ;
       if (context.vcs instanceof Unknown2) {
         return pure6(noVcsOutcome);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 174, column 20 - line 177, column 33): " + [context.vcs.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 175, column 20 - line 178, column 33): " + [context.vcs.constructor.name]);
     }
     ;
     if (operation instanceof DefaultBranch) {
-      return function __do3() {
+      return function __do2() {
         var value = defaultBranchValue(context)();
         return withStdout(value + "\n");
       };
     }
     ;
     if (operation instanceof CurrentBranch) {
-      return map23(renderValue)(currentBranchValue(context));
+      return map10(renderValue)(currentBranchValue(context));
     }
     ;
     if (operation instanceof Base) {
@@ -5200,7 +5263,7 @@ var runVcsOp = function(context) {
       return fastForwardIfSafe(context);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 169, column 30 - line 195, column 49): " + [operation.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 170, column 30 - line 196, column 49): " + [operation.constructor.name]);
   };
 };
 var availableOps2 = /* @__PURE__ */ joinWith(", ")(operationNames2);
@@ -5214,8 +5277,8 @@ var parseVcsOp = function(args) {
   }
   ;
   if (v instanceof Just) {
-    var $194 = elem4(v.value0.value)(operationNames2);
-    if ($194) {
+    var $195 = elem4(v.value0.value)(operationNames2);
+    if ($195) {
       if (v.value0.value === "detect") {
         return new Right(Detect2.value);
       }
@@ -5286,7 +5349,7 @@ var parseVcsOp = function(args) {
           return new Left("vcs-op branch: branch name required");
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 148, column 23 - line 150, column 66): " + [v1.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 149, column 23 - line 151, column 66): " + [v1.constructor.name]);
       }
       ;
       if (v.value0.value === "commit") {
@@ -5299,7 +5362,7 @@ var parseVcsOp = function(args) {
           return new Right(new Commit(v1.value0.value, v1.value0.rest));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 151, column 23 - line 153, column 81): " + [v1.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 152, column 23 - line 154, column 81): " + [v1.constructor.name]);
       }
       ;
       if (v.value0.value === "push") {
@@ -5316,7 +5379,7 @@ var parseVcsOp = function(args) {
           return new Right(new FixCommit(v1.value0.value, v1.value0.rest));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 155, column 27 - line 157, column 84): " + [v1.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 156, column 27 - line 158, column 84): " + [v1.constructor.name]);
       }
       ;
       if (v.value0.value === "refresh-default-branch") {
@@ -5333,7 +5396,7 @@ var parseVcsOp = function(args) {
     return new Left(unknownOperation(v.value0.value));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 128, column 3 - line 161, column 40): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 129, column 3 - line 162, column 40): " + [v.constructor.name]);
 };
 
 // output/Agency.Scripts.Do.Ops/index.js
@@ -5348,7 +5411,7 @@ var notEq2 = /* @__PURE__ */ notEq(/* @__PURE__ */ eqMaybe(eqString));
 var div2 = /* @__PURE__ */ div(euclideanRingInt);
 var mod2 = /* @__PURE__ */ mod(euclideanRingInt);
 var notEq3 = /* @__PURE__ */ notEq(eqStepStatus);
-var map10 = /* @__PURE__ */ map(functorArray);
+var map11 = /* @__PURE__ */ map(functorArray);
 var traverse5 = /* @__PURE__ */ traverse(traversableArray);
 var traverse13 = /* @__PURE__ */ traverse5(applicativeEffect);
 var traverse23 = /* @__PURE__ */ traverse5(applicativeEither);
@@ -5530,7 +5593,7 @@ var Done2 = /* @__PURE__ */ (function() {
 })();
 var vcsValueOutcome = renderValue;
 var timedStep = function(step) {
-  return function __do3() {
+  return function __do2() {
     var started = isoToEpoch(step.startedAt)();
     var completed = isoToEpoch(step.completedAt)();
     return bind13(started)(function(start) {
@@ -5591,14 +5654,14 @@ var slowestStep = function(values) {
               return new Just(new Tuple(best.value0.value0, best.value0.value1));
             }
             ;
-            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 591, column 18 - line 593, column 129): " + [best.constructor.name]);
+            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 592, column 18 - line 594, column 129): " + [best.constructor.name]);
           })();
           $tco_var_remaining = v.value0.tail;
           $copy_best = next;
           return;
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 588, column 23 - line 594, column 22): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 589, column 23 - line 595, column 22): " + [v.constructor.name]);
       }
       ;
       while (!$tco_done) {
@@ -5615,7 +5678,7 @@ var skippedName = function(step) {
 };
 var runNickelOp = function(context) {
   return function(operation) {
-    return function __do3() {
+    return function __do2() {
       var bundle = bundleDir();
       var cwdWorkflow = context.stateDir + "/skills/do/workflow.ncl";
       var bundleWorkflow = bundle + "/../../../skills/do/workflow.ncl";
@@ -5644,9 +5707,14 @@ var runNickelOp = function(context) {
           return 'let workflow = import "' + (workflow + ('" in\n  let state = workflow.normalize_state (import "' + (statePath2 + ('") in\n  workflow.cli_seed "' + (operation.value0 + '" state\n')))));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 623, column 20 - line 625, column 204): " + [operation.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 624, column 20 - line 626, column 204): " + [operation.constructor.name]);
       })();
-      var result = execInheritInput("nickel")(["eval", "--stdin-format", "nickel"])(expression)();
+      if (context.captureOutput) {
+        var result = execInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
+        return captured(result);
+      }
+      ;
+      var result = execInheritInput(nickel)(["eval", "--stdin-format", "nickel"])(expression)();
       if (result.error instanceof Just) {
         return failure(1)("nickel-cli: nickel failed to spawn: " + (result.error.value0 + "\n"));
       }
@@ -5655,7 +5723,7 @@ var runNickelOp = function(context) {
         return passthrough(result.code);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 627, column 8 - line 629, column 47): " + [result.error.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 632, column 10 - line 634, column 49): " + [result.error.constructor.name]);
     };
   };
 };
@@ -5663,60 +5731,64 @@ var resultsCommandNames = "init|step-start|step-end|step|set";
 var resultsUsage = /* @__PURE__ */ (function() {
   return "Usage: do-results <" + (resultsCommandNames + "> ...");
 })();
-var resolveWorkflowContext = function __do() {
-  var root = cwd2();
-  var vcsOverrideText = getEnv2("VCS_OVERRIDE")();
-  var forgeOverrideText = getEnv2("FORGE_OVERRIDE")();
-  var stateResult = readState(root + "/.do-results.json")();
-  if (stateResult instanceof Left) {
-    return new Left("vcs-op: .do-results.json unreadable: " + stateResult.value0);
-  }
-  ;
-  if (stateResult instanceof Right) {
-    var jjPresent = isDir(root + "/.jj")();
-    var gitPresent = isDir(root + "/.git")();
-    var stateVcs = bind22(stateResult.value0)((function() {
-      var $324 = stateGet("vcs");
-      return function($325) {
-        return nonEmpty($324($325));
+var resolveWorkflowContext = function(captureOutput) {
+  return function __do2() {
+    var root = cwd2();
+    var vcsOverrideText = getEnv2("VCS_OVERRIDE")();
+    var forgeOverrideText = getEnv2("FORGE_OVERRIDE")();
+    var stateResult = readState(root + "/.do-results.json")();
+    if (stateResult instanceof Left) {
+      return new Left("vcs-op: .do-results.json unreadable: " + stateResult.value0);
+    }
+    ;
+    if (stateResult instanceof Right) {
+      var jjPresent = isDir(root + "/.jj")();
+      var gitPresent = isDir(root + "/.git")();
+      var stateVcs = bind22(stateResult.value0)((function() {
+        var $325 = stateGet("vcs");
+        return function($326) {
+          return nonEmpty($325($326));
+        };
+      })());
+      var stateForge = bind22(stateResult.value0)((function() {
+        var $327 = stateGet("forge");
+        return function($328) {
+          return nonEmpty($327($328));
+        };
+      })());
+      var override = nonEmpty(vcsOverrideText);
+      var vcs = detectVcs(override)(stateVcs)(jjPresent)(gitPresent);
+      var forgeOverride = nonEmpty(forgeOverrideText);
+      var base = bind22(stateResult.value0)((function() {
+        var $329 = stateGet("base");
+        return function($330) {
+          return nonEmpty($329($330));
+        };
+      })());
+      var partial = {
+        stateDir: root,
+        vcs,
+        forge: Unknown.value,
+        base,
+        vcsOverride: override,
+        forgeOverride,
+        captureOutput
       };
-    })());
-    var stateForge = bind22(stateResult.value0)((function() {
-      var $326 = stateGet("forge");
-      return function($327) {
-        return nonEmpty($326($327));
-      };
-    })());
-    var override = nonEmpty(vcsOverrideText);
-    var vcs = detectVcs(override)(stateVcs)(jjPresent)(gitPresent);
-    var forgeOverride = nonEmpty(forgeOverrideText);
-    var base = bind22(stateResult.value0)((function() {
-      var $328 = stateGet("base");
-      return function($329) {
-        return nonEmpty($328($329));
-      };
-    })());
-    var partial = {
-      stateDir: root,
-      vcs,
-      forge: Unknown.value,
-      base,
-      vcsOverride: override,
-      forgeOverride
-    };
-    var remote = remoteUrlValue(partial)();
-    var forge = detectForge(forgeOverride)(stateForge)(remote);
-    return new Right({
-      base: partial.base,
-      forgeOverride: partial.forgeOverride,
-      stateDir: partial.stateDir,
-      vcs: partial.vcs,
-      vcsOverride: partial.vcsOverride,
-      forge
-    });
-  }
-  ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 237, column 3 - line 251, column 47): " + [stateResult.constructor.name]);
+      var remote = remoteUrlValue(partial)();
+      var forge = detectForge(forgeOverride)(stateForge)(remote);
+      return new Right({
+        base: partial.base,
+        captureOutput: partial.captureOutput,
+        forgeOverride: partial.forgeOverride,
+        stateDir: partial.stateDir,
+        vcs: partial.vcs,
+        vcsOverride: partial.vcsOverride,
+        forge
+      });
+    }
+    ;
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 238, column 3 - line 252, column 47): " + [stateResult.constructor.name]);
+  };
 };
 var resolveSyncBase = function(v) {
   return function(defaultRef) {
@@ -5726,13 +5798,13 @@ var resolveSyncBase = function(v) {
       }
       ;
       if (v.value0.base instanceof Nothing && v.value0.stack) {
-        return function __do3() {
+        return function __do2() {
           var current = currentBranchValue(context)();
-          var $104 = current.code !== 0;
-          if ($104) {
+          var $105 = current.code !== 0;
+          if ($105) {
             return new Left((function() {
-              var $105 = current.stderr === "";
-              if ($105) {
+              var $106 = current.stderr === "";
+              if ($106) {
                 return "sync: unable to resolve current branch";
               }
               ;
@@ -5740,14 +5812,14 @@ var resolveSyncBase = function(v) {
             })());
           }
           ;
-          var $106 = current.value !== "" && (current.value !== defaultRef && current.value !== "HEAD");
-          if ($106) {
+          var $107 = current.value !== "" && (current.value !== defaultRef && current.value !== "HEAD");
+          if ($107) {
             return new Right(current.value);
           }
           ;
           return new Left("sync: --stack found no feature branch to stack onto\n" + ("       current branch is '" + (function() {
-            var $107 = current.value === "";
-            if ($107) {
+            var $108 = current.value === "";
+            if ($108) {
               return "<none>";
             }
             ;
@@ -5760,13 +5832,13 @@ var resolveSyncBase = function(v) {
         return pure7(new Right(defaultRef));
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 456, column 53 - line 466, column 37): " + [v.value0.base.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 457, column 53 - line 467, column 37): " + [v.value0.base.constructor.name]);
     };
   };
 };
 var resolveNow = function(value) {
-  var $109 = value === "now";
-  if ($109) {
+  var $110 = value === "now";
+  if ($110) {
     return nowIso;
   }
   ;
@@ -5782,7 +5854,7 @@ var renderFacts = function(summary) {
       return summary.slowest.value0.value1;
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 540, column 24 - line 542, column 42): " + [summary.slowest.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 541, column 24 - line 543, column 42): " + [summary.slowest.constructor.name]);
   })();
   var slowestName = (function() {
     if (summary.slowest instanceof Nothing) {
@@ -5793,7 +5865,7 @@ var renderFacts = function(summary) {
       return summary.slowest.value0.value0;
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 537, column 21 - line 539, column 36): " + [summary.slowest.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 538, column 21 - line 540, column 36): " + [summary.slowest.constructor.name]);
   })();
   return "\n<<<FACTS\n" + ("totalSeconds=" + (show3(summary.totalSeconds) + ("\n" + ("slowestStep=" + (slowestName + ("\n" + ("slowestSeconds=" + (show3(slowestSeconds) + ("\n" + ("dominantSteps=" + (joinWith(",")(summary.dominant) + ("\n" + ("skippedSteps=" + (joinWith(",")(summary.skipped) + ("\n" + ("failedSteps=" + (joinWith(",")(summary.failed) + "\nFACTS\n")))))))))))))))));
 };
@@ -5813,7 +5885,7 @@ var quietResult = function(result) {
     };
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 434, column 22 - line 443, column 6): " + [result.output.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 435, column 22 - line 444, column 6): " + [result.output.constructor.name]);
 };
 var putSyncFields = function(context) {
   return function(noVcs) {
@@ -5863,7 +5935,7 @@ var parseNickelOp = function(args) {
     return new Left(parseError(2)("nickel-cli: unknown field: " + v.value0.value));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 219, column 22 - line 224, column 72): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 220, column 22 - line 225, column 72): " + [v.constructor.name]);
 };
 var parseResultsOp = function(args) {
   var requiredOne = function(message3) {
@@ -5878,7 +5950,7 @@ var parseResultsOp = function(args) {
           return new Left(parseError(1)(message3));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 116, column 44 - line 118, column 43): " + [v3.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 117, column 44 - line 119, column 43): " + [v3.constructor.name]);
       };
     };
   };
@@ -5906,7 +5978,7 @@ var parseResultsOp = function(args) {
         return new Right(new ResultsStepEnd(v1.value0.value, fromMaybe("")(head(v1.value0.rest)), bind22(index(v1.value0.rest)(1))(nonEmpty)));
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 101, column 21 - line 104, column 126): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 102, column 21 - line 105, column 126): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "step") {
@@ -5919,7 +5991,7 @@ var parseResultsOp = function(args) {
         return new Right(new ResultsStep(v1.value0.name, v1.value0.status, v1.value0.verification, v1.value0.startedAt, v1.value0.completedAt, bind22(head(v1.value0.tail))(nonEmpty)));
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 105, column 17 - line 108, column 114): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 106, column 17 - line 109, column 114): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "set") {
@@ -5938,16 +6010,16 @@ var parseResultsOp = function(args) {
           return new Right(new ResultsSet(v1.value0.value, v2.value0.value));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 111, column 47 - line 113, column 59): " + [v2.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 112, column 47 - line 114, column 59): " + [v2.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 109, column 16 - line 113, column 59): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 110, column 16 - line 114, column 59): " + [v1.constructor.name]);
     }
     ;
     return new Left(parseError(1)("Unknown command: " + (v.value0.value + ("\n" + resultsUsage))));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 96, column 3 - line 114, column 88): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 97, column 3 - line 115, column 88): " + [v.constructor.name]);
 };
 var parseDriverInit = function(args) {
   var go = function($copy_remaining) {
@@ -5958,8 +6030,8 @@ var parseDriverInit = function(args) {
       function $tco_loop(remaining, state2) {
         var v = uncons(remaining);
         if (v instanceof Nothing) {
-          var $153 = state2.review && (state2.from !== "" && state2.from !== "default");
-          if ($153) {
+          var $154 = state2.review && (state2.from !== "" && state2.from !== "default");
+          if ($154) {
             $tco_done = true;
             return new Left(parseError(2)("do-driver: --review is incompatible with --from=" + (state2.from + ("\n" + ("         --from=" + (state2.from + " starts past research, where the plan-approval pause lives.\n         drop --review if the plan is already approved, or drop --from for a full workflow."))))));
           }
@@ -6034,7 +6106,7 @@ var parseDriverInit = function(args) {
               return new Left(parseError(2)("do-driver: --from requires a non-empty step"));
             }
             ;
-            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 180, column 44 - line 182, column 85): " + [v1.constructor.name]);
+            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 181, column 44 - line 183, column 85): " + [v1.constructor.name]);
           }
           ;
           if (startsWith("--")(v.value0.head)) {
@@ -6053,7 +6125,7 @@ var parseDriverInit = function(args) {
           return;
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 166, column 24 - line 184, column 43): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 167, column 24 - line 185, column 43): " + [v.constructor.name]);
       }
       ;
       while (!$tco_done) {
@@ -6084,7 +6156,7 @@ var parseDriverOp = function(args) {
           return new Left(parseError(1)(message3));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 159, column 44 - line 161, column 43): " + [v3.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 160, column 44 - line 162, column 43): " + [v3.constructor.name]);
       };
     };
   };
@@ -6112,7 +6184,7 @@ var parseDriverOp = function(args) {
         return new Right(new DriverEnd(v1.value0.value, fromMaybe("")(head(v1.value0.rest)), bind22(index(v1.value0.rest)(1))(nonEmpty)));
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 143, column 16 - line 145, column 146): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 144, column 16 - line 146, column 146): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "skip") {
@@ -6131,10 +6203,10 @@ var parseDriverOp = function(args) {
           return new Right(new DriverSkip(v1.value0.value, v2.value0.value));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 148, column 46 - line 150, column 67): " + [v2.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 149, column 46 - line 151, column 67): " + [v2.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 146, column 17 - line 150, column 67): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 147, column 17 - line 151, column 67): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "set") {
@@ -6153,10 +6225,10 @@ var parseDriverOp = function(args) {
           return new Right(new DriverSet(v1.value0.value, v2.value0.value));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 153, column 47 - line 155, column 58): " + [v2.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 154, column 47 - line 156, column 58): " + [v2.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 151, column 16 - line 155, column 58): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 152, column 16 - line 156, column 58): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "summary") {
@@ -6166,7 +6238,7 @@ var parseDriverOp = function(args) {
     return new Left(parseError(1)("Unknown command: " + (v.value0.value + "\nUsage: do-driver <init|start|end|skip|set|summary> ...")));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 138, column 3 - line 157, column 126): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 139, column 3 - line 158, column 126): " + [v.constructor.name]);
 };
 var parseDoneOp = function(v) {
   return new Right(Done2.value);
@@ -6223,7 +6295,7 @@ var parseSyncOp = function(args) {
               return;
             }
             ;
-            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 201, column 19 - line 203, column 79): " + [v1.constructor.name]);
+            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 202, column 19 - line 204, column 79): " + [v1.constructor.name]);
           }
           ;
           if (startsWith("--")(v.value0.head)) {
@@ -6247,10 +6319,10 @@ var parseSyncOp = function(args) {
             return;
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 205, column 12 - line 207, column 62): " + [v1.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 206, column 12 - line 208, column 62): " + [v1.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 197, column 24 - line 207, column 62): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 198, column 24 - line 208, column 62): " + [v.constructor.name]);
       }
       ;
       while (!$tco_done) {
@@ -6270,13 +6342,13 @@ var parseSyncOp = function(args) {
     }
     ;
     if (parsed.noVcs instanceof Just) {
-      var $199 = notEq2(parsed.base)(Nothing.value) && parsed.stack;
-      if ($199) {
+      var $200 = notEq2(parsed.base)(Nothing.value) && parsed.stack;
+      if ($200) {
         return new Left(parseError(2)("sync: --base and --stack are mutually exclusive"));
       }
       ;
-      var $200 = parsed.noVcs.value0 && (notEq2(parsed.base)(Nothing.value) || parsed.stack);
-      if ($200) {
+      var $201 = parsed.noVcs.value0 && (notEq2(parsed.base)(Nothing.value) || parsed.stack);
+      if ($201) {
         return new Left(parseError(2)("sync: --base/--stack are incompatible with --no-vcs\n       --no-vcs skips branch/commit/PR; the base has no effect."));
       }
       ;
@@ -6287,11 +6359,11 @@ var parseSyncOp = function(args) {
       }));
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 189, column 3 - line 195, column 74): " + [parsed.noVcs.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 190, column 3 - line 196, column 74): " + [parsed.noVcs.constructor.name]);
   });
 };
 var loadState = function(context) {
-  return function __do3() {
+  return function __do2() {
     var result = readState(statePath(context))();
     if (result instanceof Left) {
       return new Left("do-results: " + result.value0);
@@ -6305,7 +6377,7 @@ var loadState = function(context) {
       return new Right(result.value0.value0);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 634, column 8 - line 637, column 38): " + [result.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 639, column 8 - line 642, column 38): " + [result.constructor.name]);
   };
 };
 var jsonValueFor = function(field) {
@@ -6328,12 +6400,12 @@ var jsonValueFor = function(field) {
       })());
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 642, column 1 - line 642, column 55): " + [field.constructor.name, value.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 647, column 1 - line 647, column 55): " + [field.constructor.name, value.constructor.name]);
   };
 };
 var fmtDur = function(seconds) {
-  var $210 = seconds < 60;
-  if ($210) {
+  var $211 = seconds < 60;
+  if ($211) {
     return show3(seconds) + "s";
   }
   ;
@@ -6341,18 +6413,18 @@ var fmtDur = function(seconds) {
 };
 var fetchPhase = function(context) {
   return function(noVcs) {
-    return function __do3() {
+    return function __do2() {
       var fetched = fetchValue(context)();
       var quietFetch = quietResult(fetched);
-      var $211 = fetched.exit !== 0;
-      if ($211) {
+      var $212 = fetched.exit !== 0;
+      if ($212) {
         return new Left(quietFetch);
       }
       ;
       var refreshed = refreshDefaultBranchValue(context)();
       var quietRefresh = quietResult(refreshed);
-      var $212 = refreshed.exit !== 0;
-      if ($212) {
+      var $213 = refreshed.exit !== 0;
+      if ($213) {
         return new Left(append2(quietFetch)(quietRefresh));
       }
       ;
@@ -6363,8 +6435,8 @@ var fetchPhase = function(context) {
         ;
         return runVcsOp(context)(FastForwardIfSafe.value)();
       })();
-      var $214 = forwarded.exit !== 0;
-      if ($214) {
+      var $215 = forwarded.exit !== 0;
+      if ($215) {
         return new Left(append2(append2(quietFetch)(quietRefresh))(forwarded));
       }
       ;
@@ -6390,7 +6462,7 @@ var invalidSet = function(field) {
 var resolveContext = function(context) {
   return function(v) {
     return function(startedAt) {
-      return function __do3() {
+      return function __do2() {
         var initial = readState(statePath(context))();
         if (initial instanceof Left) {
           return new Left(failText("sync: " + initial.value0));
@@ -6407,17 +6479,17 @@ var resolveContext = function(context) {
             return new Right(v1.value0);
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 388, column 10 - line 390, column 44): " + [v1.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 389, column 10 - line 391, column 44): " + [v1.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 384, column 3 - line 390, column 44): " + [initial.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 385, column 3 - line 391, column 44): " + [initial.constructor.name]);
       };
     };
   };
 };
 var withLoadedState = function(context) {
   return function(action) {
-    return function __do3() {
+    return function __do2() {
       var loaded = loadState(context)();
       if (loaded instanceof Left) {
         return failText(loaded.value0);
@@ -6427,14 +6499,14 @@ var withLoadedState = function(context) {
         return action(loaded.value0)();
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 292, column 3 - line 294, column 32): " + [loaded.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 293, column 3 - line 295, column 32): " + [loaded.constructor.name]);
     };
   };
 };
 var runResultsOp = function(context) {
   return function(operation) {
     if (operation instanceof ResultsInit) {
-      return function __do3() {
+      return function __do2() {
         var timestamp = nowIso();
         writeState(statePath(context))(initState(timestamp))();
         return withStdout("init: startedAt=" + (timestamp + "\n"));
@@ -6448,7 +6520,7 @@ var runResultsOp = function(context) {
         }
         ;
         if (state2.pendingStep instanceof Nothing) {
-          return function __do3() {
+          return function __do2() {
             var timestamp = nowIso();
             writeState(statePath(context))(startPending({
               name: operation.value0,
@@ -6458,7 +6530,7 @@ var runResultsOp = function(context) {
           };
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 259, column 62 - line 264, column 62): " + [state2.pendingStep.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 260, column 62 - line 265, column 62): " + [state2.pendingStep.constructor.name]);
       });
     }
     ;
@@ -6469,7 +6541,7 @@ var runResultsOp = function(context) {
         }
         ;
         if (state2.pendingStep instanceof Just) {
-          return function __do3() {
+          return function __do2() {
             var completed = nowIso();
             var step = {
               name: state2.pendingStep.value0.name,
@@ -6485,13 +6557,13 @@ var runResultsOp = function(context) {
           };
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 265, column 82 - line 272, column 154): " + [state2.pendingStep.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 266, column 82 - line 273, column 154): " + [state2.pendingStep.constructor.name]);
       });
     }
     ;
     if (operation instanceof ResultsStep) {
       return withLoadedState(context)(function(state2) {
-        return function __do3() {
+        return function __do2() {
           var actualStart = resolveNow(operation.value3)();
           var actualEnd = resolveNow(operation.value4)();
           var updated = appendStep({
@@ -6518,17 +6590,17 @@ var runResultsOp = function(context) {
         }
         ;
         if (updated instanceof Right) {
-          return function __do3() {
+          return function __do2() {
             writeState(statePath(context))(updated.value0)();
             return withStdout("set: " + (operation.value0 + ("=" + (operation.value1 + "\n"))));
           };
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 283, column 5 - line 287, column 77): " + [updated.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 284, column 5 - line 288, column 77): " + [updated.constructor.name]);
       });
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 254, column 34 - line 287, column 77): " + [operation.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 255, column 34 - line 288, column 77): " + [operation.constructor.name]);
   };
 };
 var escapeVerification = function(value) {
@@ -6554,7 +6626,7 @@ var renderTimedRow = function(totalDuration) {
         return "?";
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 575, column 14 - line 579, column 35): " + [item.step.status.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 576, column 14 - line 580, column 35): " + [item.step.status.constructor.name]);
     })();
     var bold = notEq3(item.step.status)(StepSkipped.value) && (totalDuration > 0 && (item.seconds * div2(100)(totalDuration) | 0) >= 30);
     var durationText = (function() {
@@ -6577,12 +6649,12 @@ var renderDoneMarkdown = function(summary) {
       return "**Slowest step**: `" + (summary.slowest.value0.value0 + ("` (" + (fmtDur(summary.slowest.value0.value1) + ")\n")));
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 529, column 18 - line 531, column 103): " + [summary.slowest.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 530, column 18 - line 532, column 103): " + [summary.slowest.constructor.name]);
   })();
-  var rows = map10(renderTimedRow(summary.totalSeconds))(summary.rows);
+  var rows = map11(renderTimedRow(summary.totalSeconds))(summary.rows);
   var table = "| Step | Status | Duration | Verification |\n" + ("|------|--------|----------|--------------|\n" + (joinWith("\n")(rows) + ((function() {
-    var $255 = $$null(rows);
-    if ($255) {
+    var $256 = $$null(rows);
+    if ($256) {
       return "";
     }
     ;
@@ -6592,8 +6664,8 @@ var renderDoneMarkdown = function(summary) {
 };
 var dominantName = function(totalDuration) {
   return function(v) {
-    var $258 = totalDuration > 0 && (v.value1 * div2(100)(totalDuration) | 0) >= 30;
-    if ($258) {
+    var $259 = totalDuration > 0 && (v.value1 * div2(100)(totalDuration) | 0) >= 30;
+    if ($259) {
       return new Just(v.value0.name);
     }
     ;
@@ -6611,7 +6683,7 @@ var computeDoneSummary = function(state2) {
       return state2.startedAt;
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 501, column 23 - line 503, column 35): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 502, column 23 - line 504, column 35): " + [v.constructor.name]);
   })();
   var firstStarted = (function() {
     var v = head(state2.steps);
@@ -6623,9 +6695,9 @@ var computeDoneSummary = function(state2) {
       return state2.startedAt;
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 498, column 22 - line 500, column 35): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 499, column 22 - line 501, column 35): " + [v.constructor.name]);
   })();
-  return function __do3() {
+  return function __do2() {
     var totalStart = isoToEpoch(firstStarted)();
     var totalEnd = isoToEpoch(lastCompleted)();
     var timedResults = traverse13(timedStep)(state2.steps)();
@@ -6633,26 +6705,26 @@ var computeDoneSummary = function(state2) {
       return bind13(totalEnd)(function(completed) {
         return bind13(traverse23(identity5)(timedResults))(function(timed) {
           var totalDuration = max3(0)(completed - started | 0);
-          var skipped = map10(function($330) {
+          var skipped = map11(function($331) {
             return skippedName((function(v) {
               return v.step;
-            })($330));
+            })($331));
           })(filter(function(item) {
             return eq12(item.step.status)(StepSkipped.value);
           })(timed));
           var nonSkipped = filter(function(item) {
             return notEq3(item.step.status)(StepSkipped.value);
           })(timed);
-          var failed = map10(function($331) {
+          var failed = map11(function($332) {
             return (function(v) {
               return v.name;
             })((function(v) {
               return v.step;
-            })($331));
+            })($332));
           })(filter(function(item) {
             return eq12(item.step.status)(StepFailed.value);
           })(timed));
-          var durations = map10(function(item) {
+          var durations = map11(function(item) {
             return new Tuple(item.step, item.seconds);
           })(nonSkipped);
           var slowest = slowestStep(durations);
@@ -6672,11 +6744,11 @@ var computeDoneSummary = function(state2) {
 };
 var runDoneOp = function(context) {
   return function(v) {
-    return function __do3() {
+    return function __do2() {
       var loaded = loadState(context)();
       if (loaded instanceof Left) {
-        var $271 = loaded.value0 === "do-results: .do-results.json not found";
-        if ($271) {
+        var $272 = loaded.value0 === "do-results: .do-results.json not found";
+        if ($272) {
           return failText("done: .do-results.json not found \u2014 cannot produce summary");
         }
         ;
@@ -6693,10 +6765,10 @@ var runDoneOp = function(context) {
           return withStdout(renderDoneMarkdown(summary.value0) + renderFacts(summary.value0));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 475, column 7 - line 477, column 97): " + [summary.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 476, column 7 - line 478, column 97): " + [summary.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 471, column 3 - line 477, column 97): " + [loaded.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 472, column 3 - line 478, column 97): " + [loaded.constructor.name]);
     };
   };
 };
@@ -6711,7 +6783,7 @@ var recordPhase = function(context) {
   return function(v) {
     return function(startedAt) {
       return function(resolved) {
-        return function __do3() {
+        return function __do2() {
           var completed = nowIso();
           var step = {
             name: "sync",
@@ -6722,6 +6794,7 @@ var recordPhase = function(context) {
             reason: Nothing.value
           };
           var contextWithBase = {
+            captureOutput: context.captureOutput,
             forge: context.forge,
             forgeOverride: context.forgeOverride,
             stateDir: context.stateDir,
@@ -6739,30 +6812,30 @@ var recordPhase = function(context) {
 var runDriverOp = function(context) {
   return function(operation) {
     if (operation instanceof DriverInit) {
-      return function __do3() {
+      return function __do2() {
         var timestamp = nowIso();
         var base = initState(timestamp);
         var initialized = bind13(setField("noVcs")(id(operation.value0.noVcs))(base))(function(withNoVcs) {
           return bind13(setField("review")(id(operation.value0.review))(withNoVcs))(function(withReview) {
             return bind13(setField("minimal")(id(operation.value0.minimal))(withReview))(function(withMinimal) {
               return bind13((function() {
-                var $284 = vcsName(context.vcs) === "unknown";
-                if ($284) {
+                var $285 = vcsName(context.vcs) === "unknown";
+                if ($285) {
                   return new Right(withMinimal);
                 }
                 ;
                 return setField("vcs")(id(vcsName(context.vcs)))(withMinimal);
               })())(function(withVcs) {
                 return bind13((function() {
-                  var $285 = operation.value0.from === "";
-                  if ($285) {
+                  var $286 = operation.value0.from === "";
+                  if ($286) {
                     return new Right(withVcs);
                   }
                   ;
                   return setField("from")(id(operation.value0.from))(withVcs);
                 })())(function(withFrom) {
-                  var $286 = operation.value0.task === "";
-                  if ($286) {
+                  var $287 = operation.value0.task === "";
+                  if ($287) {
                     return new Right(withFrom);
                   }
                   ;
@@ -6779,8 +6852,8 @@ var runDriverOp = function(context) {
         if (initialized instanceof Right) {
           writeState(statePath(context))(initialized.value0)();
           var fromText = (function() {
-            var $289 = operation.value0.from === "";
-            if ($289) {
+            var $290 = operation.value0.from === "";
+            if ($290) {
               return "default";
             }
             ;
@@ -6789,7 +6862,7 @@ var runDriverOp = function(context) {
           return withStdout("init: review=" + (boolText(operation.value0.review) + (" noVcs=" + (boolText(operation.value0.noVcs) + (" minimal=" + (boolText(operation.value0.minimal) + (" from=" + (fromText + (" vcs=" + (vcsName(context.vcs) + "\n"))))))))));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 308, column 5 - line 313, column 231): " + [initialized.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 309, column 5 - line 314, column 231): " + [initialized.constructor.name]);
       };
     }
     ;
@@ -6802,10 +6875,10 @@ var runDriverOp = function(context) {
     }
     ;
     if (operation instanceof DriverSkip) {
-      return function __do3() {
+      return function __do2() {
         var started = runResultsOp(context)(new ResultsStepStart(operation.value0))();
-        var $296 = started.exit !== 0;
-        if ($296) {
+        var $297 = started.exit !== 0;
+        if ($297) {
           return started;
         }
         ;
@@ -6822,17 +6895,17 @@ var runDriverOp = function(context) {
       return runDoneOp(context)(Done2.value);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 297, column 33 - line 323, column 42): " + [operation.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 298, column 33 - line 324, column 42): " + [operation.constructor.name]);
   };
 };
 var basePhase = function(context) {
   return function(operation) {
     return function(state1) {
-      return function __do3() {
+      return function __do2() {
         var branchResult = headRevisionValue(context)();
         var defaultRef = defaultBranchValue(context)();
-        var $301 = branchResult.code !== 0;
-        if ($301) {
+        var $302 = branchResult.code !== 0;
+        if ($302) {
           return new Left(vcsValueOutcome(branchResult));
         }
         ;
@@ -6856,17 +6929,17 @@ var basePhase = function(context) {
             });
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 408, column 21 - line 410, column 95): " + [v.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 409, column 21 - line 411, column 95): " + [v.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 406, column 5 - line 410, column 95): " + [baseResult.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 407, column 5 - line 411, column 95): " + [baseResult.constructor.name]);
       };
     };
   };
 };
 var runSyncOp = function(context) {
   return function(v) {
-    return function __do3() {
+    return function __do2() {
       var startedAt = nowIso();
       var fetched = fetchPhase(context)(v.value0.noVcs)();
       if (fetched instanceof Left) {
@@ -6908,20 +6981,20 @@ var runSyncOp = function(context) {
             return append2(append2(phaseOutput(fetched.value0))(dirtyWarning))(protocol);
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 345, column 15 - line 355, column 100): " + [resolved.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 346, column 15 - line 356, column 100): " + [resolved.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 341, column 11 - line 355, column 100): " + [resolvedContext.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 342, column 11 - line 356, column 100): " + [resolvedContext.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 333, column 3 - line 355, column 100): " + [fetched.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 334, column 3 - line 356, column 100): " + [fetched.constructor.name]);
     };
   };
 };
 
 // output/Agency.Scripts.Do.Cli/index.js
 var renderOutcome = function(outcome) {
-  return function __do3() {
+  return function __do2() {
     (function() {
       if (outcome.output instanceof Passthrough) {
         return unit;
@@ -6968,8 +7041,8 @@ var renderOutcome = function(outcome) {
 };
 var runWithContext = function(runner) {
   return function(operation) {
-    return function __do3() {
-      var resolved = resolveWorkflowContext();
+    return function __do2() {
+      var resolved = resolveWorkflowContext(false)();
       if (resolved instanceof Left) {
         stderrWrite(resolved.value0 + "\n")();
         return 1;
@@ -6987,7 +7060,7 @@ var runWithContext = function(runner) {
 var runParsed = function(parsed) {
   return function(runner) {
     if (parsed instanceof Left) {
-      return function __do3() {
+      return function __do2() {
         stderrWrite(parsed.value0.message + "\n")();
         return parsed.value0.code;
       };
@@ -7003,7 +7076,7 @@ var runParsed = function(parsed) {
 var dispatchVcs = function(args) {
   var v = parseVcsOp(args);
   if (v instanceof Left) {
-    return function __do3() {
+    return function __do2() {
       stderrWrite(v.value0 + "\n")();
       return 1;
     };
@@ -7027,7 +7100,7 @@ var dispatchNickel = function(args) {
 var dispatchForge = function(args) {
   var v = parseForgeOp(args);
   if (v instanceof Left) {
-    return function __do3() {
+    return function __do2() {
       stderrWrite(v.value0 + "\n")();
       return 1;
     };
@@ -7048,7 +7121,7 @@ var dispatchDone = function(args) {
 var dispatch = function(args) {
   var v = uncons(args);
   if (v instanceof Nothing) {
-    return function __do3() {
+    return function __do2() {
       stderrWrite("agency-do: no script given\nAvailable: vcs-op, forge-op, do-results, do-driver, sync, done, nickel-cli\n")();
       return 1;
     };
@@ -7083,7 +7156,7 @@ var dispatch = function(args) {
       return dispatchNickel(v.value0.tail);
     }
     ;
-    return function __do3() {
+    return function __do2() {
       stderrWrite("agency-do: unknown script '" + (v.value0.head + "'\nAvailable: vcs-op, forge-op, do-results, do-driver, sync, done, nickel-cli\n"))();
       return 1;
     };
@@ -7091,7 +7164,7 @@ var dispatch = function(args) {
   ;
   throw new Error("Failed pattern match at Agency.Scripts.Do.Cli (line 20, column 17 - line 34, column 13): " + [v.constructor.name]);
 };
-var main = function __do2() {
+var main = function __do() {
   var args = argv2();
   var code2 = dispatch(args)();
   var $34 = code2 === 0;

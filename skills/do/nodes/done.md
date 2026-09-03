@@ -32,18 +32,18 @@ A `failed` step always blocks `"completed"`.
 
 #### Timing summary
 
-Call `bash scripts/do-driver summary`. It delegates to `bash scripts/steps/done` and emits:
+Call the `agency_driver` tool with `{ op: "summary", args: [] }`. It emits:
 
 1. A markdown timing table (step, status, duration, verification), with any step that took ≥30% of total time shown in **bold**.
 2. A total wall-clock line.
 3. A `**Slowest step**:` line.
 4. A `<<<FACTS ... FACTS` block with machine-readable summary data.
 
-Do not compute durations yourself — the script handles all timestamp arithmetic.
+Do not compute durations yourself — the `agency_driver` tool handles all timestamp arithmetic.
 
 #### Optimization suggestions
 
-Read the `FACTS` block the `done` script emitted and generate **2–4 concrete suggestions** for reducing time-to-completion in future runs. Base these on the actual timing data — for example:
+Read the `FACTS` block the `agency_driver` summary operation emitted and generate **2–4 concrete suggestions** for reducing time-to-completion in future runs. Base these on the actual timing data — for example:
 
 - If **ci** dominates: suggest `--from ci-only` for re-runs.
 - If **research** was slow: suggest pre-reading relevant code before invoking `/do`.
@@ -55,16 +55,17 @@ Be specific to this run's data, not generic advice.
 
 #### PR comment & wrap-up
 
-**If `--no-vcs`**: Print the timing table and optimization suggestions to the terminal only. List files modified in the working tree (`bash scripts/vcs-op dirty`). Remind the user that changes are uncommitted.
+**If `--no-vcs`**: Print the timing table and optimization suggestions to the terminal only. List files modified in the working tree (call the `vcs_read` tool with `{ args: ["dirty"] }`). Remind the user that changes are uncommitted.
 
-**If `!supportsPrComment`** (read from state): Report the branch name (and remote URL via `bash scripts/vcs-op remote-url`). Print timing table and suggestions to the terminal only.
+**If `!supportsPrComment`** (read from state): Report the branch name (and remote URL via the `vcs_read` tool with `{ args: ["remote-url"] }`). Print timing table and suggestions to the terminal only.
 
-**If `supportsPrComment`**: Report the PR URL. Then post the final step status table as a **PR comment** using
-`bash scripts/forge-op pr-comment --body-file -`. Use the markdown table and slowest-step line emitted by `bash scripts/do-driver summary` verbatim
+**If `supportsPrComment`**: Report the PR URL. Then post the final step status table as a **PR comment** by calling the
+`forge` tool with `{ op: "pr-comment", args: [], body: "<comment>" }`. Use the markdown table and slowest-step line emitted by the
+`agency_driver` summary operation verbatim
 (strip the trailing `<<<FACTS ... FACTS` block — that's internal). Format:
 
-```sh
-bash scripts/forge-op pr-comment --body-file - <<'COMMENT'
+```text
+call the `forge` tool with `{ op: "pr-comment", args: [], body: """`
 ## [`/do`](https://github.com/srid/agency) results
 
 | Step | Status | Duration | Verification |
@@ -79,5 +80,5 @@ bash scripts/forge-op pr-comment --body-file - <<'COMMENT'
 - <2–4 concrete suggestions based on timing data>
 
 Workflow completed at <timestamp>.
-COMMENT
+""" }`
 ```

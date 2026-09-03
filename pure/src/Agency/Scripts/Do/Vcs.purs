@@ -20,6 +20,7 @@ module Agency.Scripts.Do.Vcs
 import Prelude
 
 import Agency.Scripts.Do.Args as Args
+import Agency.Scripts.Do.Binaries as Binaries
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Sys as Sys
@@ -172,8 +173,8 @@ runVcsOp context operation = case operation of
   RemoteUrl -> renderValue <$> remoteUrlResult context
   HeadRevision -> renderValue <$> headRevisionValue context
   HeadCommitSha -> case context.vcs of
-    Git -> capturedCommand "git" [ "rev-parse", "HEAD" ] context
-    Jj -> capturedCommand "jj" [ "log", "--revision", "@-", "--no-graph", "--template", "commit_id" ] context
+    Git -> capturedCommand Binaries.git [ "rev-parse", "HEAD" ] context
+    Jj -> capturedCommand Binaries.jj [ "log", "--revision", "@-", "--no-graph", "--template", "commit_id" ] context
     Unknown -> pure noVcsOutcome
   DefaultBranch -> do
     value <- defaultBranchValue context
@@ -198,14 +199,14 @@ runVcsOp context operation = case operation of
 -- | can decide what (if anything) belongs in its own protocol.
 fetchValue :: WorkflowContext -> Effect Outcome.OpOutcome
 fetchValue context = case context.vcs of
-  Git -> capturedCommand "git" [ "fetch", "origin" ] context
-  Jj -> capturedCommand "jj" [ "git", "fetch" ] context
+  Git -> capturedCommand Binaries.git [ "fetch", "origin" ] context
+  Jj -> capturedCommand Binaries.jj [ "git", "fetch" ] context
   Unknown -> pure (noVcsOutcome)
 
 -- | Refresh the default remote branch using the same strategy as the CLI.
 refreshDefaultBranchValue :: WorkflowContext -> Effect Outcome.OpOutcome
 refreshDefaultBranchValue context = case context.vcs of
-  Git -> capturedCommand "git" [ "remote", "set-head", "origin", "--auto" ] context
+  Git -> capturedCommand Binaries.git [ "remote", "set-head", "origin", "--auto" ] context
   Jj -> pure Outcome.success
   Unknown -> pure Outcome.success
 
@@ -214,19 +215,19 @@ fastForwardIfSafe context = case context.vcs of
   Jj -> pure Outcome.success
   Unknown -> pure Outcome.success
   Git -> do
-    upstream <- Sys.exec "git" [ "rev-parse", "--abbrev-ref", "@{u}" ]
+    upstream <- Sys.exec Binaries.git [ "rev-parse", "--abbrev-ref", "@{u}" ]
     if upstream.code /= 0 then
       if noUpstream upstream then pure Outcome.success else pure (Outcome.captured upstream)
     else do
       let upstreamName = trim upstream.stdout
       if upstreamName == "" then pure Outcome.success
       else do
-        behind <- Sys.exec "git" [ "rev-list", "--count", "HEAD.." <> upstreamName ]
-        ahead <- Sys.exec "git" [ "rev-list", "--count", upstreamName <> "..HEAD" ]
+        behind <- Sys.exec Binaries.git [ "rev-list", "--count", "HEAD.." <> upstreamName ]
+        ahead <- Sys.exec Binaries.git [ "rev-list", "--count", upstreamName <> "..HEAD" ]
         let behindCount = fromMaybe 0 (fromString (trim behind.stdout))
             aheadCount = fromMaybe 0 (fromString (trim ahead.stdout))
         if behind.code == 0 && ahead.code == 0 && behindCount > 0 && aheadCount == 0 then
-          capturedCommand "git" [ "pull", "--ff-only" ] context
+          capturedCommand Binaries.git [ "pull", "--ff-only" ] context
         else pure Outcome.success
 
 noUpstream :: Sys.ExecResult -> Boolean
@@ -258,10 +259,10 @@ remoteUrlValue context = do
 remoteUrlResult :: WorkflowContext -> Effect VcsValue
 remoteUrlResult context = case context.vcs of
   Git -> do
-    result <- Sys.exec "git" [ "remote", "get-url", "origin" ]
+    result <- Sys.exec Binaries.git [ "remote", "get-url", "origin" ]
     pure (valueResult result (trim result.stdout))
   Jj -> do
-    result <- Sys.exec "jj" [ "git", "remote", "list" ]
+    result <- Sys.exec Binaries.jj [ "git", "remote", "list" ]
     if result.code /= 0 then pure (valueResult result "")
     else pure (valueResult result (jjRemote result.stdout))
   Unknown -> pure { code: 1, value: "", stdout: "", stderr: "vcs-op: no VCS detected\n" }
@@ -270,15 +271,15 @@ remoteUrlResult context = case context.vcs of
 headRevisionValue :: WorkflowContext -> Effect VcsValue
 headRevisionValue context = case context.vcs of
   Git -> do
-    result <- Sys.exec "git" [ "rev-parse", "--abbrev-ref", "HEAD" ]
+    result <- Sys.exec Binaries.git [ "rev-parse", "--abbrev-ref", "HEAD" ]
     pure (valueResult result (trim result.stdout))
   Jj -> do
-    bookmark <- Sys.exec "jj" [ "bookmark", "list", "--revision", "@", "--template", "name ++ \"\\n\"" ]
+    bookmark <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", "@", "--template", "name ++ \"\\n\"" ]
     let name = firstLine bookmark.stdout
     if bookmark.code /= 0 then pure (valueResult bookmark "")
     else if name /= "" then pure (valueResult bookmark name)
     else do
-      fallback <- Sys.exec "jj" [ "log", "--revision", "@", "--no-graph", "--template", "change_id" ]
+      fallback <- Sys.exec Binaries.jj [ "log", "--revision", "@", "--no-graph", "--template", "change_id" ]
       pure (valueResult fallback (firstLine fallback.stdout))
   Unknown -> pure { code: 1, value: "", stdout: "", stderr: "vcs-op: no VCS detected\n" }
 
@@ -287,10 +288,10 @@ headRevisionValue context = case context.vcs of
 defaultBranchValue :: WorkflowContext -> Effect String
 defaultBranchValue context = case context.vcs of
   Git -> do
-    result <- Sys.exec "git" [ "symbolic-ref", "--short", "refs/remotes/origin/HEAD" ]
+    result <- Sys.exec Binaries.git [ "symbolic-ref", "--short", "refs/remotes/origin/HEAD" ]
     pure (if result.code == 0 && firstLine result.stdout /= "" then stripOrigin (firstLine result.stdout) else "master")
   Jj -> do
-    result <- Sys.exec "jj" [ "bookmark", "list", "--remote", "origin", "--template", "name ++ \"\\n\"" ]
+    result <- Sys.exec Binaries.jj [ "bookmark", "list", "--remote", "origin", "--template", "name ++ \"\\n\"" ]
     if result.code /= 0 then pure "master"
     else pure (fromMaybe "master" (Array.find (\line -> Args.startsWith "main" line || Args.startsWith "master" line) (map trim (split (Pattern "\n") result.stdout))))
   Unknown -> pure "master"
@@ -299,15 +300,15 @@ defaultBranchValue context = case context.vcs of
 currentBranchValue :: WorkflowContext -> Effect VcsValue
 currentBranchValue context = case context.vcs of
   Git -> do
-    result <- Sys.exec "git" [ "rev-parse", "--abbrev-ref", "HEAD" ]
+    result <- Sys.exec Binaries.git [ "rev-parse", "--abbrev-ref", "HEAD" ]
     pure (valueResult result (trim result.stdout))
   Jj -> do
-    at <- Sys.exec "jj" [ "bookmark", "list", "--revision", "@", "--template", "name ++ \"\\n\"" ]
+    at <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", "@", "--template", "name ++ \"\\n\"" ]
     let atName = firstLine at.stdout
     if at.code /= 0 then pure (valueResult at "")
     else if atName /= "" then pure (valueResult at atName)
     else do
-      parent <- Sys.exec "jj" [ "bookmark", "list", "--revision", "@-", "--template", "name ++ \"\\n\"" ]
+      parent <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", "@-", "--template", "name ++ \"\\n\"" ]
       pure (valueResult parent (firstLine parent.stdout))
   -- Unknown is a valid empty query result for --stack: there is no branch
   -- to stack onto, and the caller emits its existing guidance.
@@ -318,13 +319,13 @@ currentBranchValue context = case context.vcs of
 inspectDirty :: WorkflowContext -> Effect DirtyState
 inspectDirty context = case context.vcs of
   Git -> do
-    result <- Sys.exec "git" [ "status", "--porcelain" ]
+    result <- Sys.exec Binaries.git [ "status", "--porcelain" ]
     if result.code /= 0 then
       pure (InspectionFailed
         (if result.stderr == "" then failureLine "vcs-op: unable to inspect git working copy" else Outcome.captured result))
     else if trim result.stdout /= "" then pure DirtyDetected else pure Clean
   Jj -> do
-    result <- Sys.exec "jj" [ "diff", "--revisions", "@", "--summary" ]
+    result <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--summary" ]
     if result.code /= 0 then pure (InspectionFailed (failureLine "vcs-op: unable to inspect jj working copy"))
     else if trim result.stdout /= "" then pure DirtyDetected else pure Clean
   Unknown -> pure Clean
@@ -341,49 +342,49 @@ diffRange :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 diffRange context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand "git" ([ "diff", "origin/" <> value <> "...HEAD", "--" ] <> paths)
+    Git -> passthroughCommand context Binaries.git ([ "diff", "origin/" <> value <> "...HEAD", "--" ] <> paths)
     Jj -> do
       source <- jjRangeFrom value
       case source of
         Left outcome -> pure outcome
-        Right from -> passthroughCommand "jj" ([ "diff", "--from", from, "--to", "@", "--" ] <> paths)
+        Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--" ] <> paths)
     Unknown -> pure noVcsOutcome
 
 diffNames :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 diffNames context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand "git" ([ "diff", "origin/" <> value <> "...HEAD", "--name-only", "--" ] <> paths)
+    Git -> passthroughCommand context Binaries.git ([ "diff", "origin/" <> value <> "...HEAD", "--name-only", "--" ] <> paths)
     Jj -> do
       source <- jjRangeFrom value
       case source of
         Left outcome -> pure outcome
-        Right from -> passthroughCommand "jj" ([ "diff", "--from", from, "--to", "@", "--name-only", "--" ] <> paths)
+        Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--name-only", "--" ] <> paths)
     Unknown -> pure noVcsOutcome
 
 diffStat :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 diffStat context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand "git" ([ "diff", "origin/" <> value <> "...HEAD", "--shortstat", "--" ] <> paths)
+    Git -> passthroughCommand context Binaries.git ([ "diff", "origin/" <> value <> "...HEAD", "--shortstat", "--" ] <> paths)
     Jj -> do
       source <- jjRangeFrom value
       case source of
         Left outcome -> pure outcome
-        Right from -> passthroughCommand "jj" ([ "diff", "--from", from, "--to", "@", "--summary", "--" ] <> paths)
+        Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--summary", "--" ] <> paths)
     Unknown -> pure noVcsOutcome
 
 newFiles :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 newFiles context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand "git" ([ "diff", "--diff-filter=A", "--name-only", "origin/" <> value <> "...HEAD", "--" ] <> paths)
+    Git -> passthroughCommand context Binaries.git ([ "diff", "--diff-filter=A", "--name-only", "origin/" <> value <> "...HEAD", "--" ] <> paths)
     Jj -> do
       source <- jjRangeFrom value
       case source of
         Left outcome -> pure outcome
         Right from -> do
-          result <- Sys.exec "jj" ([ "diff", "--from", from, "--to", "@", "--summary", "--" ] <> paths)
+          result <- Sys.exec Binaries.jj ([ "diff", "--from", from, "--to", "@", "--summary", "--" ] <> paths)
           if result.code /= 0 then pure (Outcome.captured result)
           else
             let added = Array.mapMaybe addedName (split (Pattern "\n") result.stdout)
@@ -398,25 +399,25 @@ logRange :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 logRange context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand "git" ([ "log", "origin/" <> value <> "..HEAD", "--oneline", "--" ] <> paths)
+    Git -> passthroughCommand context Binaries.git ([ "log", "origin/" <> value <> "..HEAD", "--oneline", "--" ] <> paths)
     Jj -> do
-      probe <- Sys.exec "jj" [ "diff", "--revisions", "@", "--summary" ]
+      probe <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--summary" ]
       if probe.code /= 0 then pure (failureLine "vcs-op: unable to inspect jj working copy for log-range")
       else do
         let target = if trim probe.stdout /= "" then "@" else "@-"
-        passthroughCommand "jj" [ "log", "--revision", value <> ".." <> target, "--no-graph", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"" ]
+        passthroughCommand context Binaries.jj [ "log", "--revision", value <> ".." <> target, "--no-graph", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"" ]
     Unknown -> pure noVcsOutcome
 
 logHead :: WorkflowContext -> Effect Outcome.OpOutcome
 logHead context = case context.vcs of
-  Git -> passthroughCommand "git" [ "log", "--max-count=1", "--oneline" ]
-  Jj -> passthroughCommand "jj" [ "log", "--revision", "@-", "--no-graph", "--limit", "1", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"" ]
+  Git -> passthroughCommand context Binaries.git [ "log", "--max-count=1", "--oneline" ]
+  Jj -> passthroughCommand context Binaries.jj [ "log", "--revision", "@-", "--no-graph", "--limit", "1", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"" ]
   Unknown -> pure noVcsOutcome
 
 jjRangeFrom :: String -> Effect (Either Outcome.OpOutcome String)
 jjRangeFrom base = do
   let revset = "heads(ancestors(@) & ancestors(" <> base <> "))"
-  result <- Sys.exec "jj" [ "log", "--revision", revset, "--no-graph", "--template", "change_id" ]
+  result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "change_id" ]
   if result.code /= 0 then pure (Left (failureLine ("vcs-op: unable to resolve merge-base for base '" <> base <> "'")))
   else pure (Right (if trim result.stdout == "" then base else trim result.stdout))
 
@@ -425,12 +426,12 @@ branch context name = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
     Git -> do
-      verify <- Sys.exec "git" [ "rev-parse", "--verify", "refs/remotes/origin/" <> value ]
+      verify <- Sys.exec Binaries.git [ "rev-parse", "--verify", "refs/remotes/origin/" <> value ]
       if verify.code /= 0 then pure (failureLine ("vcs-op branch: origin/" <> value <> " not found. Push the parent branch before stacking."))
-      else passthroughCommand "git" [ "branch", name, "origin/" <> value ]
+      else passthroughCommand context Binaries.git [ "branch", name, "origin/" <> value ]
     Jj -> do
-      first <- passthroughCommand "jj" [ "new", value ]
-      if first.exit == 0 then passthroughCommand "jj" [ "bookmark", "create", name, "--revision", "@" ] else pure first
+      first <- passthroughCommand context Binaries.jj [ "new", value ]
+      if first.exit == 0 then passthroughCommand context Binaries.jj [ "bookmark", "create", name, "--revision", "@" ] else pure first
     Unknown -> pure noVcsOutcome
 
 commit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
@@ -442,17 +443,17 @@ commit context message files =
       Left error -> pure (Outcome.failure 1 (error <> "\n"))
       Right _ -> case context.vcs of
         Git -> do
-          added <- passthroughCommand "git" ([ "add", "--" ] <> files)
-          if added.exit == 0 then passthroughCommand "git" [ "commit", "--message", message ] else pure added
-        Jj -> jjCommit message files
+          added <- passthroughCommand context Binaries.git ([ "add", "--" ] <> files)
+          if added.exit == 0 then passthroughCommand context Binaries.git [ "commit", "--message", message ] else pure added
+        Jj -> jjCommit context message files
         Unknown -> pure noVcsOutcome
 
 validateDirty :: VcsKind -> Array String -> Effect (Either String Unit)
 validateDirty vcs files = do
   bad <- Array.filterA (\file -> do
     result <- case vcs of
-      Git -> Sys.exec "git" [ "status", "--porcelain", "--", file ]
-      Jj -> Sys.exec "jj" [ "diff", "--name-only", "--", file ]
+      Git -> Sys.exec Binaries.git [ "status", "--porcelain", "--", file ]
+      Jj -> Sys.exec Binaries.jj [ "diff", "--name-only", "--", file ]
       Unknown -> pure { code: 1, stdout: "", stderr: "" }
     pure (result.code /= 0 || trim result.stdout == "")) files
   if Array.null bad then pure (Right unit)
@@ -461,9 +462,9 @@ validateDirty vcs files = do
     , "        The caller must pass files it actually changed."
     ]))
 
-jjCommit :: String -> Array String -> Effect Outcome.OpOutcome
-jjCommit message files = do
-  allResult <- Sys.exec "jj" [ "diff", "--name-only" ]
+jjCommit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
+jjCommit context message files = do
+  allResult <- Sys.exec Binaries.jj [ "diff", "--name-only" ]
   if allResult.code /= 0 then pure (Outcome.captured allResult)
   else do
     canonicalResults <- traverse canonicalFiles files
@@ -473,41 +474,41 @@ jjCommit message files = do
         let canonical = Array.concat canonicalGroups
             allChanged = lines allResult.stdout
             unrelated = Array.filter (\changed -> not (Array.any (\file -> file == changed) canonical)) allChanged
-        in if Array.null unrelated then describeAndMove message
+        in if Array.null unrelated then describeAndMove context message
         else do
           -- Split flow: describe @ as the feature change, split unrelated
           -- files into a separate revision, rebase that revision above @,
           -- move the working bookmark to @, then create a fresh @ on top.
-          described <- passthroughCommand "jj" [ "describe", "--message", message ]
+          described <- passthroughCommand context Binaries.jj [ "describe", "--message", message ]
           if described.exit /= 0 then pure described
           else do
-            splitCode <- passthroughCommand "jj" ([ "split" ] <> unrelated <> [ "--message", "chore: unrelated changes" ])
+            splitCode <- passthroughCommand context Binaries.jj ([ "split" ] <> unrelated <> [ "--message", "chore: unrelated changes" ])
             if splitCode.exit /= 0 then pure splitCode
             else do
-              rebase <- passthroughCommand "jj" [ "rebase", "--revision", "@-", "--insert-after", "@" ]
+              rebase <- passthroughCommand context Binaries.jj [ "rebase", "--revision", "@-", "--insert-after", "@" ]
               if rebase.exit /= 0 then pure rebase
               else do
                 bookmarkResult <- moveBookmarkToWorkingChange
                 case bookmarkResult of
                   Left outcome -> pure outcome
                   Right bookmark -> case bookmark of
-                    Nothing -> passthroughCommand "jj" [ "new" ]
-                    Just name -> passthroughCommand "jj" [ "new", name ]
+                    Nothing -> passthroughCommand context Binaries.jj [ "new" ]
+                    Just name -> passthroughCommand context Binaries.jj [ "new", name ]
   where
   lines value = Array.filter (_ /= "") (map trim (split (Pattern "\n") value))
   canonicalFiles file = do
-    result <- Sys.exec "jj" [ "diff", "--name-only", "--", file ]
+    result <- Sys.exec Binaries.jj [ "diff", "--name-only", "--", file ]
     pure if result.code /= 0 then Left (Outcome.captured result) else Right (lines result.stdout)
 
 -- | Describe the feature revision, create the empty working change, then
 -- | relocate the first bookmark found on the parent chain to the described
 -- | revision. Lookup failures are hard errors; a move itself is best effort.
-describeAndMove :: String -> Effect Outcome.OpOutcome
-describeAndMove message = do
-  described <- passthroughCommand "jj" [ "describe", "--message", message ]
+describeAndMove :: WorkflowContext -> String -> Effect Outcome.OpOutcome
+describeAndMove context message = do
+  described <- passthroughCommand context Binaries.jj [ "describe", "--message", message ]
   if described.exit /= 0 then pure described
   else do
-    newCode <- passthroughCommand "jj" [ "new" ]
+    newCode <- passthroughCommand context Binaries.jj [ "new" ]
     if newCode.exit /= 0 then pure newCode
     else do
       moved <- moveBookmarkToDescribedChange
@@ -549,14 +550,14 @@ moveBookmarkToWorkingChange = walk 20 "@-"
 
 bookmarkAt :: String -> Effect (Either Outcome.OpOutcome (Maybe String))
 bookmarkAt revision = do
-  result <- Sys.exec "jj" [ "bookmark", "list", "--revision", revision, "--template", "name ++ \"\\n\"" ]
+  result <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", revision, "--template", "name ++ \"\\n\"" ]
   if result.code /= 0 then
     pure (Left (if result.stderr == "" then failureLine ("vcs-op: unable to inspect bookmark at '" <> revision <> "'") else Outcome.captured result))
   else pure (Right (Args.nonEmpty (firstLine result.stdout)))
 
 bestEffortBookmarkMove :: String -> String -> Effect Unit
 bestEffortBookmarkMove name target = do
-  result <- Sys.execInherit "jj" [ "bookmark", "move", name, "--to", target ]
+  result <- Sys.execInherit Binaries.jj [ "bookmark", "move", name, "--to", target ]
   case result.error of
     Just error -> Sys.stderrWrite ("vcs-op: jj failed to spawn: " <> error <> "\n")
     Nothing -> pure unit
@@ -566,11 +567,11 @@ bestEffortBookmarkMove name target = do
 push :: WorkflowContext -> Maybe String -> Effect Outcome.OpOutcome
 push context ref = case context.vcs of
   Git -> case ref of
-    Just value -> passthroughCommand "git" [ "push", "--set-upstream", "origin", value ]
-    Nothing -> passthroughCommand "git" [ "push" ]
+    Just value -> passthroughCommand context Binaries.git [ "push", "--set-upstream", "origin", value ]
+    Nothing -> passthroughCommand context Binaries.git [ "push" ]
   Jj -> case ref of
-    Just value -> passthroughCommand "jj" [ "git", "push", "--bookmark", value ]
-    Nothing -> passthroughCommand "jj" [ "git", "push" ]
+    Just value -> passthroughCommand context Binaries.jj [ "git", "push", "--bookmark", value ]
+    Nothing -> passthroughCommand context Binaries.jj [ "git", "push" ]
   Unknown -> pure noVcsOutcome
 
 fixCommit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
@@ -578,8 +579,8 @@ fixCommit context message files = do
   committed <- commit context message files
   if committed.exit /= 0 then pure committed
   else case context.vcs of
-    Git -> passthroughCommand "git" [ "push" ]
-    Jj -> passthroughCommand "jj" [ "git", "push" ]
+    Git -> passthroughCommand context Binaries.git [ "push" ]
+    Jj -> passthroughCommand context Binaries.jj [ "git", "push" ]
     Unknown -> pure noVcsOutcome
 
 valueResult :: Sys.ExecResult -> String -> VcsValue
@@ -608,13 +609,15 @@ renderValue result =
 capturedCommand :: String -> Array String -> WorkflowContext -> Effect Outcome.OpOutcome
 capturedCommand command args _ = Outcome.captured <$> Sys.exec command args
 
-passthroughCommand :: String -> Array String -> Effect Outcome.OpOutcome
-passthroughCommand command args = do
-  result <- Sys.execInherit command args
-  case result.error of
-    Just error -> pure (Outcome.failure 1 ("vcs-op: " <> command <> " failed to spawn: " <> error <> "\n"))
-    Nothing -> pure (Outcome.passthrough result.code)
-
+passthroughCommand :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
+passthroughCommand context command args =
+  if context.captureOutput then
+    Outcome.captured <$> Sys.exec command args
+  else do
+    result <- Sys.execInherit command args
+    case result.error of
+      Just error -> pure (Outcome.failure 1 ("vcs-op: " <> command <> " failed to spawn: " <> error <> "\n"))
+      Nothing -> pure (Outcome.passthrough result.code)
 joinWithSpace :: Array String -> String
 joinWithSpace values = joinWith " " values
 noVcsOutcome :: Outcome.OpOutcome

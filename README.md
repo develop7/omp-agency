@@ -158,13 +158,15 @@ just ci        # full CI: tests + lint
 
 Testing requires [bats-core](https://github.com/bats-core/bats-core): `sudo apt-get install bats`, `brew install bats-core`, or `nix profile install nixpkgs#bats`.
 
-The `/do` script surface (`vcs-op`, `forge-op`, `do-results`, `do-driver`, `sync`, `done`, `nickel-cli`) is implemented in PureScript under `pure/` — one Node bundle, `pure/dist/agency-do.js`, dispatches on the script name. Bats tests drive that bundle. See `pure/README.md` for the module map and these recipes:
+The `/do` operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and `agency_driver`) is implemented in PureScript under `pure/`. The CLI bundle, `pure/dist/agency-do.js`, remains the black-box test entrypoint; the OMP adapter lazily loads `pure/dist/agency-api.js`. See `pure/README.md` for the module map and these recipes:
 
 ```bash
 (cd pure && spago build)      # compile the PureScript core
 (cd pure && spago test)       # PureScript unit tests
 (cd pure && spago bundle --module Agency.Scripts.Do.Cli \
-  --outfile dist/agency-do.js --force --platform node)   # rebuild the bundle
+  --outfile dist/agency-do.js --force --platform node)   # rebuild the CLI bundle
+(cd pure && spago bundle --module Agency.Scripts.Do.Api \
+  --outfile dist/agency-api.js --force --platform node --bundle-type=module)   # rebuild the tool API bundle
 ```
 
 Requires `purs` (0.15.x) and `spago` for development; consumers only need `node`.

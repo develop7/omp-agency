@@ -9,7 +9,7 @@ description: Parallel structural review with hickey and lowy sub-agents.
 
 - `--minimal` flag
 - `--no-vcs` flag
-- Diff `bash scripts/vcs-op diff-range`
+- Diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
 - Full task prompt + research context
 
 ## Ensures
@@ -45,8 +45,8 @@ in that response.
 Each prompt must be self-contained. Brief each one with:
 
 - The full task prompt plus anything relevant that **research** uncovered
-- Scope: the actual diff, `bash scripts/vcs-op diff-range`
-- **Duplication-audit hint**, when the diff adds new files — check with `bash scripts/vcs-op new-files` and
+- Scope: the actual diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
+- **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using `{ args: ["new-files"] }` and
   only include the hint if the output is non-empty
 
 **Do not seed structural questions.** The implementer's prompt must NOT include pre-formed questions like _"Is module X
@@ -76,7 +76,7 @@ finding — apply as its own commit with prefix `refactor(hickey): cross-validat
 
 1. Apply the fix narrowly — only the lines that address this specific finding.
 2. Run the project's format command on the changed files, if configured.
-3. `bash .../skills/do/scripts/vcs-op fix-commit "refactor(hickey): <short finding label>" <file1> <file2> ...` (or `refactor(lowy): …`). Pass the files the finding fix touched. Body restates the finding in one line.
+3. Call the `vcs_write` tool with `{ op: "fix-commit", message: "refactor(hickey): <short finding label>", files: ["<file1>", "<file2>", ...] }` (or `refactor(lowy)`). Pass the files the finding fix touched. Body restates the finding in one line.
 
 **Under `--no-vcs`**: Skip commit/push. Apply fixes to working tree.
 
@@ -104,7 +104,7 @@ if cross_validate and both reviewers produced findings:
 for each finding with disposition "Fix in this PR":
   apply the fix narrowly
   run fmt on changed files
-  bash .../skills/do/scripts/vcs-op fix-commit "refactor(hickey|lowy): <short label>" <changed-files>
+  call the `vcs_write` tool with `{ op: "fix-commit", message: "refactor(hickey|lowy): <short label>", files: ["<changed-files>"] }`
   (under --no-vcs: skip commit/push, apply to working tree only)
 
 return { commits, findings_ledger }

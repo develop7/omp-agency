@@ -12,6 +12,7 @@ module Agency.Scripts.Do.Forge
 import Prelude
 
 import Agency.Scripts.Do.Args as Args
+import Agency.Scripts.Do.Binaries as Binaries
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.ForgeKind (ForgeKind(..))
 import Agency.Scripts.Do.ForgeKind (ForgeKind(..)) as ForgeKinds
@@ -98,8 +99,8 @@ detectForge override fromState remote =
     "bitbucket" -> Bitbucket
     _ -> Unknown
 
--- | Execute one forge operation against a resolved context. gh subprocesses
--- | deliberately inherit streams because they are interactive/pass-through.
+-- | Execute one forge operation against a resolved context. gh output is
+-- | captured for tool adapters and inherited for the CLI adapter.
 runForgeOp :: WorkflowContext -> ForgeOp -> Effect Outcome.OpOutcome
 runForgeOp context operation = case operation of
   Detect -> pure (Outcome.withStdout (forgeName context.forge <> "\n"))
@@ -112,11 +113,14 @@ runForgeOp context operation = case operation of
   PrChecks args -> dispatch context.forge "pr-checks" "pr" "checks" args
   where
   dispatch forge opName command subcommand args = case forge of
-    Github -> do
-      result <- Sys.execInherit "gh" ([ command, subcommand ] <> args)
-      case result.error of
-        Just error -> pure (Outcome.failure 1 ("forge-op: gh failed to spawn: " <> error <> "\n"))
-        Nothing -> pure (Outcome.passthrough result.code)
+    Github ->
+      if context.captureOutput then
+        Outcome.captured <$> Sys.exec Binaries.gh ([ command, subcommand ] <> args)
+      else do
+        result <- Sys.execInherit Binaries.gh ([ command, subcommand ] <> args)
+        case result.error of
+          Just error -> pure (Outcome.failure 1 ("forge-op: gh failed to spawn: " <> error <> "\n"))
+          Nothing -> pure (Outcome.passthrough result.code)
     _ -> pure (Outcome.failure 1
       ("forge-op: forge '" <> forgeName forge <> "' does not support '" <> opName <> "'\n"
         <> "        Bitbucket support is tracked in srid/agency#10.\n"))

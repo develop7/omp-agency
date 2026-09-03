@@ -44,19 +44,15 @@ The section is project-specific and free-form: inline prose, pointer to another 
 The sub-agent prompt should include:
 
 - The literal section content from `.agency/do.md`.
-- Standard PR context: PR URL, branch name, base branch, current commit SHA, and `bash scripts/vcs-op diff-names` (read-side seam — the toolkit's `repo_diff_range` is a real gap that vcs-op still covers).
+- Standard PR context: PR URL, branch name, base branch, current commit SHA, and the `vcs_read` tool with `{ args: ["diff-names"] }` (read-side seam — the toolkit's `repo_diff_range` is a real gap that `vcs_read` still covers).
 - An explicit instruction that the sub-agent's job is to return a single block of markdown suitable for posting under a `## Evidence` heading.
 
-After the sub-agent returns, post its output as one PR comment using `bash scripts/forge-op pr-comment --body-file -` under a `## Evidence` heading. Use the **stdin heredoc** pattern so backticks and `$` survive unescaped — `forge-op` pipes stdin straight to `gh --body-file -`:
+After the sub-agent returns, post its output as one PR comment using the `forge` tool with `{ op: "pr-comment", args: [], body: "<comment>" }` under a `## Evidence` heading. Put the returned markdown in the tool's `body` field so backticks and `$` survive unescaped — the tool writes a temporary body file for `gh`:
 
-```sh
-bash scripts/forge-op pr-comment --body-file - <<'EOF'
-## Evidence
-
-<markdown returned by the sub-agent>
-EOF
+```text
+call the `forge` tool with `{ op: "pr-comment", args: [], body: "## Evidence\n\n<markdown returned by the sub-agent>" }`
 ```
 
-Embed image/asset URLs inline in the markdown — `forge-op pr-comment` itself cannot attach files; the workflow section is responsible for telling the sub-agent how to host any binary artifacts so they end up referenceable.
+Embed image/asset URLs inline in the markdown — the `forge` tool's `pr-comment` operation cannot attach files; the workflow section is responsible for telling the sub-agent how to host any binary artifacts so they end up referenceable.
 
 **Verify**: Either the step was skipped per the rules above, or a `## Evidence` PR comment exists.

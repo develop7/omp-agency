@@ -28,6 +28,7 @@ module Agency.Scripts.Do.Ops
 import Prelude
 
 import Agency.Scripts.Do.Args as Args
+import Agency.Scripts.Do.Binaries as Binaries
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Context as Context
 import Agency.Scripts.Do.Forge as Forge
@@ -228,8 +229,8 @@ parseError code message = { code, message }
 
 -- | Resolve all process/state/filesystem inputs once for one adapter request.
 -- | A present but unreadable state file is a hard error; only ENOENT is absent.
-resolveWorkflowContext :: Effect (Either String WorkflowContext)
-resolveWorkflowContext = do
+resolveWorkflowContext :: Boolean -> Effect (Either String WorkflowContext)
+resolveWorkflowContext captureOutput = do
   root <- Sys.cwd
   vcsOverrideText <- Sys.getEnv "VCS_OVERRIDE"
   forgeOverrideText <- Sys.getEnv "FORGE_OVERRIDE"
@@ -245,7 +246,7 @@ resolveWorkflowContext = do
           stateForge = state >>= Args.nonEmpty <<< State.stateGet "forge"
           base = state >>= Args.nonEmpty <<< State.stateGet "base"
           vcs = Vcs.detectVcs override stateVcs jjPresent gitPresent
-          partial = { stateDir: root, vcs, forge: Forge.Unknown, base, vcsOverride: override, forgeOverride }
+          partial = { stateDir: root, vcs, forge: Forge.Unknown, base, vcsOverride: override, forgeOverride, captureOutput }
       remote <- Vcs.remoteUrlValue partial
       let forge = Forge.detectForge forgeOverride stateForge remote
       pure (Right (partial { forge = forge }))
@@ -623,10 +624,14 @@ runNickelOp context operation = do
       expression = case operation of
         NickelCli -> "let workflow = import \"" <> workflow <> "\" in\n  let state = workflow.normalize_state (import \"" <> statePath <> "\") in\n  workflow.cli state\n"
         NickelCliSeed from -> "let workflow = import \"" <> workflow <> "\" in\n  let state = workflow.normalize_state (import \"" <> statePath <> "\") in\n  workflow.cli_seed \"" <> from <> "\" state\n"
-  result <- Sys.execInheritInput "nickel" [ "eval", "--stdin-format", "nickel" ] expression
-  pure case result.error of
-    Just error -> Outcome.failure 1 ("nickel-cli: nickel failed to spawn: " <> error <> "\n")
-    Nothing -> Outcome.passthrough result.code
+  if context.captureOutput then do
+    result <- Sys.execInput Binaries.nickel [ "eval", "--stdin-format", "nickel" ] expression
+    pure (Outcome.captured result)
+  else do
+    result <- Sys.execInheritInput Binaries.nickel [ "eval", "--stdin-format", "nickel" ] expression
+    pure case result.error of
+      Just error -> Outcome.failure 1 ("nickel-cli: nickel failed to spawn: " <> error <> "\n")
+      Nothing -> Outcome.passthrough result.code
 
 loadState :: WorkflowContext -> Effect (Either String State.State)
 loadState context = do

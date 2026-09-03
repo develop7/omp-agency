@@ -2,7 +2,7 @@
 
 This backlog audits the agency plugin against `@oh-my-pi/pi-coding-agent` **v17.2.12** at commit [`45e12e5`](https://github.com/can1357/oh-my-pi/tree/45e12e5bb758198a920c6070e7e64cb33b21beac). “Feasible” means the OMP API can support the behavior end to end; it does not by itself mean agency should add it.
 
-Agency’s current control plane remains the `/do` skill plus `skills/do/scripts/do-driver`, `do-results`, and Nickel. The extension currently contributes one `session_stop` guard in `src/stop-guard.ts`. New extension surfaces must adapt that existing workflow rather than create a second TypeScript state machine.
+Agency’s current control plane remains the `/do` skill plus the `agency_driver`, `workflow`, `vcs_read`, `vcs_write`, and `forge` tools over the PureScript core. The extension contributes those tools and the `session_stop` guard in `src/stop-guard.ts`; no second TypeScript workflow state machine is needed.
 
 ## Status vocabulary
 
@@ -64,7 +64,7 @@ The current skill explicitly initializes and advances workflow state through she
 
 **Sources**
 
-- Agency workflow calls and result persistence: `skills/do/SKILL.md:28-45`, `skills/do/SKILL.md:79-89`, `skills/do/scripts/do-results:4-18`, `skills/do/scripts/do-results:41-94`.
+- Agency workflow calls and result persistence: `skills/do/SKILL.md:22-45`, `skills/do/SKILL.md:78-89`, `.do-results.json`, and the `Agency.Scripts.Do.Api` adapter.
 - OMP tool contract: [`types.ts:547-590`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L547-L590), [`types.ts:1220-1232`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L1220-L1232).
 - Same-tool-only native delegation: [`types.ts:472-490`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L472-L490), [`wrapper.ts:52-81`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/wrapper.ts#L52-L81).
 
