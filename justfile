@@ -33,7 +33,7 @@ build:
 # Verify the checked-in bundle matches the sources (drift guard for the
 # distributed artifact — the bundle IS the distributable, so it must
 # never go stale silently)
-bundle-check: build
+bundle-check: nickel-build build
     @cd pure && spago bundle --module Agency.Scripts.Do.Cli \
         --outfile dist/agency-do.check.js --force --platform node
     @cd pure && spago bundle --module Agency.Scripts.Do.Api \
@@ -43,6 +43,14 @@ bundle-check: build
     @cmp pure/dist/agency-api.check.js pure/dist/agency-api.js \
         || { echo "bundle drift: pure/dist/agency-api.js is stale — run 'just build' and commit it"; exit 1; }
     @rm pure/dist/agency-do.check.js pure/dist/agency-api.check.js
+    @node nickel-vm/scripts/smoke.mjs
 
 # Full CI: tests + lint + bundle freshness
 ci: test lint bundle-check
+
+# Build the Nickel WASM VM from the nix derivation (wasm + glue are both
+# produced inside nix by the pinned toolchain and wasm-bindgen-cli — the
+# checked-in dist/ is a copy of the derivation output, never host-built).
+nickel-build:
+    nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link \
+        | xargs -I{} cp -fr {}/dist/. nickel-vm/dist/

@@ -28,7 +28,6 @@ module Agency.Scripts.Do.Ops
 import Prelude
 
 import Agency.Scripts.Do.Args as Args
-import Agency.Scripts.Do.Binaries as Binaries
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Context as Context
 import Agency.Scripts.Do.Forge as Forge
@@ -37,6 +36,7 @@ import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.Vcs as Vcs
 import Data.Argonaut.Core (Json, fromBoolean, fromString)
+import Data.Argonaut.Core as Json
 import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Either (Either(..))
@@ -45,6 +45,8 @@ import Data.String (Pattern(..), Replacement(..), joinWith, replaceAll, trim)
 import Data.String.CodeUnits (drop)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
+import Data.Int (floor)
+import Foreign.Object as Obj
 import Effect (Effect)
 
 -- | Parse failures carry the legacy script's exit status and stderr text.
@@ -610,9 +612,10 @@ escapeVerification value = replaceAll (Pattern "|") (Replacement "\\|") (replace
 runNickelOp :: WorkflowContext -> NickelOp -> Effect Outcome.OpOutcome
 runNickelOp context operation = do
   bundle <- Sys.bundleDir
-  let bundleWorkflow = bundle <> "/../../../skills/do/workflow.ncl"
-      adjacentWorkflow = bundle <> "/../../skills/do/workflow.ncl"
+  let bundleWorkflow = bundle <> "/../../skills/do/workflow.ncl"
+      adjacentWorkflow = bundle <> "/../../../skills/do/workflow.ncl"
       cwdWorkflow = context.stateDir <> "/skills/do/workflow.ncl"
+      bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
   bundleExists <- Sys.exists bundleWorkflow
   adjacentExists <- Sys.exists adjacentWorkflow
   let workflowPath =
@@ -620,25 +623,50 @@ runNickelOp context operation = do
         else if adjacentExists then adjacentWorkflow
         else cwdWorkflow
   workflow <- Sys.realpath workflowPath
-  let statePath = Context.statePath context
-      expression = case operation of
-        NickelCli -> "let workflow = import \"" <> escapeNickelString workflow <> "\" in\n  let state = workflow.normalize_state (import \"" <> escapeNickelString statePath <> "\") in\n  workflow.cli state\n"
-        NickelCliSeed from -> "let workflow = import \"" <> escapeNickelString workflow <> "\" in\n  let state = workflow.normalize_state (import \"" <> escapeNickelString statePath <> "\") in\n  workflow.cli_seed \"" <> escapeNickelString from <> "\" state\n"
-  if context.captureOutput then do
-    result <- Sys.execInput Binaries.nickel [ "eval", "--stdin-format", "nickel" ] expression
-    pure (Outcome.captured result)
-  else do
-    result <- Sys.execInheritInput Binaries.nickel [ "eval", "--stdin-format", "nickel" ] expression
-    pure case result.error of
-      Just error -> Outcome.failure 1 ("nickel-cli: nickel failed to spawn: " <> error <> "\n")
-      Nothing -> Outcome.passthrough result.code
--- | Keep model-controlled values inside one Nickel string literal.
-escapeNickelString :: String -> String
-escapeNickelString value =
-  replaceAll (Pattern "\r") (Replacement "\\r")
-    (replaceAll (Pattern "\n") (Replacement "\\n")
-      (replaceAll (Pattern "\"") (Replacement "\\\"")
-        (replaceAll (Pattern "\\") (Replacement "\\\\") value)))
+  workflowSource <- Sys.readUtf8 workflow
+  stateSource <- Sys.readUtf8 (Context.statePath context)
+  let operationName = case operation of
+        NickelCli -> "cli"
+        NickelCliSeed _ -> "cli_seed"
+      seedJson = case operation of
+        NickelCli -> "null"
+        NickelCliSeed from -> escapeJsonString from
+      request = "{\"workflow_source\":" <> escapeJsonString workflowSource
+        <> ",\"state_source\":" <> escapeJsonString stateSource
+        <> ",\"operation\":" <> escapeJsonString operationName
+        <> ",\"seed\":" <> seedJson <> "}"
+  result <- Sys.execInput "node" [ bridge ] request
+  pure (bridgeOutcome result)
+
+bridgeOutcome :: Sys.ExecResult -> Outcome.OpOutcome
+bridgeOutcome result =
+  if result.code /= 0 then Outcome.captured result
+  else case jsonParser result.stdout >>= decodeBridge of
+    Left error -> Outcome.failure 1 ("nickel-cli: invalid bridge response: " <> error <> "\n")
+    Right value ->
+      { exit: value.exit
+      , output: Outcome.Captured { stdout: value.stdout, stderr: value.stderr, stderrFirst: false }
+      }
+
+decodeBridge :: Json -> Either String { exit :: Int, stdout :: String, stderr :: String }
+decodeBridge json = do
+  object <- case Json.toObject json of
+    Nothing -> Left "response must be an object"
+    Just value -> Right value
+  exit <- case Obj.lookup "exit" object >>= Json.toNumber of
+    Nothing -> Left "response exit must be a number"
+    Just value -> Right (floor value)
+  stdout <- requiredJsonString "stdout" object
+  stderr <- requiredJsonString "stderr" object
+  pure { exit, stdout, stderr }
+
+requiredJsonString :: String -> Obj.Object Json -> Either String String
+requiredJsonString field object = case Obj.lookup field object >>= Json.toString of
+  Nothing -> Left ("response " <> field <> " must be a string")
+  Just value -> Right value
+
+escapeJsonString :: String -> String
+escapeJsonString value = Json.stringify (fromString value)
 
 loadState :: WorkflowContext -> Effect (Either String State.State)
 loadState context = do
