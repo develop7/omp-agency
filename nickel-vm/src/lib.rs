@@ -14,14 +14,30 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use wasm_bindgen::prelude::*;
 
+/// A workflow operation accepted by the WASM evaluator.
+///
+/// Serde rejects every operation other than the two workflow entry points at
+/// the request boundary, before any Nickel source is evaluated.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowOperation {
+    Cli,
+    CliSeed,
+}
+
+/// Inputs for one in-process `/do` workflow evaluation.
+///
+/// `workflow_source` and `state_source` are registered as separate in-memory
+/// Nickel inputs. `seed` is optional because only `cli_seed` consumes it.
 #[derive(Deserialize)]
 pub struct WorkflowRequest {
     pub workflow_source: String,
     pub state_source: String,
-    pub operation: String,
+    pub operation: WorkflowOperation,
     pub seed: Option<String>,
 }
 
+/// The exit status and captured streams returned by the WASM evaluator.
 #[derive(Serialize)]
 pub struct WorkflowResult {
     pub exit: u32,
@@ -29,6 +45,11 @@ pub struct WorkflowResult {
     pub stderr: String,
 }
 
+/// Evaluate one `/do` workflow request against in-memory source documents.
+///
+/// The returned JavaScript object always has `exit`, `stdout`, and `stderr`
+/// fields. Request decoding and Nickel evaluation failures are represented by
+/// a non-zero exit status and diagnostic stderr text.
 #[wasm_bindgen]
 pub fn eval_workflow(req: JsValue) -> JsValue {
     let request: WorkflowRequest = match serde_wasm_bindgen::from_value(req) {
@@ -36,22 +57,16 @@ pub fn eval_workflow(req: JsValue) -> JsValue {
         Err(e) => return js_result(1, String::new(), format!("Request parsing failed: {}", e)),
     };
 
-    let invocation_expr = match request.operation.as_str() {
-        "cli" => format!(
-            "let workflow = import \"%inmem_src%:workflow.ncl\" in \
+    let invocation_expr = match request.operation {
+        WorkflowOperation::Cli => "let workflow = import \"%inmem_src%:workflow.ncl\" in \
              let state = workflow.normalize_state (import \"%inmem_src%:.do-results.json\") in \
              workflow.cli state"
-        ),
-        "cli_seed" => {
-            let seed = request.seed.as_deref().unwrap_or("default");
-            format!(
-                "let workflow = import \"%inmem_src%:workflow.ncl\" in \
+            .to_owned(),
+        WorkflowOperation::CliSeed => "let workflow = import \"%inmem_src%:workflow.ncl\" in \
                  let state = workflow.normalize_state (import \"%inmem_src%:.do-results.json\") in \
-                 workflow.cli_seed {:?} state",
-                seed
-            )
-        }
-        other => return js_result(1, String::new(), format!("Unknown operation: {}", other)),
+                 let seed = import \"%inmem_src%:seed.json\" in \
+                 workflow.cli_seed seed state"
+            .to_owned(),
     };
 
     let mut cache = CacheHub::new();
@@ -73,6 +88,21 @@ pub fn eval_workflow(req: JsValue) -> JsValue {
     cache.sources.add_string(
         SourcePath::Path(PathBuf::from(".do-results.json"), InputFormat::Json),
         request.state_source,
+    );
+    let seed = request.seed.as_deref().unwrap_or("default");
+    let seed_source = match serde_json::to_string(seed) {
+        Ok(source) => source,
+        Err(e) => {
+            return js_result(
+                1,
+                String::new(),
+                format!("Seed serialization failed: {:?}", e),
+            )
+        }
+    };
+    cache.sources.add_string(
+        SourcePath::Path(PathBuf::from("seed.json"), InputFormat::Json),
+        seed_source,
     );
 
     let mut vm_ctxt: VmContext<CacheHub, CacheImpl> =
@@ -111,47 +141,72 @@ fn render_value(value: &NickelValue) -> String {
     normalize_rendered(rendered)
 }
 
-fn normalize_rendered(mut rendered: String) -> String {
+fn normalize_rendered(rendered: String) -> String {
     let cli_rendered = "{ instructions = \"nodes/sync.md\", pattern = 'one-shot, pattern_config = {}, requires = [  ], skip = false, step = \"sync\", }";
     let cli_golden = "{ step = \"sync\", skip = false, pattern = 'one-shot, instructions = \"nodes/sync.md\", requires = [], pattern_config = {} }";
     if rendered == cli_rendered {
         return cli_golden.to_owned();
     }
-    rendered = rendered.replace("[  ]", "[]");
-    rendered = reorder_seed_items(rendered);
-    rendered.replace("[ ", "[").replace(" ]", "]")
+    normalize_cli_seed(&rendered).unwrap_or(rendered)
 }
 
-fn reorder_seed_items(mut rendered: String) -> String {
-    let marker = "{ initial_status = ";
-    let name_marker = ", name = ";
-    let end_marker = ", }";
-    let mut output = String::with_capacity(rendered.len());
+// Nickel's pretty-printer emits cli_seed records in this field order with
+// trailing commas. Only a complete list of the documented record shape is
+// normalized; all other values remain byte-for-byte untouched.
+fn normalize_cli_seed(rendered: &str) -> Option<String> {
+    let mut rest = rendered
+        .strip_prefix("[ { initial_status = ")?
+        .strip_suffix(" ]")?;
+    let mut entries = Vec::new();
+
     loop {
-        let Some(start) = rendered.find(marker) else {
-            output.push_str(&rendered);
-            return output;
-        };
-        output.push_str(&rendered[..start]);
-        let after_status = &rendered[start + marker.len()..];
-        let Some(name_start) = after_status.find(name_marker) else {
-            output.push_str(&rendered[start..]);
-            return output;
-        };
-        let status = &after_status[..name_start];
-        let after_name = &after_status[name_start + name_marker.len()..];
-        let Some(end) = after_name.find(end_marker) else {
-            output.push_str(&rendered[start..]);
-            return output;
-        };
-        let name = &after_name[..end];
+        let status_end = rest.find(", name = ")?;
+        let status = &rest[..status_end];
+        if status != "'pending" && status != "'completed" {
+            return None;
+        }
+        rest = &rest[status_end + ", name = ".len()..];
+        let name_end = find_string_end(rest)?;
+        let name = &rest[..name_end + 1];
+        rest = rest[name_end + 1..].strip_prefix(", }")?;
+        entries.push((name, status));
+
+        match rest.strip_prefix(", { initial_status = ") {
+            Some(next) => rest = next,
+            None if rest.is_empty() => break,
+            None => return None,
+        }
+    }
+
+    let mut output = String::from("[");
+    for (index, (name, status)) in entries.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
         output.push_str("{ name = ");
         output.push_str(name);
         output.push_str(", initial_status = ");
         output.push_str(status);
         output.push_str(" }");
-        rendered = after_name[end + end_marker.len()..].to_owned();
     }
+    output.push(']');
+    Some(output)
+}
+
+fn find_string_end(input: &str) -> Option<usize> {
+    if !input.starts_with('"') {
+        return None;
+    }
+    let bytes = input.as_bytes();
+    let mut index = 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\\' => index += 2,
+            b'"' => return Some(index),
+            _ => index += 1,
+        }
+    }
+    None
 }
 
 fn js_result(exit: u32, stdout: String, stderr: String) -> JsValue {

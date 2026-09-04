@@ -35,7 +35,7 @@ import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.Vcs as Vcs
-import Data.Argonaut.Core (Json, fromBoolean, fromString)
+import Data.Argonaut.Core (Json, fromBoolean, fromObject, fromString, jsonNull)
 import Data.Argonaut.Core as Json
 import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
@@ -609,6 +609,10 @@ fmtDur seconds = if seconds < 60 then show seconds <> "s" else show (seconds `di
 escapeVerification :: String -> String
 escapeVerification value = replaceAll (Pattern "|") (Replacement "\\|") (replaceAll (Pattern "\n") (Replacement " ") value)
 
+-- | Run a workflow operation through the Node bridge, which always captures
+-- | subprocess output and returns a JSON-encoded exit/stdout/stderr result.
+-- | The context's captureOutput flag is intentionally ignored for this path:
+-- | the bridge communicates over stdin/stdout and cannot inherit streams.
 runNickelOp :: WorkflowContext -> NickelOp -> Effect Outcome.OpOutcome
 runNickelOp context operation = do
   bundle <- Sys.bundleDir
@@ -629,12 +633,16 @@ runNickelOp context operation = do
         NickelCli -> "cli"
         NickelCliSeed _ -> "cli_seed"
       seedJson = case operation of
-        NickelCli -> "null"
-        NickelCliSeed from -> escapeJsonString from
-      request = "{\"workflow_source\":" <> escapeJsonString workflowSource
-        <> ",\"state_source\":" <> escapeJsonString stateSource
-        <> ",\"operation\":" <> escapeJsonString operationName
-        <> ",\"seed\":" <> seedJson <> "}"
+        NickelCli -> jsonNull
+        NickelCliSeed from -> fromString from
+      request = Json.stringify
+        (fromObject
+          (Obj.fromFoldable
+            [ Tuple "workflow_source" (fromString workflowSource)
+            , Tuple "state_source" (fromString stateSource)
+            , Tuple "operation" (fromString operationName)
+            , Tuple "seed" seedJson
+            ]))
   result <- Sys.execInput "node" [ bridge ] request
   pure (bridgeOutcome result)
 
@@ -665,8 +673,6 @@ requiredJsonString field object = case Obj.lookup field object >>= Json.toString
   Nothing -> Left ("response " <> field <> " must be a string")
   Just value -> Right value
 
-escapeJsonString :: String -> String
-escapeJsonString value = Json.stringify (fromString value)
 
 loadState :: WorkflowContext -> Effect (Either String State.State)
 loadState context = do

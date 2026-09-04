@@ -605,11 +605,10 @@ dependencies = [
 name = "nickel-vm"
 version = "0.1.0"
 dependencies = [
- "colorchoice",
  "nickel-lang-core",
- "nickel-lang-parser",
  "serde",
  "serde-wasm-bindgen",
+ "serde_json",
  "wasm-bindgen",
 ]
 

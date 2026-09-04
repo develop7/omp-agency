@@ -48,9 +48,20 @@ bundle-check: nickel-build build
 # Full CI: tests + lint + bundle freshness
 ci: test lint bundle-check
 
-# Build the Nickel WASM VM from the nix derivation (wasm + glue are both
-# produced inside nix by the pinned toolchain and wasm-bindgen-cli — the
-# checked-in dist/ is a copy of the derivation output, never host-built).
+# Build the Nickel WASM VM in a temporary directory and compare the fresh
+# derivation output with the checked-in runtime artifact. Regeneration remains
+# explicit: run nix build and copy the desired output into nickel-vm/dist/.
 nickel-build:
-    nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link \
-        | xargs -I{} cp -fr {}/dist/. nickel-vm/dist/
+    @tmp=$(mktemp --directory); trap 'rm -rf "$tmp"' EXIT; \
+      out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
+      cp -fr "$out/dist/." "$tmp/"; \
+      just nickel-check "$tmp"
+
+# Compare a fresh pinned Nickel WASM build with the checked-in runtime files.
+nickel-check fresh:
+    @for file in nickel_vm_bg.wasm nickel_vm_bg.wasm.d.ts nickel_vm.d.ts nickel_vm.js; do \
+      if ! cmp -- "{{ fresh }}/$file" "nickel-vm/dist/$file"; then \
+        echo "Nickel WASM drift: nickel-vm/dist/$file is stale — regenerate it explicitly and commit it"; \
+        exit 1; \
+      fi; \
+    done

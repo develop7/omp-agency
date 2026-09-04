@@ -4,7 +4,7 @@
 
 ## Evaluation seam
 
-The public `eval_workflow` function accepts the workflow source, `.do-results.json` source, operation (`cli` or `cli_seed`), and optional seed. It registers one in-memory `main.ncl` invocation and injects `workflow.ncl` and `.do-results.json` into Nickel's source cache as `SourcePath::Path` entries. The invocation imports them through Nickel's `%inmem_src%:` seam, so no temporary files or working-directory imports are needed. Seed values are rendered with Rust's `Debug` string literal formatting before being inserted into the invocation.
+The public `eval_workflow` function accepts the workflow source, `.do-results.json` source, operation (`cli` or `cli_seed`), and optional seed. It registers one in-memory `main.ncl` invocation and injects `workflow.ncl`, `.do-results.json`, and `seed.json` into Nickel's source cache as `SourcePath::Path` entries. The invocation imports them through Nickel's `%inmem_src%:` seam, so no temporary files or working-directory imports are needed. Seed values are serialized with `serde_json` as JSON strings in the in-memory `seed.json` document before Nickel evaluates the request.
 
 The evaluator intentionally uses the single-input path: merging multiple input documents would change the workflow/state contract by merging state fields into the workflow record.
 

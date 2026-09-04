@@ -1,6 +1,11 @@
 /* @ts-self-types="./nickel_vm.d.ts" */
 
 /**
+ * Evaluate one `/do` workflow request against in-memory source documents.
+ *
+ * The returned JavaScript object always has `exit`, `stdout`, and `stderr`
+ * fields. Request decoding and Nickel evaluation failures are represented by
+ * a non-zero exit status and diagnostic stderr text.
  * @param {any} req
  * @returns {any}
  */
@@ -44,6 +49,10 @@ function __wbg_get_imports() {
             const ret = typeof(val) === 'object' && val !== null;
             return ret;
         },
+        __wbg___wbindgen_is_string_e6f02f0ea5f20a32: function(arg0) {
+            const ret = typeof(arg0) === 'string';
+            return ret;
+        },
         __wbg___wbindgen_is_undefined_6cff064c44e0d823: function(arg0) {
             const ret = arg0 === undefined;
             return ret;
@@ -68,6 +77,14 @@ function __wbg_get_imports() {
         },
         __wbg___wbindgen_throw_bb96b2010945f0bc: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
+        },
+        __wbg_entries_7774d489e1da5f4f: function(arg0) {
+            const ret = Object.entries(arg0);
+            return ret;
+        },
+        __wbg_get_c0c8f8d7da0c03dd: function(arg0, arg1) {
+            const ret = arg0[arg1 >>> 0];
+            return ret;
         },
         __wbg_get_with_ref_key_6412cf3094599694: function(arg0, arg1) {
             const ret = arg0[arg1];
@@ -94,6 +111,10 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbg_length_36bd29c6848c2144: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
+        __wbg_length_ecfa2c63d3d0d82c: function(arg0) {
             const ret = arg0.length;
             return ret;
         },
