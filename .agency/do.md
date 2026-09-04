@@ -11,7 +11,9 @@ shell is active; on a bare host the `just` recipes fail with missing `purs`/
 ## Check command
 just lint
 
-## Test coverage-gap resolution
+## Test command
+just test
+
 This repo's PureScript core tests are module-level unit tests under
 `pure/test/Agency/Scripts/Do/`, mirroring the implementation modules under
 `pure/src/Agency/Scripts/Do/` (for example, `Ops.purs` is covered by
