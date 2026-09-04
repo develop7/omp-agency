@@ -150,7 +150,7 @@ See [Kolu's `.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for 
 
 ## Development
 
-`nix develop` provides the pinned PureScript, Spago, esbuild, bats, Node.js, Rust, wasm-bindgen, Binaryen, and just toolchain for contributors. Nickel remains available as an editor/debugging nicety; runtime workflow evaluation is provided by `nickel-vm` WASM:
+`nix develop` provides the pinned PureScript, Spago, esbuild, bats, Node.js, Rust, wasm-bindgen, and just toolchain for contributors. Nickel remains available as an editor/debugging nicety; runtime workflow evaluation is provided by `nickel-vm` WASM:
 
 ```bash
 nix develop

@@ -2621,6 +2621,7 @@ var statePath = function(context) {
 function id(x) {
   return x;
 }
+var jsonNull = null;
 function stringify(j) {
   return JSON.stringify(j);
 }
@@ -5406,6 +5407,7 @@ var traverse13 = /* @__PURE__ */ traverse5(applicativeEffect);
 var traverse23 = /* @__PURE__ */ traverse5(applicativeEither);
 var identity5 = /* @__PURE__ */ identity(categoryFn);
 var eq12 = /* @__PURE__ */ eq(eqStepStatus);
+var fromFoldable5 = /* @__PURE__ */ fromFoldable3(foldableArray);
 var Sync = /* @__PURE__ */ (function() {
   function Sync2(value0) {
     this.value0 = value0;
@@ -5635,8 +5637,8 @@ var slowestStep = function(values) {
             }
             ;
             if (best instanceof Just) {
-              var $85 = v.value0.head.value1 > best.value0.value1;
-              if ($85) {
+              var $86 = v.value0.head.value1 > best.value0.value1;
+              if ($86) {
                 return new Just(new Tuple(v.value0.head.value0.name, v.value0.head.value1));
               }
               ;
@@ -5683,24 +5685,24 @@ var resolveWorkflowContext = function(captureOutput) {
       var jjPresent = isDir(root + "/.jj")();
       var gitPresent = isDir(root + "/.git")();
       var stateVcs = bind22(stateResult.value0)((function() {
-        var $338 = stateGet("vcs");
-        return function($339) {
-          return nonEmpty($338($339));
+        var $339 = stateGet("vcs");
+        return function($340) {
+          return nonEmpty($339($340));
         };
       })());
       var stateForge = bind22(stateResult.value0)((function() {
-        var $340 = stateGet("forge");
-        return function($341) {
-          return nonEmpty($340($341));
+        var $341 = stateGet("forge");
+        return function($342) {
+          return nonEmpty($341($342));
         };
       })());
       var override = nonEmpty(vcsOverrideText);
       var vcs = detectVcs(override)(stateVcs)(jjPresent)(gitPresent);
       var forgeOverride = nonEmpty(forgeOverrideText);
       var base = bind22(stateResult.value0)((function() {
-        var $342 = stateGet("base");
-        return function($343) {
-          return nonEmpty($342($343));
+        var $343 = stateGet("base");
+        return function($344) {
+          return nonEmpty($343($344));
         };
       })());
       var partial = {
@@ -5738,11 +5740,11 @@ var resolveSyncBase = function(v) {
       if (v.value0.base instanceof Nothing && v.value0.stack) {
         return function __do2() {
           var current = currentBranchValue(context)();
-          var $102 = current.code !== 0;
-          if ($102) {
+          var $103 = current.code !== 0;
+          if ($103) {
             return new Left((function() {
-              var $103 = current.stderr === "";
-              if ($103) {
+              var $104 = current.stderr === "";
+              if ($104) {
                 return "sync: unable to resolve current branch";
               }
               ;
@@ -5750,14 +5752,14 @@ var resolveSyncBase = function(v) {
             })());
           }
           ;
-          var $104 = current.value !== "" && (current.value !== defaultRef && current.value !== "HEAD");
-          if ($104) {
+          var $105 = current.value !== "" && (current.value !== defaultRef && current.value !== "HEAD");
+          if ($105) {
             return new Right(current.value);
           }
           ;
           return new Left("sync: --stack found no feature branch to stack onto\n" + ("       current branch is '" + (function() {
-            var $105 = current.value === "";
-            if ($105) {
+            var $106 = current.value === "";
+            if ($106) {
               return "<none>";
             }
             ;
@@ -5775,8 +5777,8 @@ var resolveSyncBase = function(v) {
   };
 };
 var resolveNow = function(value) {
-  var $107 = value === "now";
-  if ($107) {
+  var $108 = value === "now";
+  if ($108) {
     return nowIso;
   }
   ;
@@ -5793,7 +5795,7 @@ var requiredJsonString = function(field) {
       return new Right(v.value0);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 664, column 35 - line 666, column 28): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 672, column 35 - line 674, column 28): " + [v.constructor.name]);
   };
 };
 var renderFacts = function(summary) {
@@ -5982,8 +5984,8 @@ var parseDriverInit = function(args) {
       function $tco_loop(remaining, state2) {
         var v = uncons(remaining);
         if (v instanceof Nothing) {
-          var $153 = state2.review && (state2.from !== "" && state2.from !== "default");
-          if ($153) {
+          var $154 = state2.review && (state2.from !== "" && state2.from !== "default");
+          if ($154) {
             $tco_done = true;
             return new Left(parseError(2)("do-driver: --review is incompatible with --from=" + (state2.from + ("\n" + ("         --from=" + (state2.from + " starts past research, where the plan-approval pause lives.\n         drop --review if the plan is already approved, or drop --from for a full workflow."))))));
           }
@@ -6294,13 +6296,13 @@ var parseSyncOp = function(args) {
     }
     ;
     if (parsed.noVcs instanceof Just) {
-      var $199 = notEq2(parsed.base)(Nothing.value) && parsed.stack;
-      if ($199) {
+      var $200 = notEq2(parsed.base)(Nothing.value) && parsed.stack;
+      if ($200) {
         return new Left(parseError(2)("sync: --base and --stack are mutually exclusive"));
       }
       ;
-      var $200 = parsed.noVcs.value0 && (notEq2(parsed.base)(Nothing.value) || parsed.stack);
-      if ($200) {
+      var $201 = parsed.noVcs.value0 && (notEq2(parsed.base)(Nothing.value) || parsed.stack);
+      if ($201) {
         return new Left(parseError(2)("sync: --base/--stack are incompatible with --no-vcs\n       --no-vcs skips branch/commit/PR; the base has no effect."));
       }
       ;
@@ -6329,7 +6331,7 @@ var loadState = function(context) {
       return new Right(result.value0.value0);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 674, column 8 - line 677, column 38): " + [result.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 680, column 8 - line 683, column 38): " + [result.constructor.name]);
   };
 };
 var jsonValueFor = function(field) {
@@ -6352,12 +6354,12 @@ var jsonValueFor = function(field) {
       })());
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 682, column 1 - line 682, column 55): " + [field.constructor.name, value.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 688, column 1 - line 688, column 55): " + [field.constructor.name, value.constructor.name]);
   };
 };
 var fmtDur = function(seconds) {
-  var $210 = seconds < 60;
-  if ($210) {
+  var $211 = seconds < 60;
+  if ($211) {
     return show3(seconds) + "s";
   }
   ;
@@ -6368,15 +6370,15 @@ var fetchPhase = function(context) {
     return function __do2() {
       var fetched = fetchValue(context)();
       var quietFetch = quietResult(fetched);
-      var $211 = fetched.exit !== 0;
-      if ($211) {
+      var $212 = fetched.exit !== 0;
+      if ($212) {
         return new Left(quietFetch);
       }
       ;
       var refreshed = refreshDefaultBranchValue(context)();
       var quietRefresh = quietResult(refreshed);
-      var $212 = refreshed.exit !== 0;
-      if ($212) {
+      var $213 = refreshed.exit !== 0;
+      if ($213) {
         return new Left(append2(quietFetch)(quietRefresh));
       }
       ;
@@ -6387,8 +6389,8 @@ var fetchPhase = function(context) {
         ;
         return runVcsOp(context)(FastForwardIfSafe.value)();
       })();
-      var $214 = forwarded.exit !== 0;
-      if ($214) {
+      var $215 = forwarded.exit !== 0;
+      if ($215) {
         return new Left(append2(append2(quietFetch)(quietRefresh))(forwarded));
       }
       ;
@@ -6605,8 +6607,8 @@ var renderDoneMarkdown = function(summary) {
   })();
   var rows = map11(renderTimedRow(summary.totalSeconds))(summary.rows);
   var table = "| Step | Status | Duration | Verification |\n" + ("|------|--------|----------|--------------|\n" + (joinWith("\n")(rows) + ((function() {
-    var $255 = $$null(rows);
-    if ($255) {
+    var $256 = $$null(rows);
+    if ($256) {
       return "";
     }
     ;
@@ -6614,13 +6616,10 @@ var renderDoneMarkdown = function(summary) {
   })() + ("| **Total** | | **" + (fmtDur(summary.totalSeconds) + "** | |\n\n")))));
   return table + (slowLine + "\n");
 };
-var escapeJsonString = function(value) {
-  return stringify(id(value));
-};
 var dominantName = function(totalDuration) {
   return function(v) {
-    var $258 = totalDuration > 0 && (v.value1 * div2(100)(totalDuration) | 0) >= 30;
-    if ($258) {
+    var $259 = totalDuration > 0 && (v.value1 * div2(100)(totalDuration) | 0) >= 30;
+    if ($259) {
       return new Just(v.value0.name);
     }
     ;
@@ -6638,7 +6637,7 @@ var decodeBridge = function(json) {
       return new Right(v.value0);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 653, column 13 - line 655, column 30): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 661, column 13 - line 663, column 30): " + [v.constructor.name]);
   })())(function(object) {
     return bind13((function() {
       var v = bind22(lookup("exit")(object))(toNumber2);
@@ -6650,7 +6649,7 @@ var decodeBridge = function(json) {
         return new Right(floor2(v.value0));
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 656, column 11 - line 658, column 38): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 664, column 11 - line 666, column 38): " + [v.constructor.name]);
     })())(function(exit3) {
       return bind13(requiredJsonString("stdout")(object))(function(stdout2) {
         return bind13(requiredJsonString("stderr")(object))(function(stderr2) {
@@ -6697,22 +6696,22 @@ var computeDoneSummary = function(state2) {
       return bind13(totalEnd)(function(completed) {
         return bind13(traverse23(identity5)(timedResults))(function(timed) {
           var totalDuration = max3(0)(completed - started | 0);
-          var skipped = map11(function($344) {
+          var skipped = map11(function($345) {
             return skippedName((function(v) {
               return v.step;
-            })($344));
+            })($345));
           })(filter(function(item) {
             return eq12(item.step.status)(StepSkipped.value);
           })(timed));
           var nonSkipped = filter(function(item) {
             return notEq3(item.step.status)(StepSkipped.value);
           })(timed);
-          var failed = map11(function($345) {
+          var failed = map11(function($346) {
             return (function(v) {
               return v.name;
             })((function(v) {
               return v.step;
-            })($345));
+            })($346));
           })(filter(function(item) {
             return eq12(item.step.status)(StepFailed.value);
           })(timed));
@@ -6739,8 +6738,8 @@ var runDoneOp = function(context) {
     return function __do2() {
       var loaded = loadState(context)();
       if (loaded instanceof Left) {
-        var $275 = loaded.value0 === "do-results: .do-results.json not found";
-        if ($275) {
+        var $276 = loaded.value0 === "do-results: .do-results.json not found";
+        if ($276) {
           return failText("done: .do-results.json not found \u2014 cannot produce summary");
         }
         ;
@@ -6765,8 +6764,8 @@ var runDoneOp = function(context) {
   };
 };
 var bridgeOutcome = function(result) {
-  var $281 = result.code !== 0;
-  if ($281) {
+  var $282 = result.code !== 0;
+  if ($282) {
     return captured(result);
   }
   ;
@@ -6786,7 +6785,7 @@ var bridgeOutcome = function(result) {
     };
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 644, column 8 - line 649, column 8): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 652, column 8 - line 657, column 8): " + [v.constructor.name]);
 };
 var runNickelOp = function(context) {
   return function(operation) {
@@ -6814,14 +6813,14 @@ var runNickelOp = function(context) {
       var stateSource = readUtf8(statePath(context))();
       var seedJson = (function() {
         if (operation instanceof NickelCli) {
-          return "null";
+          return jsonNull;
         }
         ;
         if (operation instanceof NickelCliSeed) {
-          return escapeJsonString(operation.value0);
+          return id(operation.value0);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 631, column 18 - line 633, column 52): " + [operation.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 635, column 18 - line 637, column 46): " + [operation.constructor.name]);
       })();
       var operationName = (function() {
         if (operation instanceof NickelCli) {
@@ -6832,9 +6831,9 @@ var runNickelOp = function(context) {
           return "cli_seed";
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 628, column 23 - line 630, column 38): " + [operation.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 632, column 23 - line 634, column 38): " + [operation.constructor.name]);
       })();
-      var request = '{"workflow_source":' + (escapeJsonString(workflowSource) + (',"state_source":' + (escapeJsonString(stateSource) + (',"operation":' + (escapeJsonString(operationName) + (',"seed":' + (seedJson + "}")))))));
+      var request = stringify(id(fromFoldable5([new Tuple("workflow_source", id(workflowSource)), new Tuple("state_source", id(stateSource)), new Tuple("operation", id(operationName)), new Tuple("seed", seedJson)])));
       var result = execInput("node")([bridge])(request)();
       return bridgeOutcome(result);
     };
@@ -6887,23 +6886,23 @@ var runDriverOp = function(context) {
           return bind13(setField("review")(id(operation.value0.review))(withNoVcs))(function(withReview) {
             return bind13(setField("minimal")(id(operation.value0.minimal))(withReview))(function(withMinimal) {
               return bind13((function() {
-                var $298 = vcsName(context.vcs) === "unknown";
-                if ($298) {
+                var $299 = vcsName(context.vcs) === "unknown";
+                if ($299) {
                   return new Right(withMinimal);
                 }
                 ;
                 return setField("vcs")(id(vcsName(context.vcs)))(withMinimal);
               })())(function(withVcs) {
                 return bind13((function() {
-                  var $299 = operation.value0.from === "";
-                  if ($299) {
+                  var $300 = operation.value0.from === "";
+                  if ($300) {
                     return new Right(withVcs);
                   }
                   ;
                   return setField("from")(id(operation.value0.from))(withVcs);
                 })())(function(withFrom) {
-                  var $300 = operation.value0.task === "";
-                  if ($300) {
+                  var $301 = operation.value0.task === "";
+                  if ($301) {
                     return new Right(withFrom);
                   }
                   ;
@@ -6920,8 +6919,8 @@ var runDriverOp = function(context) {
         if (initialized instanceof Right) {
           writeState(statePath(context))(initialized.value0)();
           var fromText = (function() {
-            var $303 = operation.value0.from === "";
-            if ($303) {
+            var $304 = operation.value0.from === "";
+            if ($304) {
               return "default";
             }
             ;
@@ -6945,8 +6944,8 @@ var runDriverOp = function(context) {
     if (operation instanceof DriverSkip) {
       return function __do2() {
         var started = runResultsOp(context)(new ResultsStepStart(operation.value0))();
-        var $310 = started.exit !== 0;
-        if ($310) {
+        var $311 = started.exit !== 0;
+        if ($311) {
           return started;
         }
         ;
@@ -6972,8 +6971,8 @@ var basePhase = function(context) {
       return function __do2() {
         var branchResult = headRevisionValue(context)();
         var defaultRef = defaultBranchValue(context)();
-        var $315 = branchResult.code !== 0;
-        if ($315) {
+        var $316 = branchResult.code !== 0;
+        if ($316) {
           return new Left(vcsValueOutcome(branchResult));
         }
         ;

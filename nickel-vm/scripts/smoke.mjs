@@ -76,7 +76,15 @@ function run() {
     assertResult('cli_seed "followup"', res3);
     assert('cli_seed "followup"', res3.stdout, GOLDENS.cli_seed_followup);
 
-    console.log('All smoke tests passed!');
+    const res4 = eval_workflow({
+        workflow_source: WORKFLOW_SOURCE,
+        state_source: TEST_STATE,
+        operation: 'cli_seed',
+        // Exercise JSON/Nickel escaping for NUL, newline, quote, backslash, and Unicode.
+        seed: "\u0000\n\"\\雪"
+    });
+    assertResult('cli_seed adversarial seed', res4);
+    assert('cli_seed adversarial seed', res4.stdout, GOLDENS.cli_seed_empty);
 }
 
 try {

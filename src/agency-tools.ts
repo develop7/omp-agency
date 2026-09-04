@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 type ApiRequest = {
   tool: string;
@@ -31,9 +32,23 @@ async function loadApi(): Promise<AgencyApi> {
   return apiPromise;
 }
 
-let nickelPromise: Promise<{ eval_workflow(req: any): any }> | undefined;
-async function loadNickel() {
-  nickelPromise ??= import("../nickel-vm/dist/nickel_vm.js") as any;
+type NickelApi = {
+  eval_workflow(req: unknown): ApiResult | Promise<ApiResult>;
+};
+
+let nickelPromise: Promise<NickelApi> | undefined;
+async function loadNickel(): Promise<NickelApi> {
+  if (nickelPromise === undefined) {
+    nickelPromise = (import("../nickel-vm/dist/nickel_vm.js") as unknown as Promise<NickelApi>).catch(
+      (error: unknown) => {
+        nickelPromise = undefined;
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `workflow: cannot load Nickel WASM glue (${detail}); run 'just nickel-build' and retry`,
+        );
+      },
+    );
+  }
   return nickelPromise;
 }
 
@@ -44,40 +59,59 @@ async function executeWorkflow(
   content: Array<{ type: "text"; text: string }>;
   details: ApiResult;
 }> {
-  const nickel = await loadNickel();
-  const { readFile } = await import("node:fs/promises");
-  const { join } = await import("node:path");
-  const { fileURLToPath } = await import("node:url");
-
+  // Stage: path probe — locate the bundled workflow, then the cwd fallback.
   const pluginRoot = join(fileURLToPath(import.meta.url), "../..");
   const workflowPath = join(pluginRoot, "skills/do/workflow.ncl");
+  const fallbackWorkflowPath = join(ctx.cwd, "skills/do/workflow.ncl");
   const statePath = join(ctx.cwd, ".do-results.json");
 
+  // Stage: read — only a missing bundled file permits the cwd fallback.
   let workflowSource: string;
   try {
     workflowSource = await readFile(workflowPath, "utf8");
-  } catch {
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (
+      error === null ||
+      typeof error !== "object" ||
+      !("code" in error) ||
+      error.code !== "ENOENT"
+    ) {
+      throw new Error(
+        `workflow: cannot read workflow.ncl at ${workflowPath} or in cwd at ${fallbackWorkflowPath}: ${detail}`,
+      );
+    }
     try {
-      workflowSource = await readFile(join(ctx.cwd, "skills/do/workflow.ncl"), "utf8");
-    } catch (e) {
-      throw new Error(`workflow: cannot read workflow.ncl at ${workflowPath} or in cwd: ${e}`);
+      workflowSource = await readFile(fallbackWorkflowPath, "utf8");
+    } catch (fallbackError: unknown) {
+      const fallbackDetail =
+        fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(
+        `workflow: cannot read workflow.ncl at ${workflowPath} or in cwd at ${fallbackWorkflowPath}: ${fallbackDetail}`,
+      );
     }
   }
 
   let stateSource: string;
   try {
     stateSource = await readFile(statePath, "utf8");
-  } catch (e) {
-    throw new Error(`workflow: cannot read state file .do-results.json at ${statePath}: ${e}`);
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`workflow: cannot read state file .do-results.json at ${statePath}: ${detail}`);
   }
 
-  const result = await nickel.eval_workflow({
+  // Stage: encode — pass the bridge's JSON request as structured data.
+  const request = {
     workflow_source: workflowSource,
     state_source: stateSource,
     operation: params.field,
     seed: params.from,
-  });
+  };
 
+  // Stage: launch — evaluate the request in the Nickel WASM bridge.
+  const result = await nickel.eval_workflow(request);
+
+  // Stage: decode — translate the bridge result into the tool outcome.
   if (result.exit !== 0) {
     throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
   }

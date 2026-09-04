@@ -92,7 +92,7 @@
           };
           cargoDeps = rustPlatform.fetchCargoVendor {
             src = nickelVmSrc;
-            hash = "sha256-jGdjCI85lec90ubpPHyRqir+lOu1RfZlc5/dhscvgg4=";
+            hash = "sha256-hY17JHiEHnAjmFMaEcBMtFlG4SZHFX0q4pYlSkG+/vc=";
           };
           patchedNickelCore = pkgs.stdenvNoCC.mkDerivation {
             pname = "nickel-lang-core";
