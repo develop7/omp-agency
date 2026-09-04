@@ -21,12 +21,19 @@ the core version requires re-verifying the smoke goldens.
 
 ## Build and smoke test
 
+Run inside the pinned toolchain: `nix develop` first (it provides the exact
+Node.js and wasm-bindgen the artifact was built with).
+
 The generated files in `dist/` are checked in because they are the runtime plugin artifact. `Cargo.lock` pins the dependency graph, including `wasm-bindgen = 0.2.127`, which must match the `wasm-bindgen-cli` used by the Nix development shell.
 
 ```bash
+nix develop
 just nickel-build
 node nickel-vm/scripts/smoke.mjs
 ```
+
+For one-off invocations outside the dev shell, pin the interpreter the same
+way: `nix develop --command node nickel-vm/scripts/smoke.mjs`.
 
 The smoke test evaluates the three deterministic examples documented in `skills/do/workflow.ncl`: `cli` on `_test_state`, `cli_seed ""`, and `cli_seed "followup"`. It compares each rendered result byte-for-byte with the documented golden output.
 

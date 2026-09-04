@@ -162,6 +162,9 @@ just nickel-build  # build the Nickel WASM evaluator and Node glue
 node nickel-vm/scripts/smoke.mjs  # run the three workflow goldens
 ```
 
+One-off CLI invocations outside the dev shell should pin the interpreter too:
+`nix develop --command node pure/dist/agency-do.js …`.
+
 Testing requires [bats-core](https://github.com/bats-core/bats-core): `sudo apt-get install bats`, `brew install bats-core`, or `nix profile install nixpkgs#bats`.
 
 The `/do` operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and `agency_driver`) is implemented in PureScript under `pure/`. The CLI bundle, `pure/dist/agency-do.js`, remains the black-box test entrypoint; the OMP adapter lazily loads `pure/dist/agency-api.js`. See `pure/README.md` for the module map and these recipes:
