@@ -1,8 +1,13 @@
-export type WorkflowRequest = {
-  operation: string;
-  seed?: string | null;
-  cwd?: string;
-};
+export type WorkflowRequest =
+  | {
+      operation: "cli";
+      cwd?: string;
+    }
+  | {
+      operation: "cli_seed";
+      seed: string;
+      cwd?: string;
+    };
 
 /** Public result envelope. `stdout` is rendered in the legacy Nickel-text workflow protocol. */
 export type WorkflowResult = {

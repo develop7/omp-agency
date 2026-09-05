@@ -33,17 +33,16 @@ async function loadApi(): Promise<AgencyApi> {
   return apiPromise;
 }
 async function executeWorkflow(
-  params: { field: string; from?: string },
+  params: { field: "cli" } | { field: "cli_seed"; from: string },
   ctx: ToolContext,
 ): Promise<{
   content: Array<{ type: "text"; text: string }>;
   details: ApiResult;
 }> {
-  const result = await evaluateWorkflow({
-    operation: params.field,
-    seed: params.from,
-    cwd: ctx.cwd,
-  });
+  const request = params.field === "cli"
+    ? { operation: "cli" as const, cwd: ctx.cwd }
+    : { operation: "cli_seed" as const, seed: params.from, cwd: ctx.cwd };
+  const result = await evaluateWorkflow(request);
   if (result.exit !== 0) {
     throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
   }
