@@ -7,11 +7,12 @@ import Prelude
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Sys as Sys
-import Data.Argonaut.Core (Json, fromObject, fromString, jsonNull)
+import Data.Argonaut.Core (Json, fromObject, fromString)
 import Data.Argonaut.Core as Json
 import Data.Argonaut.Parser (jsonParser)
 import Data.Either (Either(..))
 import Data.Int (floor)
+import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Foreign.Object as Obj
 import Effect (Effect)
@@ -24,19 +25,17 @@ run :: WorkflowContext -> Maybe String -> Effect Outcome.OpOutcome
 run context seed = do
   bundle <- Sys.bundleDir
   let bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
-      operation = case seed of
-        Nothing -> "cli"
-        Just _ -> "cli_seed"
-      seedJson = case seed of
-        Nothing -> jsonNull
-        Just from -> fromString from
-      request = Json.stringify
-        (fromObject
-          (Obj.fromFoldable
-            [ Tuple "operation" (fromString operation)
-            , Tuple "seed" seedJson
-            , Tuple "cwd" (fromString context.stateDir)
-            ]))
+      requestFields = case seed of
+        Nothing ->
+          [ Tuple "operation" (fromString "cli")
+          , Tuple "cwd" (fromString context.stateDir)
+          ]
+        Just from ->
+          [ Tuple "operation" (fromString "cli_seed")
+          , Tuple "seed" (fromString from)
+          , Tuple "cwd" (fromString context.stateDir)
+          ]
+      request = Json.stringify (fromObject (Obj.fromFoldable requestFields))
   result <- Sys.execInput "node" [ bridge ] request
   pure (bridgeOutcome result)
 
