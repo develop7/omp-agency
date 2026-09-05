@@ -68,9 +68,6 @@ async function executeApi(tool: string, args: string[]): Promise<{
 
 function emptyFailureMessage(tool: string, args: string[], exit: number): string {
   const operation = args[0] ?? "operation";
-  if (tool === "vcs_read" && operation === "dirty") {
-    return "vcs_read dirty: working copy clean";
-  }
   if (tool === "forge" && operation === "supports") {
     return `forge supports ${args[1] ?? "operation"}: not supported`;
   }
