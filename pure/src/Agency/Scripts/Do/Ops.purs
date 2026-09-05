@@ -30,6 +30,7 @@ module Agency.Scripts.Do.Ops
 import Prelude
 
 import Agency.Scripts.Do.Args as Args
+import Agency.Scripts.Do.WorkflowVocabulary as Vocabulary
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Context as Context
 import Agency.Scripts.Do.Forge as Forge
@@ -257,13 +258,13 @@ parseNickelOp args = case Args.requiredNonEmpty args of
 
 validEntryPoint :: String -> Either ParseError Unit
 validEntryPoint entry =
-  if Args.isEntryPoint entry then Right unit
-  else Left (parseError 2 ("do-driver: unknown --from entry point '" <> entry <> "' (allowed: " <> joinWith ", " Args.entryPoints <> ")"))
+  if Array.elem entry Vocabulary.entryPoints then Right unit
+  else Left (parseError 2 ("do-driver: unknown --from entry point '" <> entry <> "' (allowed: " <> joinWith ", " Vocabulary.entryPoints <> ")"))
 
 validWorkflowStep :: String -> Either ParseError Unit
 validWorkflowStep step =
-  if Args.isWorkflowStep step then Right unit
-  else Left (parseError 2 ("do-driver: unknown step '" <> step <> "' (steps: " <> joinWith ", " Args.workflowSteps <> ")"))
+  if Array.elem step Vocabulary.workflowSteps then Right unit
+  else Left (parseError 2 ("do-driver: unknown step '" <> step <> "' (steps: " <> joinWith ", " Vocabulary.workflowSteps <> ")"))
 
 validStepStatus :: String -> Either ParseError Unit
 validStepStatus status =
@@ -760,6 +761,9 @@ runNickelLoaded context operation = do
   let bundleWorkflow = bundle <> "/../../skills/do/workflow.ncl"
       adjacentWorkflow = bundle <> "/../../../skills/do/workflow.ncl"
       cwdWorkflow = context.stateDir <> "/skills/do/workflow.ncl"
+      bundleVocabulary = bundle <> "/../../skills/do/workflow-manifest.json"
+      adjacentVocabulary = bundle <> "/../../../skills/do/workflow-manifest.json"
+      cwdVocabulary = context.stateDir <> "/skills/do/workflow-manifest.json"
       bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
   bundleExists <- Sys.exists bundleWorkflow
   adjacentExists <- Sys.exists adjacentWorkflow
@@ -767,8 +771,13 @@ runNickelLoaded context operation = do
         if bundleExists then bundleWorkflow
         else if adjacentExists then adjacentWorkflow
         else cwdWorkflow
+      vocabularyPath =
+        if bundleExists then bundleVocabulary
+        else if adjacentExists then adjacentVocabulary
+        else cwdVocabulary
   workflow <- Sys.realpath workflowPath
   workflowSource <- Sys.readUtf8 workflow
+  vocabularySource <- Sys.readUtf8 vocabularyPath
   stateSource <- Sys.readUtf8 (Context.statePath context)
   let operationName = case operation of
         NickelCli -> "cli"
@@ -782,6 +791,7 @@ runNickelLoaded context operation = do
             [ Tuple "workflow_source" (fromString workflowSource)
             , Tuple "state_source" (fromString stateSource)
             , Tuple "operation" (fromString operationName)
+            , Tuple "vocabulary_source" (fromString vocabularySource)
             , Tuple "seed" seedJson
             ]))
   result <- Sys.execInput "node" [ bridge ] request

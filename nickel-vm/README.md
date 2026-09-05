@@ -4,7 +4,7 @@
 
 ## Evaluation seam
 
-The public `eval_workflow` function accepts the workflow source, `.do-results.json` source, operation (`cli` or `cli_seed`), and optional seed. It registers one in-memory `main.ncl` invocation and injects `workflow.ncl`, `.do-results.json`, and `seed.json` into Nickel's source cache as `SourcePath::Path` entries. The invocation imports them through Nickel's `%inmem_src%:` seam, so no temporary files or working-directory imports are needed. Seed values are serialized with `serde_json` as JSON strings in the in-memory `seed.json` document before Nickel evaluates the request.
+The public `eval_workflow` function accepts the workflow source, workflow vocabulary manifest, `.do-results.json` source, operation (`cli` or `cli_seed`), and optional seed. It registers one in-memory `main.ncl` invocation and injects `workflow.ncl`, `workflow-manifest.json`, `.do-results.json`, and `seed.json` into Nickel's source cache as `SourcePath::Path` entries. The invocation imports them through Nickel's `%inmem_src%:` seam, so no temporary files or working-directory imports are needed. Seed values are serialized with `serde_json` as JSON strings in the in-memory `seed.json` document before Nickel evaluates the request.
 
 The evaluator intentionally uses the single-input path: merging multiple input documents would change the workflow/state contract by merging state fields into the workflow record.
 
@@ -35,5 +35,5 @@ node nickel-vm/scripts/smoke.mjs
 For one-off invocations outside the dev shell, pin the interpreter the same
 way: `nix develop --command node nickel-vm/scripts/smoke.mjs`.
 
-The smoke test evaluates the three deterministic examples documented in `skills/do/workflow.ncl`: `cli` on `_test_state`, `cli_seed ""`, and `cli_seed "followup"`. It compares each rendered result byte-for-byte with the documented golden output.
+The smoke test compares the documented valid `cli` and `cli_seed` results byte-for-byte, and verifies that an unknown nonempty `cli_seed` entry point is rejected.
 

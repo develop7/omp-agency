@@ -11,8 +11,7 @@ extend the working tree in place — no branch, commit, or PR.)
 
 > All paths in this skill are relative to the skill's base directory.
 
-**This is a workflow graph.** Step order, skip predicates, and pattern configs live in [`workflow.ncl`](workflow.ncl);
-each step's activity is a node file under [`nodes/`](nodes/). The agent is the runtime — there is no separate engine.
+**This is a workflow graph.** The ordered step and entry-point vocabulary lives in [`workflow-manifest.json`](workflow-manifest.json); skip predicates and pattern configs live in [`workflow.ncl`](workflow.ncl); each step's activity is a node file under [`nodes/`](nodes/). The agent is the runtime — there is no separate engine.
 
 **Mostly autonomous.** Do NOT use the `ask` tool at any point (except during the `--review` planning pause). Make
 sensible default choices and keep moving.
@@ -54,14 +53,13 @@ capability table). The `forge` string itself stays in state as the table's input
 Today only GitHub has an active code path; Bitbucket/other forges gracefully skip PR-related steps. Tracking: [srid/agency#10](https://github.com/srid/agency/issues/10).
 
 - `--review`: Pause after **research** for user plan approval via the `ask` tool (present the plan, let the user approve or modify), then continue
-  autonomously. **Incompatible with `--from=<non-default>`** (any entry that skips research — `followup`,
-  `post-implement`, `polish`, `ci-only`): the plan-approval pause would be silently dropped. `agency_driver` `init`
-  errors out on the conflict; drop one of the flags.
+  autonomously. **Incompatible with `--from=<non-default>`**: the plan-approval pause would be silently dropped.
+  `agency_driver` `init` errors out on the conflict; drop one of the flags.
 - `--no-vcs`: Extend the working tree **in place** — do not create a branch, commit, push, or touch any PR. VCS-mutating
   nodes skip with `reason="--no-vcs"`.
 - `--minimal`: Omit **docs**, `hickey-lowy`, **police**, and **evidence** from both the CLI path and todo list.
-- `--from <step-id>`: Start from a specific node. Entry points: `default`→sync, `followup`→implement, `post-implement`
-  →fmt, `polish`→hickey-lowy, `ci-only`→ci.
+- `--from <step-id>`: Start from a declared entry point. IDs and starting steps are defined by
+  [`workflow-manifest.json`](workflow-manifest.json).
 - `--base <branch>`: Branch from `<branch>` and target the PR at it — **stacked PRs**. The parent must be pushed (git
   requires `origin/<branch>`; jj requires the bookmark to exist). Mutually exclusive with `--stack`; incompatible with
   `--no-vcs`.
@@ -119,13 +117,8 @@ Rules:
 
 ## Entry Points
 
-| ID               | Starts at             | Use case                                |
-| ---------------- | --------------------- | --------------------------------------- |
-| `default`        | **sync**              | Full workflow from scratch              |
-| `followup`       | **implement**         | Additional changes on existing PR       |
-| `post-implement` | **fmt**               | Skip research/impl, start at formatting |
-| `polish`         | **hickey+lowy**       | Structural review + quality gate        |
-| `ci-only`        | **ci**                | Just run CI                             |
+`workflow-manifest.json` is the sole declaration of accepted entry-point IDs and their starting steps. Both
+`agency_driver init --from` and `workflow cli_seed` reject any unknown nonempty ID.
 
 ## Rules
 

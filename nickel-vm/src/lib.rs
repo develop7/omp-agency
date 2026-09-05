@@ -27,11 +27,13 @@ pub enum WorkflowOperation {
 
 /// Inputs for one in-process `/do` workflow evaluation.
 ///
-/// `workflow_source` and `state_source` are registered as separate in-memory
-/// Nickel inputs. `seed` is optional because only `cli_seed` consumes it.
+/// `workflow_source`, `vocabulary_source`, and `state_source` are registered
+/// as separate in-memory Nickel inputs. `seed` is optional because only
+/// `cli_seed` consumes it.
 #[derive(Deserialize)]
 pub struct WorkflowRequest {
     pub workflow_source: String,
+    pub vocabulary_source: String,
     pub state_source: String,
     pub operation: WorkflowOperation,
     pub seed: Option<String>,
@@ -75,8 +77,9 @@ pub fn eval_workflow(req: JsValue) -> JsValue {
     }
 
     // Nickel's resolver recognizes the `%inmem_src%:` prefix and strips it
-    // before looking up these SourcePath::Path entries. This keeps workflow and
-    // state as separate inputs without merging state into the workflow record.
+    // before looking up these SourcePath::Path entries. This keeps the workflow,
+    // vocabulary, and state as separate inputs without merging state into the
+    // workflow record.
     let main_id = cache.sources.add_string(
         SourcePath::Path(PathBuf::from("main.ncl"), InputFormat::Nickel),
         invocation_expr,
@@ -84,6 +87,10 @@ pub fn eval_workflow(req: JsValue) -> JsValue {
     cache.sources.add_string(
         SourcePath::Path(PathBuf::from("workflow.ncl"), InputFormat::Nickel),
         request.workflow_source,
+    );
+    cache.sources.add_string(
+        SourcePath::Path(PathBuf::from("workflow-manifest.json"), InputFormat::Json),
+        request.vocabulary_source,
     );
     cache.sources.add_string(
         SourcePath::Path(PathBuf::from(".do-results.json"), InputFormat::Json),

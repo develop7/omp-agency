@@ -44,7 +44,7 @@ import Foreign.Object as Obj
 import Node.Errors.SystemError as SystemError
 import Unsafe.Coerce (unsafeCoerce)
 
-import Agency.Scripts.Do.Args as Args
+import Agency.Scripts.Do.WorkflowVocabulary as Vocabulary
 import Agency.Scripts.Do.Sys as Sys
 
 -- | Activity values accepted by the persisted workflow protocol.
@@ -210,7 +210,7 @@ parseStep value = do
     Just result -> Right result
     Nothing -> Left "state: each step must be an object"
   name <- requiredString "name" object
-  if Args.isWorkflowStep name then pure unit else Left ("state: unknown step '" <> name <> "'")
+  if Array.elem name Vocabulary.workflowSteps then pure unit else Left ("state: unknown step '" <> name <> "'")
   statusText <- requiredString "status" object
   status <- validStepStatus statusText
   verification <- requiredString "verification" object
@@ -225,7 +225,7 @@ parsePending value = do
     Just result -> Right result
     Nothing -> Left "state: pendingStep must be an object"
   name <- requiredString "name" object
-  if Args.isWorkflowStep name then pure unit else Left ("state: unknown pending step '" <> name <> "'")
+  if Array.elem name Vocabulary.workflowSteps then pure unit else Left ("state: unknown pending step '" <> name <> "'")
   startedAt <- requiredString "startedAt" object
   pure { name, startedAt }
 
