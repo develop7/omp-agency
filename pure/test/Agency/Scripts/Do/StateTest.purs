@@ -8,12 +8,16 @@ import Data.Argonaut.Parser (jsonParser)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
+import Effect.Exception (try)
 import Effect.Console as Console
 
 import Agency.Scripts.Do.Ops as Ops
 import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
+import Node.Errors.SystemError as SystemError
+import Node.FS.Sync as FSSync
+import Unsafe.Coerce (unsafeCoerce)
 
 assert :: String -> Boolean -> Effect Unit
 assert label condition =
@@ -61,6 +65,20 @@ run = do
                       Console.error ("FAIL: reload state after set: " <> error)
                       Sys.exit 1
                     Right finalState -> assert "set unknown field survives load/save" ((State.stateGetJson "newFlag" finalState >>= toBoolean) == Just true)
+  cwd <- Sys.cwd
+  writeFailureDirectory <- Sys.uniqueTempPath (cwd <> "/.state-write-failure")
+  let writeFailurePath = writeFailureDirectory <> "/.do-results.json"
+      rmOptions = { force: true, maxRetries: 0, recursive: true, retryDelay: 0 }
+  FSSync.mkdir writeFailureDirectory
+  FSSync.mkdir writeFailurePath
+  writeFailure <- try (State.writeState writeFailurePath State.emptyState)
+  writeFailureEntries <- FSSync.readdir writeFailureDirectory
+  FSSync.rm' writeFailureDirectory rmOptions
+  case writeFailure of
+    Left error -> do
+      assert "write state preserves the rename failure" (SystemError.code (unsafeCoerce error) == "EISDIR")
+      assert "write state removes its temporary file after rename failure" (writeFailureEntries == [ ".do-results.json" ])
+    Right _ -> assert "write state rejects a directory destination" false
   case State.parseState "{\"active\":\"finished\"}" of
     Left error -> assert "unknown active status is rejected" (error == "state: invalid active 'finished'")
     Right _ -> assert "unknown active status is rejected" false
