@@ -181,7 +181,14 @@ function renderCli(value) {
   }
   const fields = ["step", "skip", "pattern", "instructions", "requires", "pattern_config"];
   requireExactFields("cli", value, fields);
-  return `{ step = ${renderString(value.step, "cli step")}, skip = ${renderBoolean(value.skip, "cli skip")}, pattern = ${renderTag(value.pattern, "cli pattern")}, instructions = ${renderString(value.instructions, "cli instructions")}, requires = ${renderStringArray(value.requires, "cli requires")}, pattern_config = ${renderPatternConfig(value.pattern_config)} }`;
+  return (
+    `{ step = ${renderString(value.step, "cli step")}, `
+    + `skip = ${renderBoolean(value.skip, "cli skip")}, `
+    + `pattern = ${renderTag(value.pattern, "cli pattern")}, `
+    + `instructions = ${renderString(value.instructions, "cli instructions")}, `
+    + `requires = ${renderStringArray(value.requires, "cli requires")}, `
+    + `pattern_config = ${renderPatternConfig(value.pattern_config)} }`
+  );
 }
 
 /** @param {unknown} value */
@@ -198,7 +205,10 @@ function renderSeedStep(value) {
     throw new Error("workflow: Nickel cli_seed items must be objects");
   }
   requireExactFields("cli_seed item", value, ["name", "initial_status"]);
-  return `{ name = ${renderString(value.name, "cli_seed name")}, initial_status = ${renderTag(value.initial_status, "cli_seed initial_status")} }`;
+  return (
+    `{ name = ${renderString(value.name, "cli_seed name")}, `
+    + `initial_status = ${renderTag(value.initial_status, "cli_seed initial_status")} }`
+  );
 }
 
 /** @param {unknown} value */
