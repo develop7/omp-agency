@@ -118,6 +118,14 @@ async function run() {
         assert(`cli resumes ${status} step`, resumed.stdout.match(/step = "([^"]+)"/)?.[1], "ci");
     }
 
+    const polishCli = await workflowResult('cli', { ...TEST_STATE, from: 'polish' });
+    assertResult('cli polish', polishCli);
+    assert(
+        'cli renders structured pattern configuration',
+        polishCli.stdout,
+        `{ step = "hickey-lowy", skip = false, pattern = 'fanout-fix, instructions = "nodes/hickey-lowy.md", requires = ["diff", "research.context"], pattern_config = { cross_validate = true } }`,
+    );
+
     const minimal = { ...TEST_STATE, minimal: true };
     const minimalSeed = await workflowResult('cli_seed', minimal, '');
     assertResult('cli_seed minimal', minimalSeed);

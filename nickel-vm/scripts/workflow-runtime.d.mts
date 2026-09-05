@@ -4,6 +4,7 @@ export type WorkflowRequest = {
   cwd?: string;
 };
 
+/** Public result envelope. `stdout` is rendered in the legacy Nickel-text workflow protocol. */
 export type WorkflowResult = {
   exit: number;
   stdout: string;
