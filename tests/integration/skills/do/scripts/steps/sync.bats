@@ -108,6 +108,7 @@ run_sync() {
 }
 
 @test "sync --base <branch> resolves base to that branch" {
+  git branch feat-parent
   run_sync --base feat-parent false
   [ "$status" -eq 0 ]
   [[ "$output" == *"base=feat-parent"* ]]

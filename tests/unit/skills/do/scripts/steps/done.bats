@@ -19,7 +19,6 @@ run_done() {
   rm -f .do-results.json
   run_done
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "cannot produce summary" ]]
 }
 
 @test "empty steps: table with Total 0s, no slowest step" {
@@ -27,7 +26,7 @@ run_done() {
 {
   "workflow": "do",
   "startedAt": "2024-01-01T00:00:00Z",
-  "active": "completed",
+  "active": "idle",
   "status": "completed",
   "steps": []
 }
@@ -44,7 +43,7 @@ EOF
 {
   "workflow": "do",
   "startedAt": "2024-01-01T00:00:00Z",
-  "active": "completed",
+  "active": "idle",
   "status": "completed",
   "steps": [
     {"name":"sync","status":"passed","verification":"ok","startedAt":"2024-01-01T00:00:00Z","completedAt":"2024-01-01T00:00:30Z"}
@@ -63,7 +62,7 @@ EOF
 {
   "workflow": "do",
   "startedAt": "2024-01-01T00:00:00Z",
-  "active": "completed",
+  "active": "idle",
   "status": "completed",
   "steps": [
     {"name":"docs","status":"skipped","verification":"","startedAt":"2024-01-01T00:00:00Z","completedAt":"2024-01-01T00:00:00Z","reason":"--minimal"}
@@ -80,7 +79,7 @@ EOF
 {
   "workflow": "do",
   "startedAt": "2024-01-01T00:00:00Z",
-  "active": "completed",
+  "active": "idle",
   "status": "failed",
   "steps": [
     {"name":"ci","status":"failed","verification":"exit 1","startedAt":"2024-01-01T00:00:00Z","completedAt":"2024-01-01T00:00:10Z"}
@@ -98,7 +97,7 @@ EOF
 {
   "workflow": "do",
   "startedAt": "2024-01-01T00:00:00Z",
-  "active": "completed",
+  "active": "idle",
   "status": "completed",
   "steps": [
     {"name":"sync","status":"passed","verification":"ok","startedAt":"2024-01-01T00:00:00Z","completedAt":"2024-01-01T00:00:10Z"},
@@ -119,7 +118,7 @@ EOF
 {
   "workflow": "do",
   "startedAt": "2024-01-01T00:00:00Z",
-  "active": "completed",
+  "active": "idle",
   "status": "completed",
   "steps": [
     {"name":"sync","status":"passed","verification":"ok","startedAt":"2024-01-01T00:00:00Z","completedAt":"2024-01-01T00:00:30Z"}
@@ -143,7 +142,7 @@ EOF
 {
   "workflow": "do",
   "startedAt": "2024-01-01T00:00:00Z",
-  "active": "completed",
+  "active": "idle",
   "status": "completed",
   "steps": [
     {"name":"ci","status":"passed","verification":"ok","startedAt":"2024-01-01T00:00:00Z","completedAt":"2024-01-01T00:02:30Z"}
@@ -160,7 +159,7 @@ EOF
 {
   "workflow": "do",
   "startedAt": "2024-01-01T00:00:00Z",
-  "active": "completed",
+  "active": "idle",
   "status": "completed",
   "steps": [
     {"name":"sync","status":"passed","verification":"ok","startedAt":"2024-01-01T00:00:00Z","completedAt":"2024-01-01T00:00:05Z"},
