@@ -14,29 +14,24 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use wasm_bindgen::prelude::*;
 
-/// A workflow operation accepted by the WASM evaluator.
-///
-/// Serde rejects every operation other than the two workflow entry points at
-/// the request boundary, before any Nickel source is evaluated.
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowOperation {
-    Cli,
-    CliSeed,
-}
-
 /// Inputs for one in-process `/do` workflow evaluation.
 ///
-/// `workflow_source`, `vocabulary_source`, and `state_source` are registered
-/// as separate in-memory Nickel inputs. `seed` is optional because only
-/// `cli_seed` consumes it.
+/// Each variant registers the same in-memory workflow sources, while the
+/// operation-specific fields are decoded at the WASM request boundary.
 #[derive(Deserialize)]
-pub struct WorkflowRequest {
-    pub workflow_source: String,
-    pub vocabulary_source: String,
-    pub state_source: String,
-    pub operation: WorkflowOperation,
-    pub seed: Option<String>,
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WorkflowRequest {
+    Cli {
+        workflow_source: String,
+        vocabulary_source: String,
+        state_source: String,
+    },
+    CliSeed {
+        workflow_source: String,
+        vocabulary_source: String,
+        state_source: String,
+        seed: String,
+    },
 }
 
 /// The exit status and captured streams returned by the WASM evaluator.
@@ -67,17 +62,51 @@ pub fn eval_workflow(req: JsValue) -> JsValue {
 }
 
 fn evaluate_workflow(request: WorkflowRequest) -> WorkflowResult {
-    let invocation_expr = match request.operation {
-        WorkflowOperation::Cli => "let workflow = import \"%inmem_src%:workflow.ncl\" in \
-             let state = workflow.normalize_state (import \"%inmem_src%:.do-results.json\") in \
-             std.serialize 'Json (workflow.cli state)"
-            .to_owned(),
-        WorkflowOperation::CliSeed => "let workflow = import \"%inmem_src%:workflow.ncl\" in \
+    let (workflow_source, vocabulary_source, state_source, invocation_expr, seed_source) =
+        match request {
+            WorkflowRequest::Cli {
+                workflow_source,
+                vocabulary_source,
+                state_source,
+            } => (
+                workflow_source,
+                vocabulary_source,
+                state_source,
+                "let workflow = import \"%inmem_src%:workflow.ncl\" in \
                  let state = workflow.normalize_state (import \"%inmem_src%:.do-results.json\") in \
-                 let seed = import \"%inmem_src%:seed.json\" in \
-                 std.serialize 'Json (workflow.cli_seed seed state)"
-            .to_owned(),
-    };
+                 std.serialize 'Json (workflow.cli state)"
+                    .to_owned(),
+                None,
+            ),
+            WorkflowRequest::CliSeed {
+                workflow_source,
+                vocabulary_source,
+                state_source,
+                seed,
+            } => {
+                let seed_source = match serde_json::to_string(&seed) {
+                    Ok(source) => source,
+                    Err(e) => {
+                        return WorkflowResult {
+                            exit: 1,
+                            stdout: String::new(),
+                            stderr: format!("Seed serialization failed: {:?}", e),
+                        }
+                    }
+                };
+                (
+                    workflow_source,
+                    vocabulary_source,
+                    state_source,
+                    "let workflow = import \"%inmem_src%:workflow.ncl\" in \
+                     let state = workflow.normalize_state (import \"%inmem_src%:.do-results.json\") in \
+                     let seed = import \"%inmem_src%:seed.json\" in \
+                     std.serialize 'Json (workflow.cli_seed seed state)"
+                        .to_owned(),
+                    Some(seed_source),
+                )
+            }
+        };
 
     let mut cache = CacheHub::new();
     if let Err(e) = cache.load_stdlib() {
@@ -98,31 +127,22 @@ fn evaluate_workflow(request: WorkflowRequest) -> WorkflowResult {
     );
     cache.sources.add_string(
         SourcePath::Path(PathBuf::from("workflow.ncl"), InputFormat::Nickel),
-        request.workflow_source,
+        workflow_source,
     );
     cache.sources.add_string(
         SourcePath::Path(PathBuf::from("workflow-manifest.json"), InputFormat::Json),
-        request.vocabulary_source,
+        vocabulary_source,
     );
     cache.sources.add_string(
         SourcePath::Path(PathBuf::from(".do-results.json"), InputFormat::Json),
-        request.state_source,
+        state_source,
     );
-    let seed = request.seed.as_deref().unwrap_or("default");
-    let seed_source = match serde_json::to_string(seed) {
-        Ok(source) => source,
-        Err(e) => {
-            return WorkflowResult {
-                exit: 1,
-                stdout: String::new(),
-                stderr: format!("Seed serialization failed: {:?}", e),
-            }
-        }
-    };
-    cache.sources.add_string(
-        SourcePath::Path(PathBuf::from("seed.json"), InputFormat::Json),
-        seed_source,
-    );
+    if let Some(seed_source) = seed_source {
+        cache.sources.add_string(
+            SourcePath::Path(PathBuf::from("seed.json"), InputFormat::Json),
+            seed_source,
+        );
+    }
 
     let mut vm_ctxt: VmContext<CacheHub, CacheImpl> =
         VmContext::new(cache, std::io::sink(), NullReporter {});
@@ -175,11 +195,11 @@ mod tests {
     use super::*;
     use serde_json::{json, Value};
 
-    fn request(operation: WorkflowOperation, seed: Option<&str>) -> WorkflowRequest {
-        WorkflowRequest {
-            workflow_source: include_str!("../../skills/do/workflow.ncl").to_owned(),
-            vocabulary_source: include_str!("../../skills/do/workflow-manifest.json").to_owned(),
-            state_source: json!({
+    fn workflow_sources() -> (String, String, String) {
+        (
+            include_str!("../../skills/do/workflow.ncl").to_owned(),
+            include_str!("../../skills/do/workflow-manifest.json").to_owned(),
+            json!({
                 "active": "working",
                 "status": "running",
                 "steps": [],
@@ -194,8 +214,25 @@ mod tests {
                 "task": "test",
             })
             .to_string(),
-            operation,
-            seed: seed.map(str::to_owned),
+        )
+    }
+
+    fn cli_request() -> WorkflowRequest {
+        let (workflow_source, vocabulary_source, state_source) = workflow_sources();
+        WorkflowRequest::Cli {
+            workflow_source,
+            vocabulary_source,
+            state_source,
+        }
+    }
+
+    fn cli_seed_request(seed: &str) -> WorkflowRequest {
+        let (workflow_source, vocabulary_source, state_source) = workflow_sources();
+        WorkflowRequest::CliSeed {
+            workflow_source,
+            vocabulary_source,
+            state_source,
+            seed: seed.to_owned(),
         }
     }
 
@@ -206,9 +243,47 @@ mod tests {
     }
 
     #[test]
+    fn wasm_request_rejects_contradictory_seed_states() {
+        assert!(serde_json::from_value::<WorkflowRequest>(json!({
+            "workflow_source": "workflow",
+            "vocabulary_source": "{}",
+            "state_source": "{}",
+            "operation": "cli",
+            "seed": "default",
+        }))
+        .is_err());
+        assert!(serde_json::from_value::<WorkflowRequest>(json!({
+            "workflow_source": "workflow",
+            "vocabulary_source": "{}",
+            "state_source": "{}",
+            "operation": "cli_seed",
+        }))
+        .is_err());
+        assert!(serde_json::from_value::<WorkflowRequest>(json!({
+            "workflow_source": "workflow",
+            "vocabulary_source": "{}",
+            "state_source": "{}",
+            "operation": "cli_seed",
+            "seed": null,
+        }))
+        .is_err());
+
+        assert!(matches!(
+            serde_json::from_value::<WorkflowRequest>(json!({
+                "workflow_source": "workflow",
+                "vocabulary_source": "{}",
+                "state_source": "{}",
+                "operation": "cli_seed",
+                "seed": "",
+            })),
+            Ok(WorkflowRequest::CliSeed { seed, .. }) if seed.is_empty()
+        ));
+    }
+
+    #[test]
     fn cli_returns_a_structured_next_step() {
         assert_eq!(
-            structured_output(evaluate_workflow(request(WorkflowOperation::Cli, None))),
+            structured_output(evaluate_workflow(cli_request())),
             json!({
                 "step": "sync",
                 "skip": false,
@@ -223,7 +298,7 @@ mod tests {
     #[test]
     fn cli_seed_returns_a_structured_step_list() {
         assert_eq!(
-            structured_output(evaluate_workflow(request(WorkflowOperation::CliSeed, Some("")))),
+            structured_output(evaluate_workflow(cli_seed_request(""))),
             json!([
                 {"name": "sync", "initial_status": "pending"},
                 {"name": "research", "initial_status": "pending"},

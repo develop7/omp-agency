@@ -24,11 +24,14 @@ function stateSource(state) {
 }
 
 
-async function workflowResult(operation, state, seed = null) {
+async function workflowResult(operation, state, seed) {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agency-workflow-'));
     try {
         fs.writeFileSync(path.join(cwd, '.do-results.json'), stateSource(state), 'utf8');
-        return await evaluateWorkflow({ operation, seed, cwd });
+        const request = operation === 'cli'
+            ? { operation, cwd }
+            : { operation, seed, cwd };
+        return await evaluateWorkflow(request);
     } finally {
         fs.rmSync(cwd, { recursive: true, force: true });
     }
@@ -77,6 +80,18 @@ async function run() {
         missingState.stderr.includes('run do-driver init first'),
         true,
     );
+
+    const cliWithSeed = await evaluateWorkflow({ operation: 'cli', seed: 'default' });
+    assert('cli rejects a seed', cliWithSeed.exit, 1);
+    assert('cli rejection names seed', cliWithSeed.stderr.includes('cli does not accept a seed'), true);
+
+    const seedWithoutValue = await evaluateWorkflow({ operation: 'cli_seed' });
+    assert('cli_seed rejects a missing seed', seedWithoutValue.exit, 1);
+    assert('cli_seed missing seed rejection is actionable', seedWithoutValue.stderr.includes('cli_seed requires a string seed'), true);
+
+    const seedWithNull = await evaluateWorkflow({ operation: 'cli_seed', seed: null });
+    assert('cli_seed rejects a null seed', seedWithNull.exit, 1);
+    assert('cli_seed null seed rejection is actionable', seedWithNull.stderr.includes('cli_seed requires a string seed'), true);
 
 
     const res1 = await workflowResult('cli', TEST_STATE);

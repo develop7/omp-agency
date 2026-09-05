@@ -7,25 +7,30 @@ const runtimeRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** @typedef {{ exit: number, stdout: string, stderr: string }} WorkflowResult */
 
 /**
+ * @typedef {{ operation: "cli", cwd?: string } | { operation: "cli_seed", seed: string, cwd?: string }} WorkflowRequest
+ */
+
+/**
  * Evaluate a /do workflow using assets and state discovered from the runtime
  * installation and supplied working directory. The request may be the CLI
- * bridge's JSON text or `{ operation, seed?, cwd? }`.
+ * bridge's JSON text or a {@link WorkflowRequest}.
  *
  * @param {unknown} request
  * @returns {Promise<WorkflowResult>}
  */
 export async function evaluateWorkflow(request) {
   try {
-    const { cwd, operation, seed } = parseRequest(request);
+    const parsed = parseRequest(request);
+    const { cwd, operation } = parsed;
     const [workflow_source, vocabulary_source, state_source] = await Promise.all([
       readWorkflowAsset(cwd, "workflow.ncl"),
       readWorkflowAsset(cwd, "workflow-manifest.json"),
       readStateSource(cwd),
     ]);
     const nickel = await loadNickel();
-    const result = workflowResult(
-      await nickel.eval_workflow({ workflow_source, vocabulary_source, state_source, operation, seed }),
-    );
+    const evaluatorRequest = { workflow_source, vocabulary_source, state_source, operation };
+    if (operation === "cli_seed") evaluatorRequest.seed = parsed.seed;
+    const result = workflowResult(await nickel.eval_workflow(evaluatorRequest));
     return result.exit === 0
       ? { ...result, stdout: renderWorkflowOutput(operation, result.stdout) }
       : result;
@@ -43,23 +48,32 @@ export function workflowFailure(error) {
   };
 }
 
-/** @param {unknown} request */
+/**
+ * @param {unknown} request
+ * @returns {{ cwd: string, operation: "cli" } | { cwd: string, operation: "cli_seed", seed: string }}
+ */
 function parseRequest(request) {
   const value = typeof request === "string" ? JSON.parse(request) : request;
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("workflow: request must be an object");
   }
-  const { cwd = process.cwd(), operation, seed } = value;
+  const { cwd = process.cwd(), operation } = value;
   if (typeof cwd !== "string" || cwd === "") {
     throw new Error("workflow: cwd must be a non-empty string");
   }
-  if (typeof operation !== "string" || operation === "") {
-    throw new Error("workflow: operation must be a non-empty string");
+  if (operation === "cli") {
+    if (Object.hasOwn(value, "seed")) {
+      throw new Error("workflow: cli does not accept a seed");
+    }
+    return { cwd: resolve(cwd), operation };
   }
-  if (seed !== undefined && seed !== null && typeof seed !== "string") {
-    throw new Error("workflow: seed must be a string when provided");
+  if (operation === "cli_seed") {
+    if (!Object.hasOwn(value, "seed") || typeof value.seed !== "string") {
+      throw new Error("workflow: cli_seed requires a string seed");
+    }
+    return { cwd: resolve(cwd), operation, seed: value.seed };
   }
-  return { cwd: resolve(cwd), operation, seed: seed ?? undefined };
+  throw new Error("workflow: operation must be 'cli' or 'cli_seed'");
 }
 
 /** @param {string} cwd @param {string} asset */
