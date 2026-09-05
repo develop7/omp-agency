@@ -7,14 +7,16 @@ type WorkflowState = {
   status?: unknown;
 };
 
-/** Whether persisted /do state still requires the session to continue. */
-
+/** Whether the persisted state does not prove that stopping is safe. */
 export function shouldContinueSession(state: unknown): boolean {
   if (typeof state !== "object" || state === null) {
-    return false;
+    return true;
   }
   const { active, status } = state as WorkflowState;
-  return status === "running" && (active === "working" || active === "waiting");
+  return !(
+    active === "idle" &&
+    (status === "idle" || status === "completed" || status === "failed")
+  );
 }
 
 /** Whether no persisted workflow state exists, making stopping safe. */
