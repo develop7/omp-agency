@@ -17,11 +17,8 @@ export function shouldContinueSession(state: unknown): boolean {
   return status === "running" && (active === "working" || active === "waiting");
 }
 
-/** Whether a state-file failure makes stopping safe rather than abandoning work. */
-export function shouldAllowStopAfterStateError(error: unknown): boolean {
-  if (error instanceof SyntaxError) {
-    return true;
-  }
+/** Whether no persisted workflow state exists, making stopping safe. */
+export function isMissingStateFile(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
@@ -32,8 +29,8 @@ export default function (pi: ExtensionAPI) {
       const raw = readFileSync(join(ctx.cwd, ".do-results.json"), "utf-8");
       state = JSON.parse(raw);
     } catch (error: unknown) {
-      if (shouldAllowStopAfterStateError(error)) {
-        return; // missing or unparseable state → allow stop
+      if (isMissingStateFile(error)) {
+        return; // no state file means no persisted workflow to abandon
       }
       return {
         continue: true,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { shouldAllowStopAfterStateError, shouldContinueSession } from "./stop-guard";
+import { isMissingStateFile, shouldContinueSession } from "./stop-guard";
 
 describe("shouldContinueSession", () => {
   test.each(["working", "waiting"])("blocks an in-flight %s workflow", (active) => {
@@ -20,13 +20,16 @@ describe("shouldContinueSession", () => {
   });
 });
 
-describe("shouldAllowStopAfterStateError", () => {
-  test("allows a missing or unparseable state file", () => {
-    expect(shouldAllowStopAfterStateError(Object.assign(new Error("missing"), { code: "ENOENT" }))).toBe(true);
-    expect(shouldAllowStopAfterStateError(new SyntaxError("invalid JSON"))).toBe(true);
+describe("isMissingStateFile", () => {
+  test("allows stopping only when the state file is absent", () => {
+    expect(isMissingStateFile(Object.assign(new Error("missing"), { code: "ENOENT" }))).toBe(true);
   });
 
-  test.each(["EACCES", "EIO"])("continues when state-file access fails with %s", (code) => {
-    expect(shouldAllowStopAfterStateError(Object.assign(new Error("state read failed"), { code }))).toBe(false);
+  test.each([
+    new SyntaxError("invalid JSON"),
+    Object.assign(new Error("state read failed"), { code: "EACCES" }),
+    Object.assign(new Error("state read failed"), { code: "EIO" }),
+  ])("continues when state cannot be trusted", (error) => {
+    expect(isMissingStateFile(error)).toBe(false);
   });
 });
