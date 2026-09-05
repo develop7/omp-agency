@@ -58,3 +58,10 @@ run = do
   case badSummary of
     Left error -> assert "malformed timestamp is reported" (contains (Pattern "not-a-date") error)
     Right _ -> assert "malformed timestamp is rejected" false
+  inverted <- Ops.validInterval "2024-01-01T00:00:01Z" "2024-01-01T00:00:00Z"
+  case inverted of
+    Left error -> assert "inverted timestamps are rejected before recording" (contains (Pattern "precedes") error)
+    Right _ -> assert "inverted timestamps are rejected before recording" false
+  pendingRendered <- Ops.renderDone (state { pendingStep = Just { name: "ci", startedAt: "2024-01-01T00:00:20Z" } }) 20
+  assert "pending step has an in-progress row" (contains (Pattern "| ci | ⋯ |") pendingRendered)
+  assert "facts name the pending step" (contains (Pattern "pendingStep=ci") pendingRendered)

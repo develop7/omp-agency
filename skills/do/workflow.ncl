@@ -76,7 +76,6 @@
         base | String | default = "",
         minimal | Bool,
         review | Bool | default = false,
-        has_evidence | Bool | default = false,
         # Entry point ID (e.g. "followup", "polish") set by agency_driver init --from.
         # Read by compute_next when steps is empty to start at the entry point
         # instead of always defaulting to "sync". Empty or "default" → "sync".
@@ -230,7 +229,7 @@
     evidence = {
       pattern = 'one-shot,
       next = "done",
-      skip_when | not_exported = fun state => !state.has_evidence,
+      skip_when | not_exported = fun state => false,
       requires = [],
       instructions = "nodes/evidence.md",
     },
@@ -298,19 +297,19 @@
     ## Examples
 
     ```nickel
-    should_skip "branch" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, has_evidence = false, task = "test" }
+    should_skip "branch" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
     # => true
 
-    should_skip "docs" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, has_evidence = false, task = "test" }
+    should_skip "docs" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
     # => true
 
-    should_skip "create-pr" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'bitbucket, has_evidence = false, supportsPrCreate = false, supportsPrComment = false, supportsIssueView = false, supportsPrChecks = false, task = "test" }
+    should_skip "create-pr" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'bitbucket, supportsPrCreate = false, supportsPrComment = false, supportsIssueView = false, supportsPrChecks = false, task = "test" }
     # => true
 
     should_skip "evidence" _test_state
-    # => true
+    # => false
 
-    should_skip "ci" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, has_evidence = false, task = "test" }
+    should_skip "ci" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
     # => false
     ```
   "%
@@ -327,13 +326,13 @@
     ## Examples
 
     ```nickel
-    get_next "check" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, has_evidence = false, task = "test" }
+    get_next "check" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
     # => "fmt"
 
-    get_next "research" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, has_evidence = false, task = "test" }
+    get_next "research" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, task = "test" }
     # => "plan-approval"
 
-    get_next "fmt" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, has_evidence = false, task = "test" }
+    get_next "fmt" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
     # => "hickey-lowy"
     ```
   "%
@@ -344,15 +343,33 @@
       else
         step_def.next,
 
-  # Compute the next step to run given current state
-  compute_next | not_exported = fun state =>
-    let last_step = get_last state.steps { name = "", status = 'pending } in
-    if last_step.status == 'failed then
-      "done"
-    else if last_step.name == "" then
-      resolve_entry state.from
+  # Whether --minimal omits a step from both cli routing and todo seeding.
+  is_minimal_omission | not_exported = fun step_name state =>
+    state.minimal && std.array.any (fun skipped => skipped == step_name) MinimalSkips,
+
+  # Follow graph edges until reaching a step present in a minimal run.
+  next_runnable | not_exported = fun step_name state =>
+    if step_name == "" then
+      ""
+    else if is_minimal_omission step_name state then
+      next_runnable (get_next step_name state) state
     else
-      get_next last_step.name state,
+      step_name,
+
+  # Terminal workflow status wins; otherwise resume unfinished steps.
+  compute_next | not_exported = fun state =>
+    if state.status == 'failed || state.status == 'completed then
+      ""
+    else
+      let last_step = get_last state.steps { name = "", status = 'pending } in
+      if last_step.name == "" then
+        next_runnable (resolve_entry state.from) state
+      else if last_step.status == 'failed then
+        "done"
+      else if last_step.status == 'passed || last_step.status == 'skipped then
+        next_runnable (get_next last_step.name state) state
+      else
+        last_step.name,
 
   # Resolve entry point ID to starting step.
   # Unknown entry points default to EntryPoints.default ("sync").
@@ -398,10 +415,10 @@
       std.array.fold_left
         (fun acc step_name =>
           let is_start = step_name == start in
-          let is_minimal = state.minimal && std.array.any (fun s => s == step_name) MinimalSkips in
+          let is_minimal = is_minimal_omission step_name state in
           let is_review = std.array.any (fun s => s == step_name) ReviewSkips in
           let now_reached = acc.reached || is_start in
-          if (is_minimal || (is_review && !state.review)) && !is_start then
+          if is_minimal || (is_review && !state.review) then
             { list = acc.list, reached = now_reached }
           else
             {
@@ -435,7 +452,7 @@
     ```nickel multiline
     cli _test_state
     # => { step = "sync", skip = false, pattern = 'one-shot, instructions = "nodes/sync.md", requires = [], pattern_config = {} }
-    cli { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'github, has_evidence = false, from = "polish", task = "test" }
+    cli { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'github, from = "polish", task = "test" }
     # => { step = "hickey-lowy", skip = false, pattern = 'fanout-fix, instructions = "nodes/hickey-lowy.md", requires = ["diff", "research.context"], pattern_config = { cross_validate = true } }
     ```
   "%
@@ -468,12 +485,10 @@
     | doc m%"
     Returns the seeded step list for todo UI initialization.
 
-    `_test_state` has `minimal = false` and `review = false`, so all
-    16 steps from StepOrder are emitted (with `plan-approval`
-    omitted because `review = false`). When `state.minimal = true`
-    the four MinimalSkips steps (`docs`, `hickey-lowy`, `police`,
-    `evidence`) are dropped — except any of them that is the start
-    point of the requested `--from` entry.
+    `_test_state` has `minimal = false` and `review = false`, so every
+    non-review step is emitted. When `state.minimal = true`, the four
+    MinimalSkips steps (`docs`, `hickey-lowy`, `police`, `evidence`) are
+    dropped from both the seeded list and CLI routing.
 
     ## Examples
 
@@ -487,14 +502,14 @@
     cli_seed "polish" _test_state
     # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, has_evidence = false, task = "test" }
+    cli_seed "" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, task = "test" }
     # => [{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "plan-approval", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, has_evidence = false, task = "test" }
+    cli_seed "" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
     # => [{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "polish" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, has_evidence = false, task = "test" }
-    # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "hickey-lowy", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
+    cli_seed "polish" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
     ```
   "%
     = fun from state =>
@@ -511,7 +526,6 @@
     minimal = false,
     review = false,
     forge = 'github,
-    has_evidence = false,
     supportsPrCreate = true,
     supportsPrComment = true,
     supportsIssueView = true,

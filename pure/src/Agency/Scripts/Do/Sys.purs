@@ -23,8 +23,9 @@ module Agency.Scripts.Do.Sys
   , realpath
   , bundleDir
   , isoToEpoch
+  , isCanonicalIso
+  , uniqueTempPath
   ) where
-
 import Prelude
 
 import Data.Array as Array
@@ -174,12 +175,19 @@ realpath = FSSync.realpath
 -- | Directory containing the executing bundle, independent of process cwd.
 foreign import bundleDir :: Effect String
 
--- | Convert an ISO/RFC timestamp to epoch seconds and reject invalid dates.
+-- | Produce a same-directory private staging name for an atomic rename.
+foreign import uniqueTempPath :: String -> Effect String
+
+-- | Convert an exact UTC-second ISO timestamp to epoch seconds.
 isoToEpoch :: String -> Effect (Either String Int)
-isoToEpoch value = do
-  parsed <- JSDate.parse value
-  pure case JSDate.toInstant parsed of
-    Nothing -> Left ("invalid timestamp '" <> value <> "'")
-    Just instant ->
-      let Milliseconds milliseconds = Instant.unInstant instant
-      in Right (floor (milliseconds / 1000.0))
+isoToEpoch value =
+  if not (isCanonicalIso value) then pure (Left ("invalid timestamp '" <> value <> "'"))
+  else do
+    parsed <- JSDate.parse value
+    pure case JSDate.toInstant parsed of
+      Nothing -> Left ("invalid timestamp '" <> value <> "'")
+      Just instant ->
+        let Milliseconds milliseconds = Instant.unInstant instant
+        in Right (floor (milliseconds / 1000.0))
+
+foreign import isCanonicalIso :: String -> Boolean

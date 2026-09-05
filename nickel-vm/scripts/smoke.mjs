@@ -6,26 +6,39 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WORKFLOW_SOURCE = fs.readFileSync(path.join(REPO_ROOT, 'skills/do/workflow.ncl'), 'utf8');
 
-const TEST_STATE = JSON.stringify({
-    active: true,
+const TEST_STATE = {
+    active: "working",
     status: "running",
     steps: [],
     noVcs: false,
     minimal: false,
     review: false,
     forge: "github",
-    has_evidence: false,
     supportsPrCreate: true,
     supportsPrComment: true,
     supportsIssueView: true,
     supportsPrChecks: true,
     task: "test"
-});
+};
+
+function stateSource(state) {
+    return JSON.stringify(state);
+}
+
+function workflowResult(operation, state, seed = null) {
+    return eval_workflow({
+        workflow_source: WORKFLOW_SOURCE,
+        state_source: stateSource(state),
+        operation,
+        seed
+    });
+}
 
 const GOLDENS = {
     cli: `{ step = "sync", skip = false, pattern = 'one-shot, instructions = "nodes/sync.md", requires = [], pattern_config = {} }`,
     cli_seed_empty: `[{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`,
-    cli_seed_followup: `[{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`
+    cli_seed_followup: `[{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`,
+    cli_seed_minimal: `[{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`
 };
 
 function assert(name, actual, expected) {
@@ -49,42 +62,83 @@ function assertResult(name, result) {
 function run() {
     console.log('Running Nickel VM smoke tests...');
 
-    const res1 = eval_workflow({
-        workflow_source: WORKFLOW_SOURCE,
-        state_source: TEST_STATE,
-        operation: 'cli',
-        seed: null
-    });
+    const res1 = workflowResult('cli', TEST_STATE);
     assertResult('cli', res1);
     assert('cli', res1.stdout, GOLDENS.cli);
 
-    const res2 = eval_workflow({
-        workflow_source: WORKFLOW_SOURCE,
-        state_source: TEST_STATE,
-        operation: 'cli_seed',
-        seed: ''
-    });
+    const res2 = workflowResult('cli_seed', TEST_STATE, '');
     assertResult('cli_seed ""', res2);
     assert('cli_seed ""', res2.stdout, GOLDENS.cli_seed_empty);
 
-    const res3 = eval_workflow({
-        workflow_source: WORKFLOW_SOURCE,
-        state_source: TEST_STATE,
-        operation: 'cli_seed',
-        seed: 'followup'
-    });
+    const res3 = workflowResult('cli_seed', TEST_STATE, 'followup');
     assertResult('cli_seed "followup"', res3);
     assert('cli_seed "followup"', res3.stdout, GOLDENS.cli_seed_followup);
 
-    const res4 = eval_workflow({
-        workflow_source: WORKFLOW_SOURCE,
-        state_source: TEST_STATE,
-        operation: 'cli_seed',
-        // Exercise JSON/Nickel escaping for NUL, newline, quote, backslash, and Unicode.
-        seed: "\u0000\n\"\\雪"
-    });
+    const res4 = workflowResult('cli_seed', TEST_STATE, "\u0000\n\"\\雪");
     assertResult('cli_seed adversarial seed', res4);
     assert('cli_seed adversarial seed', res4.stdout, GOLDENS.cli_seed_empty);
+
+    for (const status of ["failed", "completed"]) {
+        const terminal = workflowResult('cli', { ...TEST_STATE, status });
+        assertResult(`cli respects ${status} workflow status`, terminal);
+        assert(`cli respects ${status} workflow status`, terminal.stdout, `{ done = true }`);
+    }
+
+    const completedThroughCi = [
+        "sync", "research", "branch", "implement", "check", "docs", "fmt",
+        "commit", "hickey-lowy", "police", "test", "create-pr", "ci"
+    ].map((name) => ({ name, status: "passed" }));
+    const evidence = workflowResult('cli', { ...TEST_STATE, steps: completedThroughCi });
+    assertResult('cli reaches evidence', evidence);
+    assert(
+        'cli reaches evidence',
+        evidence.stdout,
+        `{ step = "evidence", skip = false, pattern = 'one-shot, instructions = "nodes/evidence.md", requires = [], pattern_config = {} }`
+    );
+
+    for (const status of ["pending", "running", "in_progress"]) {
+        const resumed = workflowResult('cli', { ...TEST_STATE, steps: [{ name: "ci", status }] });
+        assertResult(`cli resumes ${status} step`, resumed);
+        assert(`cli resumes ${status} step`, resumed.stdout.match(/step = "([^"]+)"/)?.[1], "ci");
+    }
+
+    const minimal = { ...TEST_STATE, minimal: true };
+    const minimalSeed = workflowResult('cli_seed', minimal, '');
+    assertResult('cli_seed minimal', minimalSeed);
+    assert('cli_seed minimal', minimalSeed.stdout, GOLDENS.cli_seed_minimal);
+
+    const minimalPolishSeed = workflowResult('cli_seed', minimal, 'polish');
+    assertResult('cli_seed minimal polish', minimalPolishSeed);
+    assert(
+        'cli_seed minimal polish',
+        minimalPolishSeed.stdout,
+        `[{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`
+    );
+    const minimalPolishCli = workflowResult('cli', { ...minimal, from: 'polish' });
+    assertResult('minimal cli polish', minimalPolishCli);
+    assert('minimal cli polish', minimalPolishCli.stdout.match(/step = "([^"]+)"/)?.[1], 'test');
+
+    const minimalPath = [
+        "sync", "research", "branch", "implement", "check", "fmt", "commit",
+        "test", "create-pr", "ci", "done"
+    ];
+    let minimalState = { ...minimal, steps: [] };
+    for (const name of minimalPath) {
+        const result = workflowResult('cli', minimalState);
+        assertResult(`minimal cli ${name}`, result);
+        const step = result.stdout.match(/step = "([^"]+)"/)?.[1];
+        assert(`minimal cli ${name}`, step, name);
+        if (!result.stdout.includes("skip = false")) {
+            throw new Error(`minimal cli ${name} emitted a phantom skip: ${result.stdout}`);
+        }
+        minimalState = {
+            ...minimalState,
+            steps: [...minimalState.steps, { name, status: "passed" }]
+        };
+    }
+    const minimalComplete = workflowResult('cli', minimalState);
+    assertResult('minimal cli complete', minimalComplete);
+    assert('minimal cli complete', minimalComplete.stdout, `{ done = true }`);
 }
 
 try {

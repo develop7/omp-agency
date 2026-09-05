@@ -59,7 +59,7 @@ Today only GitHub has an active code path; Bitbucket/other forges gracefully ski
   errors out on the conflict; drop one of the flags.
 - `--no-vcs`: Extend the working tree **in place** — do not create a branch, commit, push, or touch any PR. VCS-mutating
   nodes skip with `reason="--no-vcs"`.
-- `--minimal`: Skip **docs**, `hickey-lowy`, **police**, and **evidence** (omitted from todo list entirely).
+- `--minimal`: Omit **docs**, `hickey-lowy`, **police**, and **evidence** from both the CLI path and todo list.
 - `--from <step-id>`: Start from a specific node. Entry points: `default`→sync, `followup`→implement, `post-implement`
   →fmt, `polish`→hickey-lowy, `ci-only`→ci.
 - `--base <branch>`: Branch from `<branch>` and target the PR at it — **stacked PRs**. The parent must be pushed (git
@@ -111,10 +111,9 @@ Rules:
   the entry point as `completed` immediately after seeding, so the checklist shows a consistent view regardless of entry
   point.
 - **Skipped steps that stay in the list** (e.g. `branch`/`commit`/`create-pr` under `--no-vcs`, or PR steps on
-  forges that don't support them) go straight to `completed`. Record the skip with a back-to-back
-  `agency_driver` call `{ op: "step-start", args: [<name>] }` / `{ op: "step-end", args: ["skipped", ... , "<reason>"] }`; the task list just
-  shows the step as done. `--minimal` skips are **not** in this category — they're omitted from the seeded list
-  entirely (see above), so there''s no task entry to flip.
+  unsupported forges) go straight to `completed`. Record them with back-to-back `agency_driver` `step-start` and
+  `step-end` calls; the task list shows the step as done.
+- `--minimal` omissions are not in either the CLI path or seeded list, so never record a skip for them.
 - **Failure**: if retries exhaust and the workflow halts, leave the failing step `in_progress`, mark `done` `completed`
   after the failure summary is written, and call `agency_driver` with `{ op: "set", args: ["status", "failed"] }`.
 
@@ -130,8 +129,8 @@ Rules:
 
 ## Rules
 
-- **Never skip steps** (unless Nickel reports `skip = true`, or — for **evidence** — the project hasn't filled in a
-  `## PR evidence` section in `.agency/do.md`). Run them in order from entry point to **done**.
+- **Never skip steps** unless Nickel reports `skip = true`. The **evidence** node always performs its own
+  `.agency/do.md` configuration detection before deciding whether to record a skip. Run steps in order from entry point to **done**.
 - **Every commit is NEW.** Never amend, rebase, or force-push.
 - **Always commit through `vcs_write`.** Never run raw `git`/`jj` mutating commands directly. The dispatcher stages only the files you pass (git) or splits unrelated working-copy changes into a separate revision above the feature commit (jj) and leaves `@` on a fresh empty change (jj) — raw commands sweep unrelated changes into the commit (git) or amend the existing change (jj). The canonical banned-primitive list lives in `scripts/lint-vcs-refs.sh` (`VCS_PATTERNS`).
 - **Feature branches only.** Never commit to master/main.

@@ -12,6 +12,8 @@ module Agency.Scripts.Do.Vcs
   , headRevisionValue
   , defaultBranchValue
   , currentBranchValue
+  , currentAtDefault
+  , validateBase
   , renderValue
   , inspectDirty
   , vcsName
@@ -31,7 +33,7 @@ import Data.Either (Either(..))
 import Data.Int (fromString)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (Pattern(..), contains, joinWith, split, trim)
-import Data.String.CodeUnits (drop)
+import Data.String.CodeUnits (drop, length)
 import Data.Traversable (traverse)
 import Effect (Effect)
 
@@ -174,11 +176,9 @@ runVcsOp context operation = case operation of
   HeadRevision -> renderValue <$> headRevisionValue context
   HeadCommitSha -> case context.vcs of
     Git -> capturedCommand Binaries.git [ "rev-parse", "HEAD" ] context
-    Jj -> capturedCommand Binaries.jj [ "log", "--revision", "@-", "--no-graph", "--template", "commit_id" ] context
+    Jj -> capturedCommand Binaries.jj [ "log", "--revision", "@", "--no-graph", "--template", "commit_id" ] context
     Unknown -> pure noVcsOutcome
-  DefaultBranch -> do
-    value <- defaultBranchValue context
-    pure (Outcome.withStdout (value <> "\n"))
+  DefaultBranch -> renderValue <$> defaultBranchValue context
   CurrentBranch -> renderValue <$> currentBranchValue context
   Base -> resolveBase context
   Dirty -> dirty context
@@ -195,18 +195,21 @@ runVcsOp context operation = case operation of
   RefreshDefaultBranch -> refreshDefaultBranchValue context
   FastForwardIfSafe -> fastForwardIfSafe context
 
--- | Fetch is shared by the CLI operation and sync. It captures output so sync
--- | can decide what (if anything) belongs in its own protocol.
+-- | Fetch only the selected workflow remote. Origin is preferred; a lone
+-- | non-origin remote is accepted, while an ambiguous remote set is rejected.
 fetchValue :: WorkflowContext -> Effect Outcome.OpOutcome
 fetchValue context = case context.vcs of
-  Git -> capturedCommand Binaries.git [ "fetch", "origin" ] context
-  Jj -> capturedCommand Binaries.jj [ "git", "fetch" ] context
-  Unknown -> pure (noVcsOutcome)
+  Unknown -> pure noVcsOutcome
+  Git -> withRemote context \remote ->
+    capturedCommand Binaries.git [ "fetch", remote ] context
+  Jj -> withRemote context \remote ->
+    capturedCommand Binaries.jj [ "git", "fetch", remote ] context
 
--- | Refresh the default remote branch using the same strategy as the CLI.
+-- | Refresh remote HEAD only when Git has a selected remote.
 refreshDefaultBranchValue :: WorkflowContext -> Effect Outcome.OpOutcome
 refreshDefaultBranchValue context = case context.vcs of
-  Git -> capturedCommand Binaries.git [ "remote", "set-head", "origin", "--auto" ] context
+  Git -> withRemote context \remote ->
+    capturedCommand Binaries.git [ "remote", "set-head", remote, "--auto" ] context
   Jj -> pure Outcome.success
   Unknown -> pure Outcome.success
 
@@ -223,19 +226,22 @@ fastForwardIfSafe context = case context.vcs of
       if upstreamName == "" then pure Outcome.success
       else do
         behind <- Sys.exec Binaries.git [ "rev-list", "--count", "HEAD.." <> upstreamName ]
-        ahead <- Sys.exec Binaries.git [ "rev-list", "--count", upstreamName <> "..HEAD" ]
-        let behindCount = fromMaybe 0 (fromString (trim behind.stdout))
-            aheadCount = fromMaybe 0 (fromString (trim ahead.stdout))
-        if behind.code == 0 && ahead.code == 0 && behindCount > 0 && aheadCount == 0 then
-          capturedCommand Binaries.git [ "pull", "--ff-only" ] context
-        else pure Outcome.success
+        if behind.code /= 0 then pure (Outcome.captured behind)
+        else do
+          ahead <- Sys.exec Binaries.git [ "rev-list", "--count", upstreamName <> "..HEAD" ]
+          if ahead.code /= 0 then pure (Outcome.captured ahead)
+          else do
+            let behindCount = fromMaybe 0 (fromString (trim behind.stdout))
+                aheadCount = fromMaybe 0 (fromString (trim ahead.stdout))
+            if behindCount > 0 && aheadCount == 0 then
+              capturedCommand Binaries.git [ "pull", "--ff-only" ] context
+            else pure Outcome.success
 
 noUpstream :: Sys.ExecResult -> Boolean
 noUpstream result =
   let message = trim result.stderr
   in trim result.stdout == ""
-    && (message == ""
-      || contains (Pattern "no upstream") message
+    && (contains (Pattern "no upstream") message
       || contains (Pattern "does not point to a branch") message)
 
 -- | Read the persisted base from the context resolved by the adapter.
@@ -249,23 +255,22 @@ resolveBase context = case context.base of
     , "        (Same error fires if jq is unavailable or .do-results.json is corrupt — check 'command -v jq'.)"
     ])
 
--- | Look up and normalize the origin URL once. Forge detection consumes this
--- | strategy instead of maintaining a second git/jj parser.
+-- | Forge and VCS mutations consume one remote-selection policy: origin when
+-- | present, otherwise exactly one configured remote. Multiple non-origin
+-- | remotes are ambiguous and never selected by position.
 remoteUrlValue :: WorkflowContext -> Effect (Either String String)
 remoteUrlValue context = do
   result <- remoteUrlResult context
   pure if result.code == 0 then Right result.value else Left (if result.stderr == "" then "vcs-op: unable to read remote URL" else trim result.stderr)
 
 remoteUrlResult :: WorkflowContext -> Effect VcsValue
-remoteUrlResult context = case context.vcs of
-  Git -> do
-    result <- Sys.exec Binaries.git [ "remote", "get-url", "origin" ]
-    pure (valueResult result (trim result.stdout))
-  Jj -> do
-    result <- Sys.exec Binaries.jj [ "git", "remote", "list" ]
-    if result.code /= 0 then pure (valueResult result "")
-    else pure (valueResult result (jjRemote result.stdout))
-  Unknown -> pure { code: 1, value: "", stdout: "", stderr: "vcs-op: no VCS detected\n" }
+remoteUrlResult context = do
+  entries <- remoteEntries context
+  pure case entries of
+    Left error -> failureValue error
+    Right remotes -> case selectRemote remotes of
+      Left error -> failureValue error
+      Right remote -> { code: 0, value: remote.url, stdout: remote.url <> "\n", stderr: "" }
 
 -- | Query the current revision while retaining a failed subprocess status.
 headRevisionValue :: WorkflowContext -> Effect VcsValue
@@ -275,26 +280,34 @@ headRevisionValue context = case context.vcs of
     pure (valueResult result (trim result.stdout))
   Jj -> do
     bookmark <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", "@", "--template", "name ++ \"\\n\"" ]
-    let name = firstLine bookmark.stdout
-    if bookmark.code /= 0 then pure (valueResult bookmark "")
-    else if name /= "" then pure (valueResult bookmark name)
-    else do
-      fallback <- Sys.exec Binaries.jj [ "log", "--revision", "@", "--no-graph", "--template", "change_id" ]
-      pure (valueResult fallback (firstLine fallback.stdout))
+    pure (valueResult bookmark (if bookmark.code == 0 then firstLine bookmark.stdout else ""))
   Unknown -> pure { code: 1, value: "", stdout: "", stderr: "vcs-op: no VCS detected\n" }
 
--- | The default branch strategy retains the historical master fallback when a
--- | remote does not expose origin/HEAD.
-defaultBranchValue :: WorkflowContext -> Effect String
+-- | Resolve a real default ref; never manufacture a conventional name.
+defaultBranchValue :: WorkflowContext -> Effect VcsValue
 defaultBranchValue context = case context.vcs of
   Git -> do
-    result <- Sys.exec Binaries.git [ "symbolic-ref", "--short", "refs/remotes/origin/HEAD" ]
-    pure (if result.code == 0 && firstLine result.stdout /= "" then stripOrigin (firstLine result.stdout) else "master")
+    remote <- remoteName context
+    case remote of
+      Right name -> do
+        result <- Sys.exec Binaries.git [ "symbolic-ref", "--short", "refs/remotes/" <> name <> "/HEAD" ]
+        let candidate = stripRemote name (firstLine result.stdout)
+        exists <- gitRefExists ("refs/remotes/" <> name <> "/" <> candidate)
+        if result.code == 0 && candidate /= "" && exists then
+          pure (valueResult result candidate)
+        else remoteGitDefault name
+      Left _ -> localGitDefault
   Jj -> do
-    result <- Sys.exec Binaries.jj [ "bookmark", "list", "--remote", "origin", "--template", "name ++ \"\\n\"" ]
-    if result.code /= 0 then pure "master"
-    else pure (fromMaybe "master" (Array.find (\line -> Args.startsWith "main" line || Args.startsWith "master" line) (map trim (split (Pattern "\n") result.stdout))))
-  Unknown -> pure "master"
+    remote <- remoteName context
+    case remote of
+      Left _ -> localJjDefault
+      Right name -> do
+        result <- Sys.exec Binaries.jj [ "bookmark", "list", "--remote", name, "--template", "name ++ \"\\n\"" ]
+        if result.code /= 0 then localJjDefault
+        else case firstKnownDefault (lines result.stdout) of
+          Just value -> pure (valueResult result value)
+          Nothing -> localJjDefault
+  Unknown -> pure (failureValue "vcs-op: unable to resolve default branch (no VCS detected)")
 
 -- | Query the branch used by sync's --stack policy, preserving failures.
 currentBranchValue :: WorkflowContext -> Effect VcsValue
@@ -313,6 +326,31 @@ currentBranchValue context = case context.vcs of
   -- Unknown is a valid empty query result for --stack: there is no branch
   -- to stack onto, and the caller emits its existing guidance.
   Unknown -> pure { code: 0, value: "", stdout: "", stderr: "" }
+
+-- | Compare the current revision to a resolved default semantically rather
+-- | than treating differently named local aliases as feature branches.
+currentAtDefault :: WorkflowContext -> String -> Effect (Either String Boolean)
+currentAtDefault context base = case context.vcs of
+  Git -> do
+    defaultRef <- gitReadBase context base
+    case defaultRef of
+      Left error -> pure (Left error)
+      Right ref -> sameGitRevision "HEAD" ref
+  Jj -> do
+    defaultRef <- jjBaseRevset context base
+    case defaultRef of
+      Left error -> pure (Left error)
+      Right ref -> sameJjRevision "@" ref
+  Unknown -> pure (Left "vcs-op: no VCS detected")
+
+-- | Validate persisted and explicit base names against actual refs.
+validateBase :: WorkflowContext -> String -> Effect (Either String Unit)
+validateBase context base
+  | base == "" = pure (Left "base must not be empty")
+  | otherwise = case context.vcs of
+      Git -> map (map (\_ -> unit)) (gitReadBase context base)
+      Jj -> map (map (\_ -> unit)) (jjBaseRevset context base)
+      Unknown -> pure (Left "vcs-op: no VCS detected")
 
 -- | Inspect the working copy without conflating a clean tree with a failed
 -- | inspection. The sync operation propagates InspectionFailed unchanged.
@@ -342,9 +380,10 @@ diffRange :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 diffRange context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand context Binaries.git ([ "diff", "origin/" <> value <> "...HEAD", "--" ] <> paths)
+    Git -> withGitReadBase context value \base ->
+      passthroughCommand context Binaries.git ([ "diff", base <> "...HEAD", "--" ] <> paths)
     Jj -> do
-      source <- jjRangeFrom value
+      source <- jjRangeFrom context value
       case source of
         Left outcome -> pure outcome
         Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--" ] <> paths)
@@ -354,9 +393,10 @@ diffNames :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 diffNames context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand context Binaries.git ([ "diff", "origin/" <> value <> "...HEAD", "--name-only", "--" ] <> paths)
+    Git -> withGitReadBase context value \base ->
+      passthroughCommand context Binaries.git ([ "diff", base <> "...HEAD", "--name-only", "--" ] <> paths)
     Jj -> do
-      source <- jjRangeFrom value
+      source <- jjRangeFrom context value
       case source of
         Left outcome -> pure outcome
         Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--name-only", "--" ] <> paths)
@@ -366,9 +406,10 @@ diffStat :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 diffStat context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand context Binaries.git ([ "diff", "origin/" <> value <> "...HEAD", "--shortstat", "--" ] <> paths)
+    Git -> withGitReadBase context value \base ->
+      passthroughCommand context Binaries.git ([ "diff", base <> "...HEAD", "--shortstat", "--" ] <> paths)
     Jj -> do
-      source <- jjRangeFrom value
+      source <- jjRangeFrom context value
       case source of
         Left outcome -> pure outcome
         Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--summary", "--" ] <> paths)
@@ -378,9 +419,10 @@ newFiles :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 newFiles context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand context Binaries.git ([ "diff", "--diff-filter=A", "--name-only", "origin/" <> value <> "...HEAD", "--" ] <> paths)
+    Git -> withGitReadBase context value \base ->
+      passthroughCommand context Binaries.git ([ "diff", "--diff-filter=A", "--name-only", base <> "...HEAD", "--" ] <> paths)
     Jj -> do
-      source <- jjRangeFrom value
+      source <- jjRangeFrom context value
       case source of
         Left outcome -> pure outcome
         Right from -> do
@@ -399,13 +441,18 @@ logRange :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 logRange context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
-    Git -> passthroughCommand context Binaries.git ([ "log", "origin/" <> value <> "..HEAD", "--oneline", "--" ] <> paths)
+    Git -> withGitReadBase context value \base ->
+      passthroughCommand context Binaries.git ([ "log", base <> "..HEAD", "--oneline", "--" ] <> paths)
     Jj -> do
-      probe <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--summary" ]
-      if probe.code /= 0 then pure (failureLine "vcs-op: unable to inspect jj working copy for log-range")
-      else do
-        let target = if trim probe.stdout /= "" then "@" else "@-"
-        passthroughCommand context Binaries.jj [ "log", "--revision", value <> ".." <> target, "--no-graph", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"" ]
+      source <- jjBaseRevset context value
+      case source of
+        Left error -> pure (failureLine error)
+        Right base -> do
+          probe <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--summary" ]
+          if probe.code /= 0 then pure (failureLine "vcs-op: unable to inspect jj working copy for log-range")
+          else do
+            let target = if trim probe.stdout /= "" then "@" else "@-"
+            passthroughCommand context Binaries.jj ([ "log", "--revision", base <> ".." <> target, "--no-graph", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"", "--" ] <> paths)
     Unknown -> pure noVcsOutcome
 
 logHead :: WorkflowContext -> Effect Outcome.OpOutcome
@@ -414,25 +461,36 @@ logHead context = case context.vcs of
   Jj -> passthroughCommand context Binaries.jj [ "log", "--revision", "@-", "--no-graph", "--limit", "1", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"" ]
   Unknown -> pure noVcsOutcome
 
-jjRangeFrom :: String -> Effect (Either Outcome.OpOutcome String)
-jjRangeFrom base = do
-  let revset = "heads(ancestors(@) & ancestors(" <> base <> "))"
-  result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "change_id" ]
-  if result.code /= 0 then pure (Left (failureLine ("vcs-op: unable to resolve merge-base for base '" <> base <> "'")))
-  else pure (Right (if trim result.stdout == "" then base else trim result.stdout))
+jjRangeFrom :: WorkflowContext -> String -> Effect (Either Outcome.OpOutcome String)
+jjRangeFrom context base = do
+  resolved <- jjBaseRevset context base
+  case resolved of
+    Left error -> pure (Left (failureLine error))
+    Right ref -> do
+      let revset = "heads(ancestors(@) & ancestors(" <> ref <> "))"
+      result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "change_id" ]
+      if result.code /= 0 then pure (Left (failureLine ("vcs-op: unable to resolve merge-base for base '" <> base <> "'")))
+      else pure (Right (if trim result.stdout == "" then ref else trim result.stdout))
 
 branch :: WorkflowContext -> String -> Effect Outcome.OpOutcome
-branch context name = case context.base of
-  Nothing -> resolveBase context
-  Just value -> case context.vcs of
-    Git -> do
-      verify <- Sys.exec Binaries.git [ "rev-parse", "--verify", "refs/remotes/origin/" <> value ]
-      if verify.code /= 0 then pure (failureLine ("vcs-op branch: origin/" <> value <> " not found. Push the parent branch before stacking."))
-      else passthroughCommand context Binaries.git [ "branch", name, "origin/" <> value ]
-    Jj -> do
-      first <- passthroughCommand context Binaries.jj [ "new", value ]
-      if first.exit == 0 then passthroughCommand context Binaries.jj [ "bookmark", "create", name, "--revision", "@" ] else pure first
-    Unknown -> pure noVcsOutcome
+branch context name = case validateBranchName name of
+  Left error -> pure (failureLine error)
+  Right _ -> case context.base of
+    Nothing -> resolveBase context
+    Just value -> case context.vcs of
+      Git -> do
+        base <- gitReadBase context value
+        case base of
+          Left error -> pure (failureLine error)
+          Right ref -> passthroughCommand context Binaries.git [ "checkout", "-b", name, ref ]
+      Jj -> preserveState context do
+        parent <- jjBaseRevset context value
+        case parent of
+          Left error -> pure (failureLine error)
+          Right ref -> do
+            first <- passthroughCommand context Binaries.jj [ "new", ref ]
+            if first.exit == 0 then passthroughCommand context Binaries.jj [ "bookmark", "create", name, "--revision", "@" ] else pure first
+      Unknown -> pure noVcsOutcome
 
 commit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
 commit context message files =
@@ -442,10 +500,8 @@ commit context message files =
     case valid of
       Left error -> pure (Outcome.failure 1 (error <> "\n"))
       Right _ -> case context.vcs of
-        Git -> do
-          added <- passthroughCommand context Binaries.git ([ "add", "--" ] <> files)
-          if added.exit == 0 then passthroughCommand context Binaries.git [ "commit", "--message", message ] else pure added
-        Jj -> jjCommit context message files
+        Git -> passthroughCommand context Binaries.git ([ "commit", "--only", "--message", message, "--" ] <> files)
+        Jj -> preserveState context (jjCommit context message files)
         Unknown -> pure noVcsOutcome
 
 validateDirty :: VcsKind -> Array String -> Effect (Either String Unit)
@@ -464,89 +520,67 @@ validateDirty vcs files = do
 
 jjCommit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
 jjCommit context message files = do
-  allResult <- Sys.exec Binaries.jj [ "diff", "--name-only" ]
-  if allResult.code /= 0 then pure (Outcome.captured allResult)
-  else do
-    canonicalResults <- traverse canonicalFiles files
-    case traverse identity canonicalResults of
-      Left outcome -> pure outcome
-      Right canonicalGroups ->
-        let canonical = Array.concat canonicalGroups
-            allChanged = lines allResult.stdout
-            unrelated = Array.filter (\changed -> not (Array.any (\file -> file == changed) canonical)) allChanged
-        in if Array.null unrelated then describeAndMove context message
-        else do
-          -- Split flow: describe @ as the feature change, split unrelated
-          -- files into a separate revision, rebase that revision above @,
-          -- move the working bookmark to @, then create a fresh @ on top.
-          described <- passthroughCommand context Binaries.jj [ "describe", "--message", message ]
-          if described.exit /= 0 then pure described
-          else do
-            splitCode <- passthroughCommand context Binaries.jj ([ "split" ] <> unrelated <> [ "--message", "chore: unrelated changes" ])
-            if splitCode.exit /= 0 then pure splitCode
-            else do
-              rebase <- passthroughCommand context Binaries.jj [ "rebase", "--revision", "@-", "--insert-after", "@" ]
-              if rebase.exit /= 0 then pure rebase
-              else do
-                bookmarkResult <- moveBookmarkToWorkingChange
-                case bookmarkResult of
-                  Left outcome -> pure outcome
-                  Right bookmark -> case bookmark of
-                    Nothing -> passthroughCommand context Binaries.jj [ "new" ]
-                    Just name -> passthroughCommand context Binaries.jj [ "new", name ]
+  feature <- featureBookmark context
+  case feature of
+    Left outcome -> pure outcome
+    Right bookmark -> do
+      allResult <- Sys.exec Binaries.jj [ "diff", "--name-only" ]
+      if allResult.code /= 0 then pure (Outcome.captured allResult)
+      else do
+        canonicalResults <- traverse canonicalFiles files
+        case traverse identity canonicalResults of
+          Left outcome -> pure outcome
+          Right canonicalGroups ->
+            let canonical = Array.concat canonicalGroups
+                allChanged = lines allResult.stdout
+                unrelated = Array.filter (\changed -> not (Array.any (\file -> file == changed) canonical)) allChanged
+            in if Array.null unrelated then describeAndMove context bookmark message
+            else splitAndMove context bookmark message unrelated
   where
-  lines value = Array.filter (_ /= "") (map trim (split (Pattern "\n") value))
   canonicalFiles file = do
     result <- Sys.exec Binaries.jj [ "diff", "--name-only", "--", file ]
     pure if result.code /= 0 then Left (Outcome.captured result) else Right (lines result.stdout)
 
--- | Describe the feature revision, create the empty working change, then
--- | relocate the first bookmark found on the parent chain to the described
--- | revision. Lookup failures are hard errors; a move itself is best effort.
-describeAndMove :: WorkflowContext -> String -> Effect Outcome.OpOutcome
-describeAndMove context message = do
-  described <- passthroughCommand context Binaries.jj [ "describe", "--message", message ]
+-- | A jj commit only advances the feature bookmark created by `branch`.
+-- | Refusing an absent/trunk bookmark avoids ever retargeting the base.
+featureBookmark :: WorkflowContext -> Effect (Either Outcome.OpOutcome String)
+featureBookmark context = case context.base of
+  Nothing -> pure (Left (failureLine "vcs-op commit: jj requires a resolved base to protect the trunk bookmark"))
+  Just base -> do
+    found <- bookmarkAt "@"
+    pure case found of
+      Left outcome -> Left outcome
+      Right Nothing -> Left (failureLine "vcs-op commit: no feature bookmark at the working copy; refusing to move the trunk")
+      Right (Just name) | name == base -> Left (failureLine ("vcs-op commit: refusing to move trunk bookmark '" <> name <> "'"))
+      Right (Just name) -> Right name
+
+describeAndMove :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
+describeAndMove context bookmark message = do
+  described <- passthroughCommand context Binaries.jj [ "describe", "--message=" <> message ]
   if described.exit /= 0 then pure described
   else do
     newCode <- passthroughCommand context Binaries.jj [ "new" ]
     if newCode.exit /= 0 then pure newCode
-    else do
-      moved <- moveBookmarkToDescribedChange
-      case moved of
-        Left outcome -> pure outcome
-        Right _ -> pure newCode
+    else moveBookmark context bookmark "@-"
 
-moveBookmarkToDescribedChange :: Effect (Either Outcome.OpOutcome Unit)
-moveBookmarkToDescribedChange = walk 20 "@"
-  where
-  walk remaining rev =
-    if remaining <= 0 then pure (Right unit)
+splitAndMove :: WorkflowContext -> String -> String -> Array String -> Effect Outcome.OpOutcome
+splitAndMove context bookmark message unrelated = do
+  described <- passthroughCommand context Binaries.jj [ "describe", "--message=" <> message ]
+  if described.exit /= 0 then pure described
+  else do
+    splitCode <- passthroughCommand context Binaries.jj ([ "split", "--message=chore: unrelated changes", "--" ] <> unrelated)
+    if splitCode.exit /= 0 then pure splitCode
     else do
-      bookmark <- bookmarkAt (rev <> "-")
-      case bookmark of
-        Left outcome -> pure (Left outcome)
-        Right Nothing -> walk (remaining - 1) (rev <> "-")
-        Right (Just name) -> do
-          bestEffortBookmarkMove name "@-"
-          pure (Right unit)
+      rebase <- passthroughCommand context Binaries.jj [ "rebase", "--revision", "@-", "--insert-after", "@" ]
+      if rebase.exit /= 0 then pure rebase
+      else do
+        moved <- moveBookmark context bookmark "@"
+        if moved.exit /= 0 then pure moved
+        else passthroughCommand context Binaries.jj [ "new", bookmark ]
 
--- | The split flow leaves @ on the described feature revision while the
--- | working bookmark remains on @- or a farther parent. Move that bookmark
--- | to @ before `jj new <bookmark>` creates the fresh working change; the
--- | described-change flow above instead creates @ first and targets @-.
-moveBookmarkToWorkingChange :: Effect (Either Outcome.OpOutcome (Maybe String))
-moveBookmarkToWorkingChange = walk 20 "@-"
-  where
-  walk remaining rev =
-    if remaining <= 0 then pure (Right Nothing)
-    else do
-      bookmark <- bookmarkAt rev
-      case bookmark of
-        Left outcome -> pure (Left outcome)
-        Right Nothing -> walk (remaining - 1) (rev <> "-")
-        Right (Just name) -> do
-          bestEffortBookmarkMove name "@"
-          pure (Right (Just name))
+moveBookmark :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
+moveBookmark context name target =
+  passthroughCommand context Binaries.jj [ "bookmark", "move", name, "--to", target ]
 
 bookmarkAt :: String -> Effect (Either Outcome.OpOutcome (Maybe String))
 bookmarkAt revision = do
@@ -555,33 +589,27 @@ bookmarkAt revision = do
     pure (Left (if result.stderr == "" then failureLine ("vcs-op: unable to inspect bookmark at '" <> revision <> "'") else Outcome.captured result))
   else pure (Right (Args.nonEmpty (firstLine result.stdout)))
 
-bestEffortBookmarkMove :: String -> String -> Effect Unit
-bestEffortBookmarkMove name target = do
-  result <- Sys.execInherit Binaries.jj [ "bookmark", "move", name, "--to", target ]
-  case result.error of
-    Just error -> Sys.stderrWrite ("vcs-op: jj failed to spawn: " <> error <> "\n")
-    Nothing -> pure unit
-  if result.code == 0 then pure unit
-  else Sys.stderrWrite "vcs-op: bookmark move failed (best-effort)\n"
-
 push :: WorkflowContext -> Maybe String -> Effect Outcome.OpOutcome
 push context ref = case context.vcs of
   Git -> case ref of
-    Just value -> passthroughCommand context Binaries.git [ "push", "--set-upstream", "origin", value ]
+    Just value -> withRemote context \remote ->
+      passthroughCommand context Binaries.git [ "push", "--set-upstream", remote, value ]
     Nothing -> passthroughCommand context Binaries.git [ "push" ]
-  Jj -> case ref of
-    Just value -> passthroughCommand context Binaries.jj [ "git", "push", "--bookmark", value ]
-    Nothing -> passthroughCommand context Binaries.jj [ "git", "push" ]
+  Jj -> do
+    bookmark <- case ref of
+      Just value | context.base == Just value -> pure (Left ("vcs-op: bookmark '" <> value <> "' is the base; refusing jj trunk push"))
+      Just value -> pure (Right value)
+      Nothing -> currentFeatureBookmark context
+    case bookmark of
+      Left error -> pure (failureLine error)
+      Right value -> withRemote context \remote ->
+        passthroughCommand context Binaries.jj [ "git", "push", "--remote", remote, "--bookmark", value ]
   Unknown -> pure noVcsOutcome
 
 fixCommit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
 fixCommit context message files = do
   committed <- commit context message files
-  if committed.exit /= 0 then pure committed
-  else case context.vcs of
-    Git -> passthroughCommand context Binaries.git [ "push" ]
-    Jj -> passthroughCommand context Binaries.jj [ "git", "push" ]
-    Unknown -> pure noVcsOutcome
+  if committed.exit /= 0 then pure committed else push context Nothing
 
 valueResult :: Sys.ExecResult -> String -> VcsValue
 valueResult result value =
@@ -618,6 +646,185 @@ passthroughCommand context command args =
     case result.error of
       Just error -> pure (Outcome.failure 1 ("vcs-op: " <> command <> " failed to spawn: " <> error <> "\n"))
       Nothing -> pure (Outcome.passthrough result.code)
+
+type Remote =
+  { name :: String
+  , url :: String
+  }
+
+withRemote :: WorkflowContext -> (String -> Effect Outcome.OpOutcome) -> Effect Outcome.OpOutcome
+withRemote context action = do
+  selected <- remoteName context
+  case selected of
+    Left error -> pure (failureLine error)
+    Right remote -> action remote
+
+remoteName :: WorkflowContext -> Effect (Either String String)
+remoteName context = do
+  entries <- remoteEntries context
+  pure case entries of
+    Left error -> Left error
+    Right remotes -> map _.name (selectRemote remotes)
+
+remoteEntries :: WorkflowContext -> Effect (Either String (Array Remote))
+remoteEntries context = case context.vcs of
+  Git -> do
+    listed <- Sys.exec Binaries.git [ "remote" ]
+    if listed.code /= 0 then pure (Left (commandError "vcs-op: unable to list git remotes" listed))
+    else do
+      results <- traverse gitRemote (lines listed.stdout)
+      pure (traverse identity results)
+  Jj -> do
+    listed <- Sys.exec Binaries.jj [ "git", "remote", "list" ]
+    pure if listed.code /= 0 then Left (commandError "vcs-op: unable to list jj remotes" listed)
+    else Right (Array.mapMaybe parseJjRemote (lines listed.stdout))
+  Unknown -> pure (Left "vcs-op: no VCS detected")
+  where
+  gitRemote name = do
+    url <- Sys.exec Binaries.git [ "remote", "get-url", name ]
+    pure if url.code == 0 && trim url.stdout /= "" then Right { name, url: trim url.stdout }
+    else Left (commandError ("vcs-op: unable to read remote '" <> name <> "'") url)
+
+selectRemote :: Array Remote -> Either String Remote
+selectRemote remotes = case Array.find (\remote -> remote.name == "origin") remotes of
+  Just origin -> Right origin
+  Nothing -> case remotes of
+    [ remote ] -> Right remote
+    [] -> Left "vcs-op: no remote configured"
+    _ -> Left "vcs-op: multiple remotes configured but none is named origin"
+
+parseJjRemote :: String -> Maybe Remote
+parseJjRemote line = case Array.uncons (Array.filter (_ /= "") (split (Pattern " ") (trim line))) of
+  Nothing -> Nothing
+  Just { head: name, tail } -> case Array.head tail of
+    Nothing -> Nothing
+    Just url -> Just { name, url }
+
+remoteGitDefault :: String -> Effect VcsValue
+remoteGitDefault remote = do
+  main <- gitRefExists ("refs/remotes/" <> remote <> "/main")
+  if main then pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
+  else do
+    master <- gitRefExists ("refs/remotes/" <> remote <> "/master")
+    if master then pure { code: 0, value: "master", stdout: "master\n", stderr: "" }
+    else localGitDefault
+
+localGitDefault :: Effect VcsValue
+localGitDefault = do
+  main <- gitLocalRef "main"
+  if main then pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
+  else do
+    master <- gitLocalRef "master"
+    pure if master then { code: 0, value: "master", stdout: "master\n", stderr: "" }
+    else failureValue "vcs-op: unable to resolve default branch (no remote HEAD and no verified local main/master) — pass --base <branch> explicitly"
+
+localJjDefault :: Effect VcsValue
+localJjDefault = do
+  main <- jjRevisionExists "main"
+  if main then pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
+  else do
+    master <- jjRevisionExists "master"
+    pure if master then { code: 0, value: "master", stdout: "master\n", stderr: "" }
+    else failureValue "vcs-op: unable to resolve default branch (no remote main/master bookmark and no verified local main/master) — pass --base <branch> explicitly"
+
+firstKnownDefault :: Array String -> Maybe String
+firstKnownDefault = Array.find (\name -> name == "main" || name == "master")
+
+gitReadBase :: WorkflowContext -> String -> Effect (Either String String)
+gitReadBase context base = do
+  remote <- remoteName context
+  case remote of
+    Right name -> do
+      exists <- gitRefExists ("refs/remotes/" <> name <> "/" <> base)
+      if exists then pure (Right (name <> "/" <> base)) else gitLocalBase base
+    Left _ -> gitLocalBase base
+
+withGitReadBase :: WorkflowContext -> String -> (String -> Effect Outcome.OpOutcome) -> Effect Outcome.OpOutcome
+withGitReadBase context base action = do
+  resolved <- gitReadBase context base
+  case resolved of
+    Left error -> pure (failureLine error)
+    Right ref -> action ref
+
+gitLocalBase :: String -> Effect (Either String String)
+gitLocalBase base = do
+  exists <- gitRefExists ("refs/heads/" <> base)
+  pure if exists then Right base else Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote branch")
+
+gitRefExists :: String -> Effect Boolean
+gitRefExists ref = do
+  result <- Sys.exec Binaries.git [ "show-ref", "--verify", "--quiet", ref ]
+  pure (result.code == 0)
+
+gitLocalRef :: String -> Effect Boolean
+gitLocalRef name = gitRefExists ("refs/heads/" <> name)
+
+jjBaseRevset :: WorkflowContext -> String -> Effect (Either String String)
+jjBaseRevset context base = do
+  local <- jjRevisionExists base
+  if local then pure (Right base)
+  else do
+    remote <- remoteName context
+    case remote of
+      Left _ -> pure (Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark"))
+      Right name -> do
+        let remoteBase = base <> "@" <> name
+        exists <- jjRevisionExists remoteBase
+        pure if exists then Right remoteBase
+        else Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark")
+
+jjRevisionExists :: String -> Effect Boolean
+jjRevisionExists revision = do
+  result <- Sys.exec Binaries.jj [ "log", "--revision", revision, "--no-graph", "--template", "change_id" ]
+  pure (result.code == 0 && trim result.stdout /= "")
+
+sameGitRevision :: String -> String -> Effect (Either String Boolean)
+sameGitRevision left right = do
+  leftResult <- Sys.exec Binaries.git [ "rev-parse", left ]
+  rightResult <- Sys.exec Binaries.git [ "rev-parse", right ]
+  pure if leftResult.code /= 0 || rightResult.code /= 0 then Left "vcs-op: unable to compare current branch with default"
+  else Right (trim leftResult.stdout == trim rightResult.stdout)
+
+sameJjRevision :: String -> String -> Effect (Either String Boolean)
+sameJjRevision left right = do
+  leftResult <- Sys.exec Binaries.jj [ "log", "--revision", left, "--no-graph", "--template", "commit_id" ]
+  rightResult <- Sys.exec Binaries.jj [ "log", "--revision", right, "--no-graph", "--template", "commit_id" ]
+  pure if leftResult.code /= 0 || rightResult.code /= 0 then Left "vcs-op: unable to compare current branch with default"
+  else Right (trim leftResult.stdout == trim rightResult.stdout)
+
+currentFeatureBookmark :: WorkflowContext -> Effect (Either String String)
+currentFeatureBookmark context = do
+  current <- currentBranchValue context
+  pure if current.code /= 0 then Left (commandError "vcs-op: unable to resolve current feature bookmark" { code: current.code, stdout: current.stdout, stderr: current.stderr })
+  else if current.value == "" then Left "vcs-op: no feature bookmark is checked out; refusing broad jj push"
+  else if context.base == Just current.value then Left ("vcs-op: current bookmark '" <> current.value <> "' is the base; refusing broad jj push")
+  else Right current.value
+
+validateBranchName :: String -> Either String Unit
+validateBranchName name =
+  if name == "" || Args.startsWith "-" name || Args.startsWith "." name || contains (Pattern "..") name || contains (Pattern "@{") name || Array.any (\invalid -> contains (Pattern invalid) name) [ " ", "~", "^", ":", "?", "*", "[", "\\", ";" ] then
+    Left ("vcs-op branch: invalid branch name '" <> name <> "'")
+  else Right unit
+
+preserveState :: WorkflowContext -> Effect Outcome.OpOutcome -> Effect Outcome.OpOutcome
+preserveState context action = do
+  let path = context.stateDir <> "/.do-results.json"
+  present <- Sys.exists path
+  saved <- if present then Just <$> Sys.readUtf8 path else pure Nothing
+  outcome <- action
+  case saved of
+    Nothing -> pure unit
+    Just contents -> Sys.writeUtf8 path contents
+  pure outcome
+
+failureValue :: String -> VcsValue
+failureValue message = { code: 1, value: "", stdout: "", stderr: message <> "\n" }
+
+commandError :: String -> Sys.ExecResult -> String
+commandError fallback result = if trim result.stderr == "" then fallback else trim result.stderr
+
+lines :: String -> Array String
+lines value = Array.filter (_ /= "") (map trim (split (Pattern "\n") value))
 joinWithSpace :: Array String -> String
 joinWithSpace values = joinWith " " values
 noVcsOutcome :: Outcome.OpOutcome
@@ -632,16 +839,10 @@ failureLines values = Outcome.failure 1 (joinLines values <> "\n")
 joinLines :: Array String -> String
 joinLines = joinWith "\n"
 
-jjRemote :: String -> String
-jjRemote output = case Array.head (split (Pattern "\n") output) of
-  Nothing -> ""
-  Just line -> case Array.filter (_ /= "") (split (Pattern " " ) (trim line)) of
-    tokens -> case Array.uncons tokens of
-      Nothing -> ""
-      Just { tail: afterName } -> fromMaybe "" (Array.head afterName)
 
 firstLine :: String -> String
 firstLine output = fromMaybe "" (trim <$> Array.head (split (Pattern "\n") output))
 
-stripOrigin :: String -> String
-stripOrigin value = if Args.startsWith "origin/" value then drop 7 value else value
+stripRemote :: String -> String -> String
+stripRemote remote value =
+  if Args.startsWith (remote <> "/") value then drop (length remote + 1) value else value

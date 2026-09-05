@@ -159,7 +159,7 @@ just lint      # run shellcheck on bash scripts
 just build     # compile and bundle the PureScript core
 just ci        # full CI: tests + lint + bundle freshness
 just nickel-build  # build the Nickel WASM evaluator and Node glue
-node nickel-vm/scripts/smoke.mjs  # run the three workflow goldens
+node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite
 ```
 
 One-off CLI invocations outside the dev shell should pin the interpreter too:
