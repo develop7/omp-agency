@@ -101,24 +101,33 @@ resolveContext context options startedAt = do
 
 type SyncBase =
   { state :: State.State
-  , branch :: Vcs.VcsValue
+  , branch :: String
   , defaultRef :: String
   , base :: String
   }
 
+-- | --no-vcs has no branch or revision to resolve, but downstream workflow
+-- | gates require sync to persist a non-empty base before they skip VCS work.
+noVcsBase :: State.State -> Either Outcome.OpOutcome SyncBase
+noVcsBase state1 = case State.setField "base" (fromString "no-vcs") state1 of
+  Left error -> Left (failText ("sync: " <> error))
+  Right state2 -> Right { state: state2, branch: "no-vcs", defaultRef: "no-vcs", base: "no-vcs" }
+
 basePhase :: WorkflowContext -> { noVcs :: Boolean, base :: Maybe String, stack :: Boolean } -> State.State -> Effect (Either Outcome.OpOutcome SyncBase)
-basePhase context options state1 = do
-  branchResult <- Vcs.headRevisionValue context
-  defaultResult <- Vcs.defaultBranchValue context
-  if branchResult.code /= 0 then pure (Left (Vcs.renderValue branchResult))
-  else if defaultResult.code /= 0 then pure (Left (Vcs.renderValue defaultResult))
+basePhase context options state1 =
+  if options.noVcs then pure (noVcsBase state1)
   else do
-    baseResult <- resolveSyncBase options defaultResult.value context
-    case baseResult of
-      Left error -> pure (Left (failWithCode 2 error))
-      Right base -> case State.setField "base" (fromString base) state1 of
-        Left error -> pure (Left (failText ("sync: " <> error)))
-        Right state2 -> pure (Right { state: state2, branch: branchResult, defaultRef: defaultResult.value, base })
+    branchResult <- Vcs.headRevisionValue context
+    defaultResult <- Vcs.defaultBranchValue context
+    if branchResult.code /= 0 then pure (Left (Vcs.renderValue branchResult))
+    else if defaultResult.code /= 0 then pure (Left (Vcs.renderValue defaultResult))
+    else do
+      baseResult <- resolveSyncBase options defaultResult.value context
+      case baseResult of
+        Left error -> pure (Left (failWithCode 2 error))
+        Right base -> case State.setField "base" (fromString base) state1 of
+          Left error -> pure (Left (failText ("sync: " <> error)))
+          Right state2 -> pure (Right { state: state2, branch: branchResult.value, defaultRef: defaultResult.value, base })
 
 recordPhase :: WorkflowContext -> { noVcs :: Boolean, base :: Maybe String, stack :: Boolean } -> String -> SyncBase -> Effect Outcome.OpOutcome
 recordPhase context options startedAt resolved = do
@@ -140,7 +149,7 @@ recordPhase context options startedAt resolved = do
       pure (Outcome.withStdout
         ( "vcs=" <> Vcs.vcsName contextWithBase.vcs <> "\n"
           <> "forge=" <> Forge.forgeName contextWithBase.forge <> "\n"
-          <> "branch=" <> resolved.branch.value <> "\n"
+          <> "branch=" <> resolved.branch <> "\n"
           <> "defaultBranch=" <> resolved.defaultRef <> "\n"
           <> "base=" <> resolved.base <> "\n"
         ))

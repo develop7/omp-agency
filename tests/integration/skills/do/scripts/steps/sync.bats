@@ -30,14 +30,19 @@ run_sync() {
   run node "$REPO_ROOT/pure/dist/agency-do.js" sync "$@"
 }
 
-@test "sync with noVcs=true: emits correct protocol lines" {
+@test "sync with noVcs=true skips VCS resolution outside a repository" {
+  rm -rf .git
+
   run_sync true
   [ "$status" -eq 0 ]
 
-  [[ "$output" == *"vcs=git"* ]]
+  [[ "$output" == *"vcs=unknown"* ]]
   [[ "$output" == *"forge=unknown"* ]]
-  [[ "$output" == *"branch=master"* ]]
-  [[ "$output" == *"defaultBranch=master"* ]]
+  [[ "$output" == *"branch=no-vcs"* ]]
+  [[ "$output" == *"defaultBranch=no-vcs"* ]]
+  [[ "$output" == *"base=no-vcs"* ]]
+  run jq -r '.base' .do-results.json
+  [ "$output" = "no-vcs" ]
 }
 
 @test "sync with noVcs=false: emits correct protocol lines" {
