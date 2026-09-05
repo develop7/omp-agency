@@ -2,6 +2,7 @@ module Agency.Scripts.Do.StateTest (run) where
 
 import Prelude
 
+import Data.Array as Array
 import Data.Argonaut.Core (fromBoolean, toBoolean, toString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Either (Either(..))
@@ -91,3 +92,81 @@ run = do
   assert "boolean fields decode literal true" (map toBoolean (Results.jsonValueFor "review" "true") == Right (Just true))
   let terminal = State.finishWorkflow State.WorkflowCompleted (State.initState "2024-01-01T00:00:00Z")
   assert "terminal success makes the workflow idle" (terminal.active == State.ActiveIdle && terminal.status == State.WorkflowCompleted)
+  let firstStep =
+        { name: "sync"
+        , status: State.StepPassed
+        , verification: "first recorded"
+        , startedAt: "2024-01-01T00:00:00Z"
+        , completedAt: "2024-01-01T00:00:00Z"
+        , reason: Nothing
+        }
+      middleStep =
+        { name: "research"
+        , status: State.StepPassed
+        , verification: "middle recorded"
+        , startedAt: "2024-01-01T00:00:01Z"
+        , completedAt: "2024-01-01T00:00:01Z"
+        , reason: Nothing
+        }
+      lastStep =
+        { name: "check"
+        , status: State.StepPassed
+        , verification: "last recorded"
+        , startedAt: "2024-01-01T00:00:02Z"
+        , completedAt: "2024-01-01T00:00:02Z"
+        , reason: Nothing
+        }
+      nextStep =
+        { name: "evidence"
+        , status: State.StepPassed
+        , verification: "new record"
+        , startedAt: "2024-01-01T00:00:03Z"
+        , completedAt: "2024-01-01T00:00:03Z"
+        , reason: Nothing
+        }
+      oneBeforeLimit =
+        (State.initState "2024-01-01T00:00:00Z")
+          { steps = [ firstStep ] <> Array.replicate (State.maxPersistedSteps - 2) middleStep
+          }
+      fullHistory =
+        oneBeforeLimit
+          { steps = oneBeforeLimit.steps <> [ lastStep ]
+          }
+      overLimitHistory =
+        fullHistory
+          { steps = fullHistory.steps <> [ nextStep ]
+          }
+  case State.appendStep nextStep oneBeforeLimit of
+    Left error -> do
+      Console.error ("FAIL: append below limit: " <> error)
+      Sys.exit 1
+    Right updated ->
+      assert
+        ("append preserves ordered history at limit " <> show State.maxPersistedSteps)
+        (map _.name updated.steps == map _.name (oneBeforeLimit.steps <> [ nextStep ]))
+  case State.appendStep nextStep fullHistory of
+    Left error ->
+      assert
+        ("append rejects history at limit " <> show State.maxPersistedSteps)
+        (error == "state: step history limit (" <> show State.maxPersistedSteps <> ") reached")
+    Right _ -> do
+      Console.error "FAIL: append allowed an unbounded audit history"
+      Sys.exit 1
+  case State.parseState (State.stringifyState overLimitHistory) of
+    Left error ->
+      assert
+        ("parse rejects history beyond limit " <> show State.maxPersistedSteps)
+        (error == "state: step history limit (" <> show State.maxPersistedSteps <> ") exceeded")
+    Right _ -> do
+      Console.error "FAIL: parse accepted an over-limit audit history"
+      Sys.exit 1
+  case State.appendStep (nextStep { name = "not-a-step" }) State.emptyState of
+    Left error -> assert "append rejects an unknown step name" (error == "state: unknown step 'not-a-step'")
+    Right _ -> do
+      Console.error "FAIL: append accepted an unknown step name"
+      Sys.exit 1
+  case State.appendStep (nextStep { status = State.StepUnknown "not-a-status" }) State.emptyState of
+    Left error -> assert "append rejects an unknown step status" (error == "state: invalid step status 'not-a-status'")
+    Right _ -> do
+      Console.error "FAIL: append accepted an unknown step status"
+      Sys.exit 1
