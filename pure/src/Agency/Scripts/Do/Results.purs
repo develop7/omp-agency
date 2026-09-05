@@ -49,16 +49,13 @@ runStepEnd context status verification reason = withLoadedState context \state -
   Just pending -> do
     completed <- Sys.nowIso
     timing <- validInterval pending.startedAt completed
-    case timing of
+    let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
+    case timing >>= \_ -> State.appendStep step state of
       Left error -> pure (failText error)
-      Right _ -> do
-        let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
-        case State.appendStep step state of
-          Left error -> pure (failText error)
-          Right appended -> do
-            let updated = terminalize pending.name status (State.finishPending appended)
-            State.writeState (Context.statePath context) updated
-            pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
+      Right appended -> do
+        let updated = terminalize pending.name status (State.finishPending appended)
+        State.writeState (Context.statePath context) updated
+        pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
 
 runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStep context name status verification startedAt completedAt reason = withLoadedState context \state -> do
