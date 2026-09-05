@@ -4526,7 +4526,7 @@ var selectRemote = function(remotes) {
     return new Left("vcs-op: multiple remotes configured but none is named origin");
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 695, column 24 - line 700, column 77): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 707, column 24 - line 712, column 77): " + [v.constructor.name]);
 };
 var sameJjRevision = function(left) {
   return function(right) {
@@ -4601,7 +4601,7 @@ var preserveState = function(context) {
           return writeUtf8(path)(saved.value0)();
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 848, column 3 - line 850, column 49): " + [saved.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 860, column 3 - line 862, column 49): " + [saved.constructor.name]);
       })();
       return outcome;
     };
@@ -4624,7 +4624,22 @@ var passthroughCommand = function(context) {
           return passthrough(result.code);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 652, column 5 - line 654, column 56): " + [result.error.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 664, column 5 - line 666, column 56): " + [result.error.constructor.name]);
+      };
+    };
+  };
+};
+var stageThenCommit = function(context) {
+  return function(message3) {
+    return function(files) {
+      return function __do4() {
+        var staged = passthroughCommand(context)(git)(append12(["add", "--"])(files))();
+        var $63 = staged.exit !== 0;
+        if ($63) {
+          return staged;
+        }
+        ;
+        return passthroughCommand(context)(git)(append12(["commit", "--only", "--message", message3, "--"])(files))();
       };
     };
   };
@@ -4650,10 +4665,10 @@ var parseJjRemote = function(line) {
       });
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 705, column 32 - line 707, column 35): " + [v1.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 717, column 32 - line 719, column 35): " + [v1.constructor.name]);
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 703, column 22 - line 707, column 35): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 715, column 22 - line 719, column 35): " + [v.constructor.name]);
 };
 var operationNames2 = ["detect", "fetch", "remote-url", "head-revision", "head-commit-sha", "default-branch", "current-branch", "base", "dirty", "diff-range", "diff-names", "diff-stat", "new-files", "log-range", "log-head", "branch", "commit", "push", "fix-commit", "refresh-default-branch", "fast-forward-if-safe"];
 var noUpstream = function(result) {
@@ -4664,41 +4679,6 @@ var moveBookmark = function(context) {
   return function(name2) {
     return function(target) {
       return passthroughCommand(context)(jj)(["bookmark", "move", name2, "--to", target]);
-    };
-  };
-};
-var splitAndMove = function(context) {
-  return function(bookmark) {
-    return function(message3) {
-      return function(unrelated) {
-        return function __do4() {
-          var described = passthroughCommand(context)(jj)(["describe", "--message=" + message3])();
-          var $69 = described.exit !== 0;
-          if ($69) {
-            return described;
-          }
-          ;
-          var splitCode = passthroughCommand(context)(jj)(append12(["split", "--message=chore: unrelated changes", "--"])(unrelated))();
-          var $70 = splitCode.exit !== 0;
-          if ($70) {
-            return splitCode;
-          }
-          ;
-          var rebase = passthroughCommand(context)(jj)(["rebase", "--revision", "@-", "--insert-after", "@"])();
-          var $71 = rebase.exit !== 0;
-          if ($71) {
-            return rebase;
-          }
-          ;
-          var moved = moveBookmark(context)(bookmark)("@")();
-          var $72 = moved.exit !== 0;
-          if ($72) {
-            return moved;
-          }
-          ;
-          return passthroughCommand(context)(jj)(["new", bookmark])();
-        };
-      };
     };
   };
 };
@@ -4733,17 +4713,60 @@ var validateDirty = function(vcs) {
               };
             }
             ;
-            throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 516, column 15 - line 519, column 58): " + [vcs.constructor.name]);
+            throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 522, column 15 - line 525, column 58): " + [vcs.constructor.name]);
           })();
           return result.code !== 0 || trim(result.stdout) === "";
         };
       })(files)();
-      var $74 = $$null(bad);
-      if ($74) {
+      var $71 = $$null(bad);
+      if ($71) {
         return new Right(unit);
       }
       ;
       return new Left(joinLines(["vcs-op: file(s) not dirty (not in working-copy changes): " + joinWithSpace(bad), "        The caller must pass files it actually changed."]));
+    };
+  };
+};
+var jjSplitPath = function(path) {
+  var $72 = startsWith("-")(path);
+  if ($72) {
+    return "./" + path;
+  }
+  ;
+  return path;
+};
+var splitAndMove = function(context) {
+  return function(bookmark) {
+    return function(message3) {
+      return function(unrelated) {
+        return function __do4() {
+          var described = passthroughCommand(context)(jj)(["describe", "--message=" + message3])();
+          var $73 = described.exit !== 0;
+          if ($73) {
+            return described;
+          }
+          ;
+          var splitCode = passthroughCommand(context)(jj)(append12(["split", "--message=chore: unrelated changes", "--"])(map13(jjSplitPath)(unrelated)))();
+          var $74 = splitCode.exit !== 0;
+          if ($74) {
+            return splitCode;
+          }
+          ;
+          var rebase = passthroughCommand(context)(jj)(["rebase", "--revision", "@-", "--insert-after", "@"])();
+          var $75 = rebase.exit !== 0;
+          if ($75) {
+            return rebase;
+          }
+          ;
+          var moved = moveBookmark(context)(bookmark)("@")();
+          var $76 = moved.exit !== 0;
+          if ($76) {
+            return moved;
+          }
+          ;
+          return passthroughCommand(context)(jj)(["edit", "@+"])();
+        };
+      };
     };
   };
 };
@@ -4762,8 +4785,8 @@ var headRevisionValue = function(context) {
     return function __do4() {
       var bookmark = exec5(jj)(["bookmark", "list", "--revision", "@", "--template", 'name ++ "\\n"'])();
       return valueResult(bookmark)((function() {
-        var $76 = bookmark.code === 0;
-        if ($76) {
+        var $78 = bookmark.code === 0;
+        if ($78) {
           return firstLine(bookmark.stdout);
         }
         ;
@@ -4815,11 +4838,11 @@ var inspectDirty = function(context) {
   if (context.vcs instanceof Git) {
     return function __do4() {
       var result = exec5(git)(["status", "--porcelain"])();
-      var $80 = result.code !== 0;
-      if ($80) {
+      var $82 = result.code !== 0;
+      if ($82) {
         return new InspectionFailed((function() {
-          var $81 = result.stderr === "";
-          if ($81) {
+          var $83 = result.stderr === "";
+          if ($83) {
             return failureLine("vcs-op: unable to inspect git working copy");
           }
           ;
@@ -4827,8 +4850,8 @@ var inspectDirty = function(context) {
         })());
       }
       ;
-      var $82 = trim(result.stdout) !== "";
-      if ($82) {
+      var $84 = trim(result.stdout) !== "";
+      if ($84) {
         return DirtyDetected.value;
       }
       ;
@@ -4839,13 +4862,13 @@ var inspectDirty = function(context) {
   if (context.vcs instanceof Jj) {
     return function __do4() {
       var result = exec5(jj)(["diff", "--revisions", "@", "--summary"])();
-      var $83 = result.code !== 0;
-      if ($83) {
+      var $85 = result.code !== 0;
+      if ($85) {
         return new InspectionFailed(failureLine("vcs-op: unable to inspect jj working copy"));
       }
       ;
-      var $84 = trim(result.stdout) !== "";
-      if ($84) {
+      var $86 = trim(result.stdout) !== "";
+      if ($86) {
         return DirtyDetected.value;
       }
       ;
@@ -4942,14 +4965,14 @@ var describeAndMove = function(context) {
     return function(message3) {
       return function __do4() {
         var described = passthroughCommand(context)(jj)(["describe", "--message=" + message3])();
-        var $95 = described.exit !== 0;
-        if ($95) {
+        var $97 = described.exit !== 0;
+        if ($97) {
           return described;
         }
         ;
         var newCode = passthroughCommand(context)(jj)(["new"])();
-        var $96 = newCode.exit !== 0;
-        if ($96) {
+        var $98 = newCode.exit !== 0;
+        if ($98) {
           return newCode;
         }
         ;
@@ -4970,13 +4993,13 @@ var currentBranchValue = function(context) {
     return function __do4() {
       var at = exec5(jj)(["bookmark", "list", "--revision", "@", "--template", 'name ++ "\\n"'])();
       var atName = firstLine(at.stdout);
-      var $98 = at.code !== 0;
-      if ($98) {
+      var $100 = at.code !== 0;
+      if ($100) {
         return valueResult(at)("");
       }
       ;
-      var $99 = atName !== "";
-      if ($99) {
+      var $101 = atName !== "";
+      if ($101) {
         return valueResult(at)(atName);
       }
       ;
@@ -4998,8 +5021,8 @@ var currentBranchValue = function(context) {
 };
 var commandError = function(fallback) {
   return function(result) {
-    var $100 = trim(result.stderr) === "";
-    if ($100) {
+    var $102 = trim(result.stderr) === "";
+    if ($102) {
       return fallback;
     }
     ;
@@ -5009,8 +5032,8 @@ var commandError = function(fallback) {
 var currentFeatureBookmark = function(context) {
   return function __do4() {
     var current = currentBranchValue(context)();
-    var $101 = current.code !== 0;
-    if ($101) {
+    var $103 = current.code !== 0;
+    if ($103) {
       return new Left(commandError("vcs-op: unable to resolve current feature bookmark")({
         code: current.code,
         stdout: current.stdout,
@@ -5018,13 +5041,13 @@ var currentFeatureBookmark = function(context) {
       }));
     }
     ;
-    var $102 = current.value === "";
-    if ($102) {
+    var $104 = current.value === "";
+    if ($104) {
       return new Left("vcs-op: no feature bookmark is checked out; refusing broad jj push");
     }
     ;
-    var $103 = eq22(context.base)(new Just(current.value));
-    if ($103) {
+    var $105 = eq22(context.base)(new Just(current.value));
+    if ($105) {
       return new Left("vcs-op: current bookmark '" + (current.value + "' is the base; refusing broad jj push"));
     }
     ;
@@ -5060,7 +5083,7 @@ var gitLocalBase = function(base) {
       return new Left("vcs-op: base '" + (base + "' does not name a local or selected-remote branch"));
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 773, column 8 - line 776, column 106): " + [exists3.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 785, column 8 - line 788, column 106): " + [exists3.constructor.name]);
   };
 };
 var gitLocalRef = function(name2) {
@@ -5100,10 +5123,10 @@ var localGitDefault = function __do() {
       return failureValue("vcs-op: unable to resolve default branch (no remote HEAD and no verified local main/master) \u2014 pass --base <branch> explicitly");
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 730, column 12 - line 733, column 164): " + [master.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 742, column 12 - line 745, column 164): " + [master.constructor.name]);
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 725, column 3 - line 733, column 164): " + [main2.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 737, column 3 - line 745, column 164): " + [main2.constructor.name]);
 };
 var remoteGitDefault = function(remote) {
   return function __do4() {
@@ -5140,22 +5163,22 @@ var remoteGitDefault = function(remote) {
         return localGitDefault();
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 717, column 7 - line 720, column 39): " + [master.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 729, column 7 - line 732, column 39): " + [master.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 712, column 3 - line 720, column 39): " + [main2.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 724, column 3 - line 732, column 39): " + [main2.constructor.name]);
   };
 };
 var jjRevisionExists = function(revision) {
   return function __do4() {
     var result = exec5(jj)(["log", "--revision", revision, "--no-graph", "--template", "change_id"])();
-    var $125 = result.code === 0;
-    if ($125) {
+    var $127 = result.code === 0;
+    if ($127) {
       return new Right(trim(result.stdout) !== "");
     }
     ;
-    var $126 = contains("Revision `")(result.stderr) && contains("` doesn't exist")(result.stderr);
-    if ($126) {
+    var $128 = contains("Revision `")(result.stderr) && contains("` doesn't exist")(result.stderr);
+    if ($128) {
       return new Right(false);
     }
     ;
@@ -5196,17 +5219,17 @@ var localJjDefault = function __do2() {
       return failureValue("vcs-op: unable to resolve default branch (no remote main/master bookmark and no verified local main/master) \u2014 pass --base <branch> explicitly");
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 743, column 12 - line 746, column 180): " + [master.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 755, column 12 - line 758, column 180): " + [master.constructor.name]);
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 738, column 3 - line 746, column 180): " + [main2.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 750, column 3 - line 758, column 180): " + [main2.constructor.name]);
 };
 var remoteEntries = function(context) {
   var gitRemote = function(name2) {
     return function __do4() {
       var url = exec5(git)(["remote", "get-url", name2])();
-      var $135 = url.code === 0 && trim(url.stdout) !== "";
-      if ($135) {
+      var $137 = url.code === 0 && trim(url.stdout) !== "";
+      if ($137) {
         return new Right({
           name: name2,
           url: trim(url.stdout)
@@ -5219,8 +5242,8 @@ var remoteEntries = function(context) {
   if (context.vcs instanceof Git) {
     return function __do4() {
       var listed = exec5(git)(["remote"])();
-      var $137 = listed.code !== 0;
-      if ($137) {
+      var $139 = listed.code !== 0;
+      if ($139) {
         return new Left(commandError("vcs-op: unable to list git remotes")(listed));
       }
       ;
@@ -5232,8 +5255,8 @@ var remoteEntries = function(context) {
   if (context.vcs instanceof Jj) {
     return function __do4() {
       var listed = exec5(jj)(["git", "remote", "list"])();
-      var $138 = listed.code !== 0;
-      if ($138) {
+      var $140 = listed.code !== 0;
+      if ($140) {
         return new Left(commandError("vcs-op: unable to list jj remotes")(listed));
       }
       ;
@@ -5245,7 +5268,7 @@ var remoteEntries = function(context) {
     return pure6(new Left("vcs-op: no VCS detected"));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 676, column 25 - line 687, column 51): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 688, column 25 - line 699, column 51): " + [context.vcs.constructor.name]);
 };
 var remoteName = function(context) {
   return function __do4() {
@@ -5260,7 +5283,7 @@ var remoteName = function(context) {
       })(selectRemote(entries.value0));
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 671, column 8 - line 673, column 55): " + [entries.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 683, column 8 - line 685, column 55): " + [entries.constructor.name]);
   };
 };
 var defaultBranchValue = function(context) {
@@ -5270,8 +5293,8 @@ var defaultBranchValue = function(context) {
       if (remote instanceof Right) {
         var result = exec5(git)(["symbolic-ref", "--short", "refs/remotes/" + (remote.value0 + "/HEAD")])();
         var candidate = stripRemote(remote.value0)(firstLine(result.stdout));
-        var $144 = result.code !== 0 || candidate === "";
-        if ($144) {
+        var $146 = result.code !== 0 || candidate === "";
+        if ($146) {
           return remoteGitDefault(remote.value0)();
         }
         ;
@@ -5308,8 +5331,8 @@ var defaultBranchValue = function(context) {
       ;
       if (remote instanceof Right) {
         var result = exec5(jj)(["bookmark", "list", "--remote", remote.value0, "--template", 'name ++ "\\n"'])();
-        var $153 = result.code !== 0;
-        if ($153) {
+        var $155 = result.code !== 0;
+        if ($155) {
           return localJjDefault();
         }
         ;
@@ -5353,14 +5376,14 @@ var gitReadBase = function(context) {
           return gitLocalBase(base)();
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 757, column 7 - line 760, column 41): " + [exists3.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 769, column 7 - line 772, column 41): " + [exists3.constructor.name]);
       }
       ;
       if (remote instanceof Left) {
         return gitLocalBase(base)();
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 754, column 3 - line 761, column 32): " + [remote.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 766, column 3 - line 773, column 32): " + [remote.constructor.name]);
     };
   };
 };
@@ -5377,7 +5400,7 @@ var withGitReadBase = function(context) {
           return action(resolved.value0)();
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 766, column 3 - line 768, column 28): " + [resolved.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 778, column 3 - line 780, column 28): " + [resolved.constructor.name]);
       };
     };
   };
@@ -5415,13 +5438,13 @@ var jjBaseRevset = function(context) {
             return new Left("vcs-op: base '" + (base + "' does not name a local or selected-remote bookmark"));
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 802, column 16 - line 805, column 116): " + [exists3.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 814, column 16 - line 817, column 116): " + [exists3.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 797, column 7 - line 805, column 116): " + [remote.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 809, column 7 - line 817, column 116): " + [remote.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 792, column 3 - line 805, column 116): " + [local2.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 804, column 3 - line 817, column 116): " + [local2.constructor.name]);
     };
   };
 };
@@ -5475,14 +5498,14 @@ var jjRangeFrom = function(context) {
       if (resolved instanceof Right) {
         var revset = "heads(ancestors(@) & ancestors(" + (resolved.value0 + "))");
         var result = exec5(jj)(["log", "--revision", revset, "--no-graph", "--template", "change_id"])();
-        var $187 = result.code !== 0;
-        if ($187) {
+        var $189 = result.code !== 0;
+        if ($189) {
           return new Left(failureLine("vcs-op: unable to resolve merge-base for base '" + (base + "'")));
         }
         ;
         return new Right((function() {
-          var $188 = trim(result.stdout) === "";
-          if ($188) {
+          var $190 = trim(result.stdout) === "";
+          if ($190) {
             return resolved.value0;
           }
           ;
@@ -5614,8 +5637,8 @@ var newFiles = function(context) {
       var tokens = filter(function(v) {
         return v !== "";
       })(split(" ")(trim(line)));
-      var $208 = eq22(head(tokens))(new Just("A"));
-      if ($208) {
+      var $210 = eq22(head(tokens))(new Just("A"));
+      if ($210) {
         return index(tokens)(1);
       }
       ;
@@ -5641,15 +5664,15 @@ var newFiles = function(context) {
           ;
           if (source instanceof Right) {
             var result = exec5(jj)(append12(["diff", "--from", source.value0, "--to", "@", "--summary", "--"])(paths))();
-            var $213 = result.code !== 0;
-            if ($213) {
+            var $215 = result.code !== 0;
+            if ($215) {
               return captured(result);
             }
             ;
             var added = mapMaybe(addedName)(split("\n")(result.stdout));
             return withStdout((function() {
-              var $214 = $$null(added);
-              if ($214) {
+              var $216 = $$null(added);
+              if ($216) {
                 return "";
               }
               ;
@@ -5693,14 +5716,14 @@ var logRange = function(context) {
           ;
           if (source instanceof Right) {
             var probe = exec5(jj)(["diff", "--revisions", "@", "--summary"])();
-            var $221 = probe.code !== 0;
-            if ($221) {
+            var $223 = probe.code !== 0;
+            if ($223) {
               return failureLine("vcs-op: unable to inspect jj working copy for log-range");
             }
             ;
             var target = (function() {
-              var $222 = trim(probe.stdout) !== "";
-              if ($222) {
+              var $224 = trim(probe.stdout) !== "";
+              if ($224) {
                 return "@";
               }
               ;
@@ -5764,7 +5787,7 @@ var withRemote = function(context) {
         return action(selected.value0)();
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 664, column 3 - line 666, column 34): " + [selected.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 676, column 3 - line 678, column 34): " + [selected.constructor.name]);
     };
   };
 };
@@ -5781,7 +5804,7 @@ var push2 = function(context) {
         return passthroughCommand(context)(git)(["push"]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 600, column 10 - line 603, column 66): " + [ref.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 612, column 10 - line 615, column 66): " + [ref.constructor.name]);
     }
     ;
     if (context.vcs instanceof Jj) {
@@ -5799,7 +5822,7 @@ var push2 = function(context) {
             return currentFeatureBookmark(context)();
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 605, column 17 - line 608, column 48): " + [ref.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 617, column 17 - line 620, column 48): " + [ref.constructor.name]);
         })();
         if (bookmark instanceof Left) {
           return failureLine(bookmark.value0);
@@ -5811,7 +5834,7 @@ var push2 = function(context) {
           })();
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 609, column 5 - line 612, column 106): " + [bookmark.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 621, column 5 - line 624, column 106): " + [bookmark.constructor.name]);
       };
     }
     ;
@@ -5819,7 +5842,7 @@ var push2 = function(context) {
       return pure6(noVcsOutcome);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 599, column 20 - line 613, column 31): " + [context.vcs.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 611, column 20 - line 625, column 31): " + [context.vcs.constructor.name]);
   };
 };
 var remoteUrlResult = function(context) {
@@ -5853,14 +5876,14 @@ var remoteUrlResult = function(context) {
 var remoteUrlValue = function(context) {
   return function __do4() {
     var result = remoteUrlResult(context)();
-    var $246 = result.code === 0;
-    if ($246) {
+    var $248 = result.code === 0;
+    if ($248) {
       return new Right(result.value);
     }
     ;
     return new Left((function() {
-      var $247 = result.stderr === "";
-      if ($247) {
+      var $249 = result.stderr === "";
+      if ($249) {
         return "vcs-op: unable to read remote URL";
       }
       ;
@@ -5887,10 +5910,10 @@ var fastForwardIfSafe = function(context) {
   if (context.vcs instanceof Git) {
     return function __do4() {
       var upstream = exec5(git)(["rev-parse", "--abbrev-ref", "@{u}"])();
-      var $249 = upstream.code !== 0;
-      if ($249) {
-        var $250 = noUpstream(upstream);
-        if ($250) {
+      var $251 = upstream.code !== 0;
+      if ($251) {
+        var $252 = noUpstream(upstream);
+        if ($252) {
           return success;
         }
         ;
@@ -5898,30 +5921,30 @@ var fastForwardIfSafe = function(context) {
       }
       ;
       var upstreamName = trim(upstream.stdout);
-      var $251 = upstreamName === "";
-      if ($251) {
+      var $253 = upstreamName === "";
+      if ($253) {
         return success;
       }
       ;
       var behind = exec5(git)(["rev-list", "--count", "HEAD.." + upstreamName])();
-      var $252 = behind.code !== 0;
-      if ($252) {
+      var $254 = behind.code !== 0;
+      if ($254) {
         return captured(behind);
       }
       ;
       var ahead = exec5(git)(["rev-list", "--count", upstreamName + "..HEAD"])();
-      var $253 = ahead.code !== 0;
-      if ($253) {
+      var $255 = ahead.code !== 0;
+      if ($255) {
         return captured(ahead);
       }
       ;
-      var $254 = {
+      var $256 = {
         behind: fromString(trim(behind.stdout)),
         ahead: fromString(trim(ahead.stdout))
       };
-      if ($254.behind instanceof Just && $254.ahead instanceof Just) {
-        var $255 = $254.behind.value0 > 0 && $254.ahead.value0 === 0;
-        if ($255) {
+      if ($256.behind instanceof Just && $256.ahead instanceof Just) {
+        var $257 = $256.behind.value0 > 0 && $256.ahead.value0 === 0;
+        if ($257) {
           return capturedCommand(git)(["pull", "--ff-only"])(context)();
         }
         ;
@@ -6007,8 +6030,8 @@ var branch = function(context) {
             ;
             if (parent instanceof Right) {
               var first = passthroughCommand(context)(jj)(["new", parent.value0])();
-              var $271 = first.exit === 0;
-              if ($271) {
+              var $273 = first.exit === 0;
+              if ($273) {
                 return passthroughCommand(context)(jj)(["bookmark", "create", name2, "--revision", "@"])();
               }
               ;
@@ -6035,11 +6058,11 @@ var branch = function(context) {
 var bookmarkAt = function(revision) {
   return function __do4() {
     var result = exec5(jj)(["bookmark", "list", "--revision", revision, "--template", 'name ++ "\\n"'])();
-    var $275 = result.code !== 0;
-    if ($275) {
+    var $277 = result.code !== 0;
+    if ($277) {
       return new Left((function() {
-        var $276 = result.stderr === "";
-        if ($276) {
+        var $278 = result.stderr === "";
+        if ($278) {
           return failureLine("vcs-op: unable to inspect bookmark at '" + (revision + "'"));
         }
         ;
@@ -6051,22 +6074,17 @@ var bookmarkAt = function(revision) {
   };
 };
 var featureBookmark = function(context) {
-  if (context.base instanceof Nothing) {
-    return pure6(new Left(failureLine("vcs-op commit: jj requires a resolved base to protect the trunk bookmark")));
-  }
-  ;
-  if (context.base instanceof Just) {
-    return function __do4() {
-      var found = bookmarkAt("@")();
+  var protect = function(base) {
+    return function(found) {
       if (found instanceof Left) {
         return new Left(found.value0);
       }
       ;
       if (found instanceof Right && found.value0 instanceof Nothing) {
-        return new Left(failureLine("vcs-op commit: no feature bookmark at the working copy; refusing to move the trunk"));
+        return new Left(failureLine("vcs-op commit: no feature bookmark at the working copy or its parent; refusing to move the trunk"));
       }
       ;
-      if (found instanceof Right && (found.value0 instanceof Just && found.value0.value0 === context.base.value0)) {
+      if (found instanceof Right && (found.value0 instanceof Just && found.value0.value0 === base)) {
         return new Left(failureLine("vcs-op commit: refusing to move trunk bookmark '" + (found.value0.value0 + "'")));
       }
       ;
@@ -6074,11 +6092,25 @@ var featureBookmark = function(context) {
         return new Right(found.value0.value0);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 557, column 10 - line 561, column 38): " + [found.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 569, column 24 - line 573, column 36): " + [found.constructor.name]);
+    };
+  };
+  if (context.base instanceof Nothing) {
+    return pure6(new Left(failureLine("vcs-op commit: jj requires a resolved base to protect the trunk bookmark")));
+  }
+  ;
+  if (context.base instanceof Just) {
+    return function __do4() {
+      var found = bookmarkAt("@")();
+      if (found instanceof Right && found.value0 instanceof Nothing) {
+        return map10(protect(context.base.value0))(bookmarkAt("@-"))();
+      }
+      ;
+      return protect(context.base.value0)(found);
     };
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 553, column 27 - line 561, column 38): " + [context.base.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 561, column 27 - line 567, column 37): " + [context.base.constructor.name]);
 };
 var jjCommit = function(context) {
   return function(message3) {
@@ -6086,8 +6118,8 @@ var jjCommit = function(context) {
       var canonicalFiles = function(file) {
         return function __do4() {
           var result = exec5(jj)(["diff", "--name-only", "--", file])();
-          var $286 = result.code !== 0;
-          if ($286) {
+          var $290 = result.code !== 0;
+          if ($290) {
             return new Left(captured(result));
           }
           ;
@@ -6102,8 +6134,8 @@ var jjCommit = function(context) {
         ;
         if (feature instanceof Right) {
           var allResult = exec5(jj)(["diff", "--name-only"])();
-          var $289 = allResult.code !== 0;
-          if ($289) {
+          var $293 = allResult.code !== 0;
+          if ($293) {
             return captured(allResult);
           }
           ;
@@ -6121,18 +6153,18 @@ var jjCommit = function(context) {
                 return file === changed;
               })(canonical);
             })(allChanged);
-            var $292 = $$null(unrelated);
-            if ($292) {
+            var $296 = $$null(unrelated);
+            if ($296) {
               return describeAndMove(context)(feature.value0)(message3)();
             }
             ;
             return splitAndMove(context)(feature.value0)(message3)(unrelated)();
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 537, column 9 - line 544, column 65): " + [v.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 543, column 9 - line 550, column 65): " + [v.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 530, column 3 - line 544, column 65): " + [feature.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 536, column 3 - line 550, column 65): " + [feature.constructor.name]);
       };
     };
   };
@@ -6140,8 +6172,8 @@ var jjCommit = function(context) {
 var commit = function(context) {
   return function(message3) {
     return function(files) {
-      var $295 = $$null(files);
-      if ($295) {
+      var $299 = $$null(files);
+      if ($299) {
         return pure6(failureLine("vcs-op: at least one file required (got none \u2014 pass the files you changed)"));
       }
       ;
@@ -6153,7 +6185,7 @@ var commit = function(context) {
         ;
         if (valid instanceof Right) {
           if (context.vcs instanceof Git) {
-            return passthroughCommand(context)(git)(append12(["commit", "--only", "--message", message3, "--"])(files))();
+            return stageThenCommit(context)(message3)(files)();
           }
           ;
           if (context.vcs instanceof Jj) {
@@ -6177,8 +6209,8 @@ var fixCommit = function(context) {
     return function(files) {
       return function __do4() {
         var committed = commit(context)(message3)(files)();
-        var $300 = committed.exit !== 0;
-        if ($300) {
+        var $304 = committed.exit !== 0;
+        if ($304) {
           return committed;
         }
         ;
@@ -6299,8 +6331,8 @@ var parseVcsOp = function(args) {
   }
   ;
   if (v instanceof Just) {
-    var $315 = elem5(v.value0.value)(operationNames2);
-    if ($315) {
+    var $319 = elem5(v.value0.value)(operationNames2);
+    if ($319) {
       if (v.value0.value === "detect") {
         return new Right(Detect2.value);
       }
