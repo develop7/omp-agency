@@ -230,12 +230,16 @@ fastForwardIfSafe context = case context.vcs of
         else do
           ahead <- Sys.exec Binaries.git [ "rev-list", "--count", upstreamName <> "..HEAD" ]
           if ahead.code /= 0 then pure (Outcome.captured ahead)
-          else do
-            let behindCount = fromMaybe 0 (fromString (trim behind.stdout))
-                aheadCount = fromMaybe 0 (fromString (trim ahead.stdout))
-            if behindCount > 0 && aheadCount == 0 then
-              capturedCommand Binaries.git [ "pull", "--ff-only" ] context
-            else pure Outcome.success
+          else case { behind: fromString (trim behind.stdout), ahead: fromString (trim ahead.stdout) } of
+            { behind: Just behindCount, ahead: Just aheadCount } ->
+              if behindCount > 0 && aheadCount == 0 then
+                capturedCommand Binaries.git [ "pull", "--ff-only" ] context
+              else pure Outcome.success
+            _ -> pure (failureLines
+              [ "vcs-op: unable to parse git rev-list counts"
+              , "        HEAD.." <> upstreamName <> ": " <> trim behind.stdout
+              , "        " <> upstreamName <> "..HEAD: " <> trim ahead.stdout
+              ])
 
 noUpstream :: Sys.ExecResult -> Boolean
 noUpstream result =
@@ -291,10 +295,13 @@ defaultBranchValue context = case context.vcs of
       Right name -> do
         result <- Sys.exec Binaries.git [ "symbolic-ref", "--short", "refs/remotes/" <> name <> "/HEAD" ]
         let candidate = stripRemote name (firstLine result.stdout)
-        exists <- gitRefExists ("refs/remotes/" <> name <> "/" <> candidate)
-        if result.code == 0 && candidate /= "" && exists then
-          pure (valueResult result candidate)
-        else remoteGitDefault name
+        if result.code /= 0 || candidate == "" then remoteGitDefault name
+        else do
+          exists <- gitRefExists ("refs/remotes/" <> name <> "/" <> candidate)
+          pure case exists of
+            Left error -> failureValue error
+            Right true -> valueResult result candidate
+            Right false -> remoteGitDefault name
       Left _ -> localGitDefault
   Jj -> do
     remote <- remoteName context
@@ -702,29 +709,41 @@ parseJjRemote line = case Array.uncons (Array.filter (_ /= "") (split (Pattern "
 remoteGitDefault :: String -> Effect VcsValue
 remoteGitDefault remote = do
   main <- gitRefExists ("refs/remotes/" <> remote <> "/main")
-  if main then pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
-  else do
-    master <- gitRefExists ("refs/remotes/" <> remote <> "/master")
-    if master then pure { code: 0, value: "master", stdout: "master\n", stderr: "" }
-    else localGitDefault
+  case main of
+    Left error -> pure (failureValue error)
+    Right true -> pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
+    Right false -> do
+      master <- gitRefExists ("refs/remotes/" <> remote <> "/master")
+      pure case master of
+        Left error -> failureValue error
+        Right true -> { code: 0, value: "master", stdout: "master\n", stderr: "" }
+        Right false -> localGitDefault
 
 localGitDefault :: Effect VcsValue
 localGitDefault = do
   main <- gitLocalRef "main"
-  if main then pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
-  else do
-    master <- gitLocalRef "master"
-    pure if master then { code: 0, value: "master", stdout: "master\n", stderr: "" }
-    else failureValue "vcs-op: unable to resolve default branch (no remote HEAD and no verified local main/master) — pass --base <branch> explicitly"
+  case main of
+    Left error -> pure (failureValue error)
+    Right true -> pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
+    Right false -> do
+      master <- gitLocalRef "master"
+      pure case master of
+        Left error -> failureValue error
+        Right true -> { code: 0, value: "master", stdout: "master\n", stderr: "" }
+        Right false -> failureValue "vcs-op: unable to resolve default branch (no remote HEAD and no verified local main/master) — pass --base <branch> explicitly"
 
 localJjDefault :: Effect VcsValue
 localJjDefault = do
   main <- jjRevisionExists "main"
-  if main then pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
-  else do
-    master <- jjRevisionExists "master"
-    pure if master then { code: 0, value: "master", stdout: "master\n", stderr: "" }
-    else failureValue "vcs-op: unable to resolve default branch (no remote main/master bookmark and no verified local main/master) — pass --base <branch> explicitly"
+  case main of
+    Left error -> pure (failureValue error)
+    Right true -> pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
+    Right false -> do
+      master <- jjRevisionExists "master"
+      pure case master of
+        Left error -> failureValue error
+        Right true -> { code: 0, value: "master", stdout: "master\n", stderr: "" }
+        Right false -> failureValue "vcs-op: unable to resolve default branch (no remote main/master bookmark and no verified local main/master) — pass --base <branch> explicitly"
 
 firstKnownDefault :: Array String -> Maybe String
 firstKnownDefault = Array.find (\name -> name == "main" || name == "master")
@@ -735,7 +754,10 @@ gitReadBase context base = do
   case remote of
     Right name -> do
       exists <- gitRefExists ("refs/remotes/" <> name <> "/" <> base)
-      if exists then pure (Right (name <> "/" <> base)) else gitLocalBase base
+      case exists of
+        Left error -> pure (Left error)
+        Right true -> pure (Right (name <> "/" <> base))
+        Right false -> gitLocalBase base
     Left _ -> gitLocalBase base
 
 withGitReadBase :: WorkflowContext -> String -> (String -> Effect Outcome.OpOutcome) -> Effect Outcome.OpOutcome
@@ -748,34 +770,46 @@ withGitReadBase context base action = do
 gitLocalBase :: String -> Effect (Either String String)
 gitLocalBase base = do
   exists <- gitRefExists ("refs/heads/" <> base)
-  pure if exists then Right base else Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote branch")
+  pure case exists of
+    Left error -> Left error
+    Right true -> Right base
+    Right false -> Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote branch")
 
-gitRefExists :: String -> Effect Boolean
+gitRefExists :: String -> Effect (Either String Boolean)
 gitRefExists ref = do
   result <- Sys.exec Binaries.git [ "show-ref", "--verify", "--quiet", ref ]
-  pure (result.code == 0)
+  pure case result.code of
+    0 -> Right true
+    1 -> Right false
+    _ -> Left (commandError ("vcs-op: unable to verify git ref '" <> ref <> "'") result)
 
-gitLocalRef :: String -> Effect Boolean
+gitLocalRef :: String -> Effect (Either String Boolean)
 gitLocalRef name = gitRefExists ("refs/heads/" <> name)
 
 jjBaseRevset :: WorkflowContext -> String -> Effect (Either String String)
 jjBaseRevset context base = do
   local <- jjRevisionExists base
-  if local then pure (Right base)
-  else do
-    remote <- remoteName context
-    case remote of
-      Left _ -> pure (Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark"))
-      Right name -> do
-        let remoteBase = base <> "@" <> name
-        exists <- jjRevisionExists remoteBase
-        pure if exists then Right remoteBase
-        else Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark")
+  case local of
+    Left error -> pure (Left error)
+    Right true -> pure (Right base)
+    Right false -> do
+      remote <- remoteName context
+      case remote of
+        Left _ -> pure (Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark"))
+        Right name -> do
+          let remoteBase = base <> "@" <> name
+          exists <- jjRevisionExists remoteBase
+          pure case exists of
+            Left error -> Left error
+            Right true -> Right remoteBase
+            Right false -> Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark")
 
-jjRevisionExists :: String -> Effect Boolean
+jjRevisionExists :: String -> Effect (Either String Boolean)
 jjRevisionExists revision = do
   result <- Sys.exec Binaries.jj [ "log", "--revision", revision, "--no-graph", "--template", "change_id" ]
-  pure (result.code == 0 && trim result.stdout /= "")
+  pure if result.code == 0 then Right (trim result.stdout /= "")
+  else if contains (Pattern "Revision `") result.stderr && contains (Pattern "` doesn't exist") result.stderr then Right false
+  else Left (commandError ("vcs-op: unable to resolve jj revision '" <> revision <> "'") result)
 
 sameGitRevision :: String -> String -> Effect (Either String Boolean)
 sameGitRevision left right = do

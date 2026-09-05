@@ -80,6 +80,29 @@ SH
   [[ "$output" == *"forced rev-list failure"* ]]
 }
 
+@test "fast-forward-if-safe rejects nonnumeric rev-list counts" {
+  mk_initial_commit
+  mk_remote_fixture
+  git checkout -q -b feature
+  git push -q -u origin feature
+  real_git="$(command -v git)"
+  mkdir -p "$TEST_DIR/bin"
+  cat > "$TEST_DIR/bin/git" <<'SH'
+#!/bin/sh
+if [ "$1" = "rev-list" ]; then
+  echo "not-a-count"
+  exit 0
+fi
+exec "$REAL_GIT" "$@"
+SH
+  chmod +x "$TEST_DIR/bin/git"
+
+  run env REAL_GIT="$real_git" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fast-forward-if-safe
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unable to parse git rev-list counts"* ]]
+  [[ "$output" == *"not-a-count"* ]]
+}
+
 @test "fast-forward-if-safe propagates an unknown upstream probe failure" {
   mk_initial_commit
   mk_remote_fixture
@@ -174,6 +197,75 @@ SH
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op default-branch
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
+}
+
+@test "jj: default-branch falls back from absent main to master" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj bookmark create master -r @
+
+  VCS_OVERRIDE=jj run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op default-branch
+  [ "$status" -eq 0 ]
+  [ "$output" = "master" ]
+}
+
+@test "jj: default-branch propagates fatal revision probe errors" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  real_jj="$(command -v jj)"
+  mkdir -p "$TEST_DIR/bin"
+  cat > "$TEST_DIR/bin/jj" <<'SH'
+#!/bin/sh
+if [ "$1" = "log" ] && [ "$2" = "--revision" ] && [ "$3" = "main" ]; then
+  echo "forced jj revision failure" >&2
+  exit 75
+fi
+exec "$REAL_JJ" "$@"
+SH
+  chmod +x "$TEST_DIR/bin/jj"
+
+  run env REAL_JJ="$real_jj" PATH="$TEST_DIR/bin:$PATH" VCS_OVERRIDE=jj node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op default-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"forced jj revision failure"* ]]
+}
+
+@test "default-branch propagates fatal git ref probe errors" {
+  mk_initial_commit
+  real_git="$(command -v git)"
+  mkdir -p "$TEST_DIR/bin"
+  cat > "$TEST_DIR/bin/git" <<'SH'
+#!/bin/sh
+if [ "$1" = "show-ref" ]; then
+  echo "forced show-ref failure" >&2
+  exit 74
+fi
+exec "$REAL_GIT" "$@"
+SH
+  chmod +x "$TEST_DIR/bin/git"
+
+  run env REAL_GIT="$real_git" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op default-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"forced show-ref failure"* ]]
+}
+
+@test "branch propagates fatal git ref probe errors" {
+  mk_initial_commit
+  echo '{"base":"master"}' > .do-results.json
+  real_git="$(command -v git)"
+  mkdir -p "$TEST_DIR/bin"
+  cat > "$TEST_DIR/bin/git" <<'SH'
+#!/bin/sh
+if [ "$1" = "show-ref" ]; then
+  echo "forced show-ref failure" >&2
+  exit 74
+fi
+exec "$REAL_GIT" "$@"
+SH
+  chmod +x "$TEST_DIR/bin/git"
+
+  run env REAL_GIT="$real_git" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"forced show-ref failure"* ]]
 }
 
 # ─── branch ───────────────────────────────────────────────────────────
