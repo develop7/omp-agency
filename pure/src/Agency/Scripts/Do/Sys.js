@@ -9,8 +9,10 @@ export function bundleDir() {
 let tempSequence = 0;
 
 export function uniqueTempPath(path) {
-  tempSequence += 1;
-  return `${path}.tmp.${process.pid}.${tempSequence}`;
+  return function () {
+    tempSequence += 1;
+    return `${path}.tmp.${process.pid}.${tempSequence}`;
+  };
 }
 
 export function isCanonicalIso(value) {
