@@ -18,7 +18,7 @@ test-integration:
 # SC2148/SC1113/SC2096: scripts are intentionally shebang-less (run via `bash script`)
 lint:
     find scripts tests/helpers \
-        -type f ! -name '*.ncl' \
+        -type f \( -name '*.sh' -o -name '*.bash' \) \
         -exec shellcheck --shell=bash --exclude=SC2148,SC1113,SC2096 {} +
 
 # Generate vocabulary consumers from the sole workflow manifest.
