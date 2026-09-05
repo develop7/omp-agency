@@ -252,7 +252,6 @@ resolveBase context = case context.base of
     [ "vcs-op: base is not set. sync must run first to resolve the base"
     , "        (from --base <branch>, --stack, or the default branch)."
     , "        If this was a --from re-run, the parent run did not persist base."
-    , "        (Same error fires if jq is unavailable or .do-results.json is corrupt — check 'command -v jq'.)"
     ])
 
 -- | Forge and VCS mutations consume one remote-selection policy: origin when
