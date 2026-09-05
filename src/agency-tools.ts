@@ -109,6 +109,7 @@ async function executeWorkflow(
   };
 
   // Stage: launch — evaluate the request in the Nickel WASM bridge.
+  const nickel = await loadNickel();
   const result = await nickel.eval_workflow(request);
 
   // Stage: decode — translate the bridge result into the tool outcome.
