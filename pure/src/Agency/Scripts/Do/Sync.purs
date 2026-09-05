@@ -17,6 +17,9 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (trim)
 import Effect (Effect)
+import Effect.Exception (try)
+import Node.Errors.SystemError as SystemError
+import Unsafe.Coerce (unsafeCoerce)
 
 run :: WorkflowContext -> { noVcs :: Boolean, base :: Maybe String, stack :: Boolean } -> Effect Outcome.OpOutcome
 run context options = do
@@ -73,10 +76,17 @@ failSync :: WorkflowContext -> Outcome.OpOutcome -> Effect Outcome.OpOutcome
 failSync context outcome = do
   existing <- State.readState (Context.statePath context)
   case existing of
-    Right (Just state) ->
-      State.writeState (Context.statePath context) (State.finishWorkflow State.WorkflowFailed state)
-    _ -> pure unit
-  pure outcome
+    Left error ->
+      pure (Outcome.append outcome (failText ("sync: unable to read state while recording failure: " <> error)))
+    Right Nothing ->
+      -- Sync can fail before it creates state, leaving nothing to mark failed.
+      pure outcome
+    Right (Just state) -> do
+      written <- try (State.writeState (Context.statePath context) (State.finishWorkflow State.WorkflowFailed state))
+      pure case written of
+        Left error ->
+          Outcome.append outcome (failText ("sync: unable to mark workflow as failed: " <> SystemError.message (unsafeCoerce error)))
+        Right _ -> outcome
 
 resolveContext :: WorkflowContext -> { noVcs :: Boolean, base :: Maybe String, stack :: Boolean } -> String -> Effect (Either Outcome.OpOutcome State.State)
 resolveContext context options startedAt = do
@@ -123,14 +133,17 @@ recordPhase context options startedAt resolved = do
         , completedAt: completed
         , reason: Nothing
         }
-  State.writeState (Context.statePath context) (State.appendStep step resolved.state)
-  pure (Outcome.withStdout
-    ( "vcs=" <> Vcs.vcsName contextWithBase.vcs <> "\n"
-      <> "forge=" <> Forge.forgeName contextWithBase.forge <> "\n"
-      <> "branch=" <> resolved.branch.value <> "\n"
-      <> "defaultBranch=" <> resolved.defaultRef <> "\n"
-      <> "base=" <> resolved.base <> "\n"
-    ))
+  case State.appendStep step resolved.state of
+    Left error -> pure (failText error)
+    Right updated -> do
+      State.writeState (Context.statePath context) updated
+      pure (Outcome.withStdout
+        ( "vcs=" <> Vcs.vcsName contextWithBase.vcs <> "\n"
+          <> "forge=" <> Forge.forgeName contextWithBase.forge <> "\n"
+          <> "branch=" <> resolved.branch.value <> "\n"
+          <> "defaultBranch=" <> resolved.defaultRef <> "\n"
+          <> "base=" <> resolved.base <> "\n"
+        ))
 
 quietResult :: Outcome.OpOutcome -> Outcome.OpOutcome
 quietResult result = case result.output of
