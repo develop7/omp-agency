@@ -28,6 +28,27 @@ run_driver() {
   [ "$output" = "my task" ]
 }
 
+@test "init refuses corrupt state and explains recovery" {
+  printf 'not json' > .do-results.json
+
+  run_driver init "recovered task"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"corrupt or unreadable"* ]]
+  [[ "$output" == *"init --restart"* ]]
+}
+
+@test "init --restart replaces corrupt state with clean initialization" {
+  printf 'not json' > .do-results.json
+
+  run_driver init --restart "recovered task"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"corrupt or unreadable"* ]]
+  run jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []' .do-results.json
+  [ "$status" -eq 0 ]
+}
+
 @test "init --review sets review=true" {
   run_driver init --review "my task"
   [ "$status" -eq 0 ]
