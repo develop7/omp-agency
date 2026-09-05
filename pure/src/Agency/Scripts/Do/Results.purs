@@ -53,9 +53,12 @@ runStepEnd context status verification reason = withLoadedState context \state -
       Left error -> pure (failText error)
       Right _ -> do
         let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
-            updated = terminalize pending.name status (State.finishPending (State.appendStep step state))
-        State.writeState (Context.statePath context) updated
-        pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
+        case State.appendStep step state of
+          Left error -> pure (failText error)
+          Right appended -> do
+            let updated = terminalize pending.name status (State.finishPending appended)
+            State.writeState (Context.statePath context) updated
+            pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
 
 runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStep context name status verification startedAt completedAt reason = withLoadedState context \state -> do
@@ -65,9 +68,13 @@ runStep context name status verification startedAt completedAt reason = withLoad
   case timing of
     Left error -> pure (failText error)
     Right _ -> do
-      let updated = terminalize name status (State.appendStep { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason } state)
-      State.writeState (Context.statePath context) updated
-      pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
+      let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
+      case State.appendStep step state of
+        Left error -> pure (failText error)
+        Right appended -> do
+          let updated = terminalize name status appended
+          State.writeState (Context.statePath context) updated
+          pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
 
 runSet :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runSet context field value = withLoadedState context \state -> do
@@ -84,7 +91,7 @@ runDriverInit :: WorkflowContext -> { review :: Boolean, noVcs :: Boolean, minim
 runDriverInit context options = do
   existing <- State.readState (Context.statePath context)
   case existing of
-    Left error -> pure (failText ("do-driver: .do-results.json is corrupt or unreadable — " <> error <> "; restore it or run init --restart"))
+    Left error | not options.restart -> pure (failText ("do-driver: .do-results.json is corrupt or unreadable — " <> error <> "; restore it or run init --restart"))
     Right (Just state) | isActiveRun state && not options.restart ->
       pure (failWithCode 2 ("do-driver: a /do run is already active (task: '" <> State.stateGet "task" state <> "', steps: " <> show (Array.length state.steps) <> ") — finish it or run init --restart to discard it"))
     _ -> do
