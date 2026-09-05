@@ -21,9 +21,17 @@ lint:
         -type f ! -name '*.ncl' \
         -exec shellcheck --shell=bash --exclude=SC2148,SC1113,SC2096 {} +
 
+# Generate vocabulary consumers from the sole workflow manifest.
+workflow-vocabulary:
+    node scripts/generate-workflow-vocabulary.mjs
+
+# Reject generated vocabulary consumers that no longer match the manifest.
+workflow-vocabulary-check:
+    node scripts/generate-workflow-vocabulary.mjs --check
+
 # Build the PureScript core and bundle the CLI and tool API entrypoints
 # (requires purs 0.15.x and spago — dev-only toolchain)
-build:
+build: workflow-vocabulary
     cd pure && spago build
     cd pure && spago bundle --module Agency.Scripts.Do.Cli \
         --outfile dist/agency-do.js --force --platform node
@@ -33,7 +41,7 @@ build:
 # Verify the checked-in bundle matches the sources (drift guard for the
 # distributed artifact — the bundle IS the distributable, so it must
 # never go stale silently)
-bundle-check: nickel-build build
+bundle-check: workflow-vocabulary-check nickel-build
     @cd pure && spago bundle --module Agency.Scripts.Do.Cli \
         --outfile dist/agency-do.check.js --force --platform node
     @cd pure && spago bundle --module Agency.Scripts.Do.Api \

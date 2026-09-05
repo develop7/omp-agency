@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WORKFLOW_SOURCE = fs.readFileSync(path.join(REPO_ROOT, 'skills/do/workflow.ncl'), 'utf8');
+const VOCABULARY_SOURCE = fs.readFileSync(path.join(REPO_ROOT, 'skills/do/workflow-manifest.json'), 'utf8');
 
 const TEST_STATE = {
     active: "working",
@@ -28,6 +29,7 @@ function stateSource(state) {
 function workflowResult(operation, state, seed = null) {
     return eval_workflow({
         workflow_source: WORKFLOW_SOURCE,
+        vocabulary_source: VOCABULARY_SOURCE,
         state_source: stateSource(state),
         operation,
         seed
@@ -74,9 +76,8 @@ function run() {
     assertResult('cli_seed "followup"', res3);
     assert('cli_seed "followup"', res3.stdout, GOLDENS.cli_seed_followup);
 
-    const res4 = workflowResult('cli_seed', TEST_STATE, "\u0000\n\"\\雪");
-    assertResult('cli_seed adversarial seed', res4);
-    assert('cli_seed adversarial seed', res4.stdout, GOLDENS.cli_seed_empty);
+    const invalidSeed = workflowResult('cli_seed', TEST_STATE, "\u0000\n\"\\雪");
+    assert('cli_seed rejects an unknown nonempty entry point', invalidSeed.exit !== 0, true);
 
     for (const status of ["failed", "completed"]) {
         const terminal = workflowResult('cli', { ...TEST_STATE, status });

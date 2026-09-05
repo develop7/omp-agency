@@ -77,6 +77,9 @@ run = do
   case Ops.parseDriverOp [ "init", "--from=followpu", "resume" ] of
     Left error -> assert "unknown entry point is rejected" (error.code == 2)
     Right _ -> assert "unknown entry point is rejected" false
+  case Ops.parseNickelOp [ "cli_seed", "followpu" ] of
+    Left error -> assert "nickel cli_seed rejects an unknown entry point" (error.code == 2)
+    Right _ -> assert "nickel cli_seed rejects an unknown entry point" false
   case Ops.parseDriverOp [ "start", "reserch" ] of
     Left error -> assert "unknown workflow step is rejected" (error.code == 2)
     Right _ -> assert "unknown workflow step is rejected" false

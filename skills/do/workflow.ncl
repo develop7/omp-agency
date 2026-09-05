@@ -1,20 +1,17 @@
 # workflow.ncl — /do workflow engine
 #
 # Three boundaries:
-#   Sequence: this file (step order, skip rules, pattern configs)
-#   State:    .do-results.json managed by the agency_driver tool
-#   Activity: nodes/*.md (what each step does)
+#   Vocabulary: workflow-manifest.json (step order and entry-point targets)
+#   State:      .do-results.json managed by the agency_driver tool
+#   Activity:   nodes/*.md (what each step does)
 #
 # Agent interaction (via the workflow tool):
 #   workflow cli           → { step, skip, pattern, ... }
 #   workflow cli_seed ""   → [{ name, initial_status }]
 #
-# Direct invocation (stdin expression):
-#   cat <<'NICKEL' | nickel eval --stdin-format nickel --import-path .
-#   let workflow = import "skills/do/workflow.ncl" in
-#   let state = workflow.normalize_state (import ".do-results.json") in
-#   workflow.cli state
-#   NICKEL
+# The workflow tool injects this manifest beside workflow.ncl in Nickel's
+# in-memory source cache; direct callers must use the same evaluator seam.
+let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
 {
 
   # ── State contract ──────────────────────────────────────────────────────────
@@ -255,36 +252,6 @@
     },
   },
 
-  # ── Ordered step list (for seeding todo UI) ────────────────────────────────
-
-  StepOrder = [
-    "sync",
-    "research",
-    "plan-approval",
-    "branch",
-    "implement",
-    "check",
-    "docs",
-    "fmt",
-    "commit",
-    "hickey-lowy",
-    "police",
-    "test",
-    "create-pr",
-    "ci",
-    "evidence",
-    "done",
-  ],
-
-  # ── Entry points ───────────────────────────────────────────────────────────
-
-  EntryPoints = {
-    default = "sync",
-    followup = "implement",
-    post-implement = "fmt",
-    polish = "hickey-lowy",
-    ci-only = "ci",
-  },
 
   # ── Minimal skips (omitted from todo list entirely) ────────────────────────
 
@@ -383,15 +350,13 @@
       else
         last_step.name,
 
-  # Resolve entry point ID to starting step.
-  # Unknown entry points default to EntryPoints.default ("sync").
-  # This is intentional: the CLI has a fixed set of entry points documented
-  # in SKILL.md's argument-hint, and invalid values start from sync.
+  # Resolve an entry point ID to its declared starting step.
+  # Empty input uses the manifest default. Any other missing ID is a Nickel
+  # evaluation error rather than an implicit restart at sync.
   resolve_entry
     | not_exported
     | doc m%"
-    Maps an entry point ID to its starting step name.
-    Unknown entry points default to 'sync'.
+    Maps a declared entry point ID to its starting step name.
 
     ## Examples
 
@@ -404,18 +369,13 @@
 
     resolve_entry "ci-only"
     # => "ci"
-
-    resolve_entry "invalid"
-    # => "sync"
     ```
   "%
     = fun from =>
       if from == "" || from == null then
-        EntryPoints.default
-      else if std.record.has_field from EntryPoints then
-        EntryPoints."%{from}"
+        Vocabulary.entryPoints.default
       else
-        EntryPoints.default,
+        Vocabulary.entryPoints."%{from}",
   # Seed the step list for todo UI given a --from entry point and state.
   # Returns: [{ name, initial_status }]
   #   initial_status: 'completed for pre-steps, 'pending for the rest
@@ -446,7 +406,7 @@
             }
         )
         { list = [], reached = false }
-        StepOrder
+        Vocabulary.steps
     ).list,
 
   # ── CLI output ─────────────────────────────────────────────────────────────

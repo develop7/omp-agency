@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { workflowEntryPoints } from "./workflow-vocabulary.js";
 
 type ApiRequest = {
   tool: string;
@@ -52,23 +53,11 @@ async function loadNickel(): Promise<NickelApi> {
   return nickelPromise;
 }
 
-async function executeWorkflow(
-  params: { field: string; from?: string },
-  ctx: ToolContext,
-): Promise<{
-  content: Array<{ type: "text"; text: string }>;
-  details: ApiResult;
-}> {
-  // Stage: path probe — locate the bundled workflow, then the cwd fallback.
-  const pluginRoot = join(fileURLToPath(import.meta.url), "../..");
-  const workflowPath = join(pluginRoot, "skills/do/workflow.ncl");
-  const fallbackWorkflowPath = join(ctx.cwd, "skills/do/workflow.ncl");
-  const statePath = join(ctx.cwd, ".do-results.json");
-
-  // Stage: read — only a missing bundled file permits the cwd fallback.
-  let workflowSource: string;
+async function readWorkflowAsset(pluginRoot: string, cwd: string, asset: string): Promise<string> {
+  const bundledPath = join(pluginRoot, "skills/do", asset);
+  const fallbackPath = join(cwd, "skills/do", asset);
   try {
-    workflowSource = await readFile(workflowPath, "utf8");
+    return await readFile(bundledPath, "utf8");
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     if (
@@ -78,19 +67,35 @@ async function executeWorkflow(
       error.code !== "ENOENT"
     ) {
       throw new Error(
-        `workflow: cannot read workflow.ncl at ${workflowPath} or in cwd at ${fallbackWorkflowPath}: ${detail}`,
+        `workflow: cannot read ${asset} at ${bundledPath} or in cwd at ${fallbackPath}: ${detail}`,
       );
     }
     try {
-      workflowSource = await readFile(fallbackWorkflowPath, "utf8");
+      return await readFile(fallbackPath, "utf8");
     } catch (fallbackError: unknown) {
       const fallbackDetail =
         fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
       throw new Error(
-        `workflow: cannot read workflow.ncl at ${workflowPath} or in cwd at ${fallbackWorkflowPath}: ${fallbackDetail}`,
+        `workflow: cannot read ${asset} at ${bundledPath} or in cwd at ${fallbackPath}: ${fallbackDetail}`,
       );
     }
   }
+}
+
+async function executeWorkflow(
+  params: { field: string; from?: string },
+  ctx: ToolContext,
+): Promise<{
+  content: Array<{ type: "text"; text: string }>;
+  details: ApiResult;
+}> {
+  // Stage: read — a bundled workflow asset takes precedence over the cwd copy.
+  const pluginRoot = join(fileURLToPath(import.meta.url), "../..");
+  const statePath = join(ctx.cwd, ".do-results.json");
+  const [workflowSource, vocabularySource] = await Promise.all([
+    readWorkflowAsset(pluginRoot, ctx.cwd, "workflow.ncl"),
+    readWorkflowAsset(pluginRoot, ctx.cwd, "workflow-manifest.json"),
+  ]);
 
   let stateSource: string;
   try {
@@ -103,6 +108,7 @@ async function executeWorkflow(
   // Stage: encode — pass the bridge's JSON request as structured data.
   const request = {
     workflow_source: workflowSource,
+    vocabulary_source: vocabularySource,
     state_source: stateSource,
     operation: params.field,
     seed: params.from,
@@ -310,7 +316,7 @@ export default function (pi: ExtensionAPI) {
     name: "workflow",
     label: "Workflow",
     description:
-      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with one of default, followup, post-implement, polish, or ci-only to seed/resume from that entry point.",
+      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared workflow entry point to seed/resume from that entry point.",
     parameters: z.union([
       z.object({
         field: z.literal("cli"),
@@ -318,7 +324,7 @@ export default function (pi: ExtensionAPI) {
       }).strict(),
       z.object({
         field: z.literal("cli_seed"),
-        from: z.enum(["default", "followup", "post-implement", "polish", "ci-only"]),
+        from: z.enum(workflowEntryPoints),
       }).strict(),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
