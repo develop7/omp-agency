@@ -42,15 +42,15 @@ build: workflow-vocabulary
 # distributed artifact — the bundle IS the distributable, so it must
 # never go stale silently)
 bundle-check: workflow-vocabulary-check nickel-build
-    @cd pure && spago bundle --module Agency.Scripts.Do.Cli \
-        --outfile dist/agency-do.check.js --force --platform node
-    @cd pure && spago bundle --module Agency.Scripts.Do.Api \
-        --outfile dist/agency-api.check.js --force --platform node --bundle-type=module
-    @cmp pure/dist/agency-do.check.js pure/dist/agency-do.js \
-        || { echo "bundle drift: pure/dist/agency-do.js is stale — run 'just build' and commit it"; exit 1; }
-    @cmp pure/dist/agency-api.check.js pure/dist/agency-api.js \
+    @trap 'rm -f pure/dist/agency-do.check.js pure/dist/agency-api.check.js' EXIT; \
+      (cd pure && spago bundle --module Agency.Scripts.Do.Cli \
+        --outfile dist/agency-do.check.js --force --platform node) && \
+      (cd pure && spago bundle --module Agency.Scripts.Do.Api \
+        --outfile dist/agency-api.check.js --force --platform node --bundle-type=module) && \
+      cmp pure/dist/agency-do.check.js pure/dist/agency-do.js \
+        || { echo "bundle drift: pure/dist/agency-do.js is stale — run 'just build' and commit it"; exit 1; }; \
+      cmp pure/dist/agency-api.check.js pure/dist/agency-api.js \
         || { echo "bundle drift: pure/dist/agency-api.js is stale — run 'just build' and commit it"; exit 1; }
-    @rm pure/dist/agency-do.check.js pure/dist/agency-api.check.js
     @node nickel-vm/scripts/smoke.mjs
 
 # Full CI: tests + lint + bundle freshness
