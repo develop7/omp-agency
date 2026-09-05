@@ -767,7 +767,7 @@ SH
   jj bookmark create main -r @
   jj git push --remote origin --bookmark main
   jj bookmark delete main
-  jj git fetch origin
+  jj git fetch --remote origin
   echo '{"base":"main"}' > .do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-remote-base
@@ -860,6 +860,7 @@ SH
   jj describe -m "base"
   jj bookmark create main -r @
   jj git push --remote origin --bookmark main
+  jj git fetch --remote origin
   echo '{"base":"main"}' > .do-results.json
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op push main
   [ "$status" -eq 1 ]
