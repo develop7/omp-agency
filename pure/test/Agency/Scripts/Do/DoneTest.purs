@@ -9,7 +9,8 @@ import Data.String.CodeUnits (contains)
 import Effect (Effect)
 import Effect.Console as Console
 
-import Agency.Scripts.Do.Ops as Ops
+import Agency.Scripts.Do.DoneSummary as DoneSummary
+import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 
@@ -22,8 +23,8 @@ assert label condition =
 
 run :: Effect Unit
 run = do
-  assert "seconds duration format" (Ops.fmtDur 12 == "12s")
-  assert "minutes duration format" (Ops.fmtDur 75 == "1m 15s")
+  assert "seconds duration format" (DoneSummary.fmtDur 12 == "12s")
+  assert "minutes duration format" (DoneSummary.fmtDur 75 == "1m 15s")
   let state =
         (State.initState "2024-01-01T00:00:00Z")
           { steps =
@@ -50,11 +51,18 @@ run = do
                 }
               ]
           }
-  rendered <- Ops.renderDone state 20
+  rendered <- DoneSummary.render state 20
   assert "markdown table header" (contains (Pattern "| Step | Status | Duration | Verification |") rendered)
   assert "dominant step duration is bold" (contains (Pattern "| slow-check | ✓ | **12s** | all \\| good |") rendered)
   assert "facts include total" (contains (Pattern "totalSeconds=20") rendered)
-  badSummary <- Ops.computeDoneSummary (state { steps = map (\step -> step { startedAt = "not-a-date" }) state.steps })
+  badSummary <- DoneSummary.compute (state { steps = map (\step -> step { startedAt = "not-a-date" }) state.steps })
   case badSummary of
     Left error -> assert "malformed timestamp is reported" (contains (Pattern "not-a-date") error)
     Right _ -> assert "malformed timestamp is rejected" false
+  inverted <- Results.validInterval "2024-01-01T00:00:01Z" "2024-01-01T00:00:00Z"
+  case inverted of
+    Left error -> assert "inverted timestamps are rejected before recording" (contains (Pattern "precedes") error)
+    Right _ -> assert "inverted timestamps are rejected before recording" false
+  pendingRendered <- DoneSummary.render (state { pendingStep = Just { name: "ci", startedAt: "2024-01-01T00:00:20Z" } }) 20
+  assert "pending step has an in-progress row" (contains (Pattern "| ci | ⋯ |") pendingRendered)
+  assert "facts name the pending step" (contains (Pattern "pendingStep=ci") pendingRendered)

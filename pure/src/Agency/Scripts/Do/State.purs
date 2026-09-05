@@ -16,15 +16,17 @@ module Agency.Scripts.Do.State
   , parseState
   , stringifyState
   , readState
+  , withStateLock
   , writeState
   , stateGet
   , stateGetJson
   , setField
+  , maxPersistedSteps
   , appendStep
   , startPending
   , finishPending
+  , finishWorkflow
   ) where
-
 import Prelude
 
 import Data.Argonaut.Core (Json, fromArray, fromObject, fromString, toArray, toObject, toString)
@@ -39,15 +41,17 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
-import Effect.Exception (try)
+import Effect.Exception (throwException, try)
+import Effect.Exception as Exception
 import Foreign.Object as Obj
 import Node.Errors.SystemError as SystemError
+import Node.FS.Sync as FSSync
 import Unsafe.Coerce (unsafeCoerce)
 
+import Agency.Scripts.Do.WorkflowVocabulary as Vocabulary
 import Agency.Scripts.Do.Sys as Sys
 
--- | Activity values written by the workflow. Unknown strings remain
--- | representable so newer workflow states can round-trip through this core.
+-- | Activity values accepted by the persisted workflow protocol.
 data ActiveStatus
   = ActiveIdle
   | ActiveWorking
@@ -70,8 +74,7 @@ renderActiveStatus status = case status of
   ActiveWaiting -> "waiting"
   ActiveUnknown value -> value
 
--- | Lifecycle status values written by the workflow. Unknown strings are
--- | preserved rather than rejected to keep the JSON protocol forward-safe.
+-- | Lifecycle status values accepted by the persisted workflow protocol.
 data WorkflowStatus
   = WorkflowIdle
   | WorkflowRunning
@@ -97,8 +100,7 @@ renderWorkflowStatus status = case status of
   WorkflowFailed -> "failed"
   WorkflowUnknown value -> value
 
--- | Step result values used by the summary renderer. Unknown values survive
--- | load/save and render as their original strings.
+-- | Step result values accepted by the persisted workflow protocol.
 data StepStatus
   = StepPassed
   | StepFailed
@@ -120,6 +122,21 @@ renderStepStatus status = case status of
   StepFailed -> "failed"
   StepSkipped -> "skipped"
   StepUnknown value -> value
+
+validActiveStatus :: String -> Either String ActiveStatus
+validActiveStatus value = case parseActiveStatus value of
+  ActiveUnknown _ -> Left ("state: invalid active '" <> value <> "'")
+  status -> Right status
+
+validWorkflowStatus :: String -> Either String WorkflowStatus
+validWorkflowStatus value = case parseWorkflowStatus value of
+  WorkflowUnknown _ -> Left ("state: invalid status '" <> value <> "'")
+  status -> Right status
+
+validStepStatus :: String -> Either String StepStatus
+validStepStatus value = case parseStepStatus value of
+  StepUnknown _ -> Left ("state: invalid step status '" <> value <> "'")
+  status -> Right status
 
 -- | A step that has begun but has not yet been recorded as complete.
 type PendingStep =
@@ -148,6 +165,21 @@ type State =
   , pendingStep :: Maybe PendingStep
   , extras :: Map String Json
   }
+
+-- | The persisted protocol retains at most 64 completed steps. This leaves
+-- | room for recovery loops while preventing an indefinitely growing audit log.
+maxPersistedSteps :: Int
+maxPersistedSteps = 64
+
+stepHistoryLimitError :: String -> String
+stepHistoryLimitError condition =
+  "state: step history limit (" <> show maxPersistedSteps <> ") " <> condition
+
+boundedStepValues :: Array Json -> Either String (Array Json)
+boundedStepValues values =
+  if Array.length values > maxPersistedSteps then
+    Left (stepHistoryLimitError "exceeded")
+  else Right values
 
 knownKeys :: Array String
 knownKeys = [ "workflow", "startedAt", "active", "status", "steps", "pendingStep" ]
@@ -197,12 +229,14 @@ parseStep value = do
     Just result -> Right result
     Nothing -> Left "state: each step must be an object"
   name <- requiredString "name" object
-  status <- requiredString "status" object
+  validStepName name
+  statusText <- requiredString "status" object
+  status <- validStepStatus statusText
   verification <- requiredString "verification" object
   startedAt <- requiredString "startedAt" object
   completedAt <- requiredString "completedAt" object
   reason <- stringValue "reason" object
-  pure { name, status: parseStepStatus status, verification, startedAt, completedAt, reason }
+  pure { name, status, verification, startedAt, completedAt, reason }
 
 parsePending :: Json -> Either String PendingStep
 parsePending value = do
@@ -210,6 +244,7 @@ parsePending value = do
     Just result -> Right result
     Nothing -> Left "state: pendingStep must be an object"
   name <- requiredString "name" object
+  if Array.elem name Vocabulary.workflowSteps then pure unit else Left ("state: unknown pending step '" <> name <> "'")
   startedAt <- requiredString "startedAt" object
   pure { name, startedAt }
 
@@ -222,12 +257,14 @@ parseState source = do
   workflow <- optionalString "workflow" "do" object
   startedAt <- optionalString "startedAt" "" object
   activeText <- optionalString "active" "idle" object
+  active <- validActiveStatus activeText
   statusText <- optionalString "status" "idle" object
+  status <- validWorkflowStatus statusText
   steps <- case Obj.lookup "steps" object of
     Nothing -> Right []
     Just value -> case toArray value of
       Nothing -> Left "state: field 'steps' must be an array"
-      Just values -> traverse parseStep values
+      Just values -> traverse parseStep =<< boundedStepValues values
   pendingStep <- case Obj.lookup "pendingStep" object of
     Nothing -> Right Nothing
     Just value -> if Json.isNull value then Right Nothing else Just <$> parsePending value
@@ -243,8 +280,8 @@ parseState source = do
   pure
     { workflow
     , startedAt
-    , active: parseActiveStatus activeText
-    , status: parseWorkflowStatus statusText
+    , active
+    , status
     , steps
     , pendingStep
     , extras
@@ -316,12 +353,19 @@ setField key value state =
   case key of
     "workflow" -> setStringField key (\text -> state { workflow = text })
     "startedAt" -> setStringField key (\text -> state { startedAt = text })
-    "active" -> setStringField key (\text -> state { active = parseActiveStatus text })
-    "status" -> setStringField key (\text -> state { status = parseWorkflowStatus text })
+    "active" -> do
+      text <- stringField key
+      active <- validActiveStatus text
+      pure (state { active = active })
+    "status" -> do
+      text <- stringField key
+      status <- validWorkflowStatus text
+      pure (state { status = status })
     "steps" -> case toArray value of
       Nothing -> Left "state: field 'steps' must be an array"
       Just values -> do
-        steps <- traverse parseStep values
+        boundedValues <- boundedStepValues values
+        steps <- traverse parseStep boundedValues
         pure (state { steps = steps })
     "pendingStep" ->
       if Json.isNull value then Right (state { pendingStep = Nothing })
@@ -330,22 +374,39 @@ setField key value state =
         pure (state { pendingStep = Just pending })
     _ -> Right (state { extras = Map.insert key value state.extras })
   where
-  setStringField field update =
+  stringField field =
     case toString value of
-      Just text -> Right (update text)
+      Just text -> Right text
       Nothing -> Left ("state: field '" <> field <> "' must be a string")
+  setStringField field update = update <$> stringField field
 
--- | State is rewritten for one workflow lifetime. A normal run appends roughly
--- | 15 steps, so retaining the complete history is bounded by that run's step
--- | count; eviction would diverge from the incumbent shell contract.
-appendStep :: Step -> State -> State
-appendStep step state = state { steps = state.steps <> [ step ] }
+validStepName :: String -> Either String Unit
+validStepName name =
+  if Array.elem name Vocabulary.workflowSteps then Right unit
+  else Left ("state: unknown step '" <> name <> "'")
+
+validStep :: Step -> Either String Step
+validStep step = do
+  validStepName step.name
+  _ <- validStepStatus (renderStepStatus step.status)
+  pure step
+
+appendStep :: Step -> State -> Either String State
+appendStep step state = do
+  _ <- validStep step
+  if Array.length state.steps >= maxPersistedSteps then
+    Left (stepHistoryLimitError "reached")
+  else Right (state { steps = state.steps <> [ step ] })
 
 startPending :: PendingStep -> State -> State
 startPending pending state = state { pendingStep = Just pending }
 
 finishPending :: State -> State
 finishPending state = state { pendingStep = Nothing }
+
+-- | Mark a terminal lifecycle result and clear active-work signaling.
+finishWorkflow :: WorkflowStatus -> State -> State
+finishWorkflow status state = state { active = ActiveIdle, status = status }
 
 -- | Load state if present. ENOENT is the documented detection fallback;
 -- | every other read error and every parse error remains visible to callers.
@@ -360,7 +421,51 @@ readState path = do
       Left error -> Left error
       Right value -> Right (Just value)
 
+-- | Serialize a complete state transition. Creating the sibling directory is
+-- | atomic; a surviving directory may be stale after a crash and must be
+-- | explicitly removed only after confirming no mutation is still running.
+withStateLock :: forall a. String -> Effect a -> Effect (Either String a)
+withStateLock path action = do
+  let lockPath = path <> ".lock"
+  acquired <- try (FSSync.mkdir lockPath)
+  case acquired of
+    Left error ->
+      let systemError = unsafeCoerce error
+      in pure
+        ( Left
+            ( if SystemError.code systemError == "EEXIST" then
+                "state: lock '" <> lockPath <> "' already exists; another state mutation is running, or it is stale after a crash — remove the lock explicitly after confirming no mutation is active"
+              else "state: unable to acquire lock '" <> lockPath <> "': " <> SystemError.message systemError
+            )
+        )
+    Right _ -> do
+      result <- try action
+      released <- try (FSSync.rmdir lockPath)
+      case result, released of
+        Left actionError, Left releaseError ->
+          throwException
+            ( Exception.error
+                ( Exception.message actionError
+                    <> "; additionally failed to release state lock '"
+                    <> lockPath
+                    <> "': "
+                    <> Exception.message releaseError
+                )
+            )
+        Left actionError, Right _ -> throwException actionError
+        Right _, Left releaseError ->
+          pure (Left ("state: unable to release lock '" <> lockPath <> "': " <> Exception.message releaseError))
+        Right value, Right _ -> pure (Right value)
+
 writeState :: String -> State -> Effect Unit
 writeState path state = do
-  Sys.writeUtf8 (path <> ".tmp") (stringifyState state)
-  Sys.rename (path <> ".tmp") path
+  temporary <- Sys.uniqueTempPath path
+  result <- try do
+    Sys.writeUtf8 temporary (stringifyState state)
+    Sys.rename temporary path
+  case result of
+    Left error -> do
+      -- The write may have created a partial file; cleanup must not replace its error.
+      _ <- try (FSSync.unlink temporary)
+      throwException error
+    Right _ -> pure unit

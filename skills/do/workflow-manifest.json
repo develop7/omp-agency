@@ -1,0 +1,27 @@
+{
+  "steps": [
+    "sync",
+    "research",
+    "plan-approval",
+    "branch",
+    "implement",
+    "check",
+    "docs",
+    "fmt",
+    "commit",
+    "hickey-lowy",
+    "police",
+    "test",
+    "create-pr",
+    "ci",
+    "evidence",
+    "done"
+  ],
+  "entryPoints": {
+    "default": "sync",
+    "followup": "implement",
+    "post-implement": "fmt",
+    "polish": "hickey-lowy",
+    "ci-only": "ci"
+  }
+}

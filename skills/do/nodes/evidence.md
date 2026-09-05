@@ -7,7 +7,6 @@ description: Attach empirical evidence to the PR (opt-in).
 
 ## Requires
 
-- `--minimal` flag
 - `--no-vcs` flag
 - CI passed
 
@@ -17,7 +16,8 @@ description: Attach empirical evidence to the PR (opt-in).
 
 ## Strategies
 
-**If `--minimal`**: Skip with status `skipped` and reason `"--minimal"`. Move to **done**.
+Nickel always routes a non-minimal run to this node. This node is the sole
+place that detects whether the project has configured PR evidence.
 
 **If `--no-vcs`**: Skip with status `skipped` and reason `"--no-vcs"`. There is no PR to attach evidence to.
 

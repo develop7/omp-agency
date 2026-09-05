@@ -2,15 +2,25 @@ module Agency.Scripts.Do.StateTest (run) where
 
 import Prelude
 
-import Data.Argonaut.Core (fromBoolean, toBoolean)
+import Data.Array as Array
+import Data.Argonaut.Core (fromBoolean, fromString, toBoolean, toString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
+import Effect.Exception (try)
 import Effect.Console as Console
 
+import Agency.Scripts.Do.ForgeKind as ForgeKind
+import Agency.Scripts.Do.Outcome as Outcome
+import Agency.Scripts.Do.Ops as Ops
+import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
+import Agency.Scripts.Do.VcsKind as VcsKind
+import Node.Errors.SystemError as SystemError
+import Node.FS.Sync as FSSync
+import Unsafe.Coerce (unsafeCoerce)
 
 assert :: String -> Boolean -> Effect Unit
 assert label condition =
@@ -58,3 +68,167 @@ run = do
                       Console.error ("FAIL: reload state after set: " <> error)
                       Sys.exit 1
                     Right finalState -> assert "set unknown field survives load/save" ((State.stateGetJson "newFlag" finalState >>= toBoolean) == Just true)
+  cwd <- Sys.cwd
+  writeFailureDirectory <- Sys.uniqueTempPath (cwd <> "/.state-write-failure")
+  let writeFailurePath = writeFailureDirectory <> "/.do-results.json"
+      rmOptions = { force: true, maxRetries: 0, recursive: true, retryDelay: 0 }
+  FSSync.mkdir writeFailureDirectory
+  FSSync.mkdir writeFailurePath
+  writeFailure <- try (State.writeState writeFailurePath State.emptyState)
+  writeFailureEntries <- FSSync.readdir writeFailureDirectory
+  FSSync.rm' writeFailureDirectory rmOptions
+  case writeFailure of
+    Left error -> do
+      assert "write state preserves the rename failure" (SystemError.code (unsafeCoerce error) == "EISDIR")
+      assert "write state removes its temporary file after rename failure" (writeFailureEntries == [ ".do-results.json" ])
+    Right _ -> assert "write state rejects a directory destination" false
+  case State.parseState "{\"active\":\"finished\"}" of
+    Left error -> assert "unknown active status is rejected" (error == "state: invalid active 'finished'")
+    Right _ -> assert "unknown active status is rejected" false
+  case State.parseState "{\"status\":\"done\"}" of
+    Left error -> assert "unknown workflow status is rejected" (error == "state: invalid status 'done'")
+    Right _ -> assert "unknown workflow status is rejected" false
+  case State.parseState "{\"steps\":[{\"name\":\"sync\",\"status\":\"bananas\",\"verification\":\"\",\"startedAt\":\"2024-01-01T00:00:00Z\",\"completedAt\":\"2024-01-01T00:00:00Z\"}]}" of
+    Left error -> assert "unknown step status is rejected" (error == "state: invalid step status 'bananas'")
+    Right _ -> assert "unknown step status is rejected" false
+  case Ops.parseResultsOp [ "step", "sync", "bananas", "", "now", "now" ] of
+    Left error -> assert "invalid step status is rejected at the command boundary" (error.code == 1)
+    Right _ -> assert "invalid step status is rejected at the command boundary" false
+  case Ops.parseDriverOp [ "init", "first", "second" ] of
+    Left error -> assert "multiple task arguments are rejected" (error.code == 2)
+    Right _ -> assert "multiple task arguments are rejected" false
+  case Ops.parseDriverOp [ "init", "--from=followpu", "resume" ] of
+    Left error -> assert "unknown entry point is rejected" (error.code == 2)
+    Right _ -> assert "unknown entry point is rejected" false
+  case Ops.parseNickelOp [ "cli_seed", "followpu" ] of
+    Left error -> assert "nickel cli_seed rejects an unknown entry point" (error.code == 2)
+    Right _ -> assert "nickel cli_seed rejects an unknown entry point" false
+  case Ops.parseDriverOp [ "start", "reserch" ] of
+    Left error -> assert "unknown workflow step is rejected" (error.code == 2)
+    Right _ -> assert "unknown workflow step is rejected" false
+  case Ops.parseResultsOp [ "step-start", "reserch" ] of
+    Left error -> assert "result steps are restricted to workflow steps" (error.code == 2)
+    Right _ -> assert "result steps are restricted to workflow steps" false
+  assert "string fields preserve literal true" (map toString (Results.jsonValueFor "task" "true") == Right (Just "true"))
+  assert "boolean fields decode literal true" (map toBoolean (Results.jsonValueFor "review" "true") == Right (Just true))
+  let terminal = State.finishWorkflow State.WorkflowCompleted (State.initState "2024-01-01T00:00:00Z")
+  assert "terminal success makes the workflow idle" (terminal.active == State.ActiveIdle && terminal.status == State.WorkflowCompleted)
+  let firstStep =
+        { name: "sync"
+        , status: State.StepPassed
+        , verification: "first recorded"
+        , startedAt: "2024-01-01T00:00:00Z"
+        , completedAt: "2024-01-01T00:00:00Z"
+        , reason: Nothing
+        }
+      middleStep =
+        { name: "research"
+        , status: State.StepPassed
+        , verification: "middle recorded"
+        , startedAt: "2024-01-01T00:00:01Z"
+        , completedAt: "2024-01-01T00:00:01Z"
+        , reason: Nothing
+        }
+      lastStep =
+        { name: "check"
+        , status: State.StepPassed
+        , verification: "last recorded"
+        , startedAt: "2024-01-01T00:00:02Z"
+        , completedAt: "2024-01-01T00:00:02Z"
+        , reason: Nothing
+        }
+      nextStep =
+        { name: "evidence"
+        , status: State.StepPassed
+        , verification: "new record"
+        , startedAt: "2024-01-01T00:00:03Z"
+        , completedAt: "2024-01-01T00:00:03Z"
+        , reason: Nothing
+        }
+      oneBeforeLimit =
+        (State.initState "2024-01-01T00:00:00Z")
+          { steps = [ firstStep ] <> Array.replicate (State.maxPersistedSteps - 2) middleStep
+          }
+      fullHistory =
+        oneBeforeLimit
+          { steps = oneBeforeLimit.steps <> [ lastStep ]
+          }
+      overLimitHistory =
+        fullHistory
+          { steps = fullHistory.steps <> [ nextStep ]
+          }
+  case State.appendStep nextStep oneBeforeLimit of
+    Left error -> do
+      Console.error ("FAIL: append below limit: " <> error)
+      Sys.exit 1
+    Right updated ->
+      assert
+        ("append preserves ordered history at limit " <> show State.maxPersistedSteps)
+        (map _.name updated.steps == map _.name (oneBeforeLimit.steps <> [ nextStep ]))
+  case State.appendStep nextStep fullHistory of
+    Left error ->
+      assert
+        ("append rejects history at limit " <> show State.maxPersistedSteps)
+        (error == "state: step history limit (" <> show State.maxPersistedSteps <> ") reached")
+    Right _ -> do
+      Console.error "FAIL: append allowed an unbounded audit history"
+      Sys.exit 1
+  case State.parseState (State.stringifyState overLimitHistory) of
+    Left error ->
+      assert
+        ("parse rejects history beyond limit " <> show State.maxPersistedSteps)
+        (error == "state: step history limit (" <> show State.maxPersistedSteps <> ") exceeded")
+    Right _ -> do
+      Console.error "FAIL: parse accepted an over-limit audit history"
+      Sys.exit 1
+  case State.appendStep (nextStep { name = "not-a-step" }) State.emptyState of
+    Left error -> assert "append rejects an unknown step name" (error == "state: unknown step 'not-a-step'")
+    Right _ -> do
+      Console.error "FAIL: append accepted an unknown step name"
+      Sys.exit 1
+  case State.appendStep (nextStep { status = State.StepUnknown "not-a-status" }) State.emptyState of
+    Left error -> assert "append rejects an unknown step status" (error == "state: invalid step status 'not-a-status'")
+    Right _ -> do
+      Console.error "FAIL: append accepted an unknown step status"
+      Sys.exit 1
+  lockDirectory <- Sys.uniqueTempPath (cwd <> "/.state-lock")
+  let lockStatePath = lockDirectory <> "/.do-results.json"
+      lockPath = lockStatePath <> ".lock"
+      lockContext =
+        { stateDir: lockDirectory
+        , vcs: VcsKind.Unknown
+        , forge: ForgeKind.Unknown
+        , base: Nothing
+        , vcsOverride: Nothing
+        , forgeOverride: Nothing
+        , captureOutput: true
+        }
+  FSSync.mkdir lockDirectory
+  case State.setField "task" (fromString "original") State.emptyState of
+    Left error -> do
+      Console.error ("FAIL: prepare locked state: " <> error)
+      Sys.exit 1
+    Right original -> do
+      State.writeState lockStatePath original
+      FSSync.mkdir lockPath
+      blocked <- Ops.runResultsOp lockContext (Ops.ResultsSet "task" "replacement")
+      unchanged <- State.readState lockStatePath
+      lockRemains <- FSSync.exists lockPath
+      FSSync.rmdir lockPath
+      normalRelease <- State.withStateLock lockStatePath (pure "done")
+      releasedAfterSuccess <- FSSync.exists lockPath
+      failedRelease <- try (State.withStateLock lockStatePath (FSSync.rmdir (lockDirectory <> "/missing")))
+      releasedAfterFailure <- FSSync.exists lockPath
+      FSSync.rm' lockDirectory rmOptions
+      let conflict = "state: lock '" <> lockPath <> "' already exists; another state mutation is running, or it is stale after a crash — remove the lock explicitly after confirming no mutation is active\n"
+      case blocked.output of
+        Outcome.Captured output ->
+          assert "locked mutation fails with a stale-lock recovery instruction" (blocked.exit == 1 && output.stderr == conflict)
+        Outcome.Passthrough -> assert "locked mutation reports a captured conflict" false
+      case unchanged of
+        Right (Just state) -> assert "locked mutation leaves persisted state unchanged" (State.stateGet "task" state == "original" && lockRemains)
+        _ -> assert "locked mutation leaves persisted state unchanged" false
+      assert "state lock releases after a successful action" (normalRelease == Right "done" && not releasedAfterSuccess)
+      case failedRelease of
+        Left _ -> assert "state lock releases after a failing action" (not releasedAfterFailure)
+        Right _ -> assert "state lock rethrows a failing action" false

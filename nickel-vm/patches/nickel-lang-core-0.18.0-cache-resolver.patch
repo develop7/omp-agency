@@ -1,0 +1,57 @@
+--- a/src/cache.rs
++++ b/src/cache.rs
+@@ -342,30 +342,32 @@
+     /// sure this doesn't happen, one way would be to add some randomness to the name of the
+     /// sources, so that they can't be predicted beforehand.
+     pub fn get_or_add_file(
+         &mut self,
+         path: impl Into<OsString>,
+         format: InputFormat,
+     ) -> io::Result<CacheOp<FileId>> {
+         let path = path.into();
+-        let normalized = normalize_path(&path)?;
+-
+-        // Try to fetch a generated source if the path starts with a hardcoded prefix
++
++        // Try to fetch an in-memory source before normalizing the path. This
++        // matters on wasm32-unknown-unknown, where current_dir is unsupported.
+         let generated_entry = path
+             .to_str()
+             .and_then(|p| p.strip_prefix(IN_MEMORY_SOURCE_PATH_PREFIX))
+             .and_then(|src_name| {
+                 self.file_ids
+                     .get(&SourcePath::Path(src_name.into(), format))
+             });
+ 
+         if let Some(entry) = generated_entry {
+             return Ok(CacheOp::Cached(entry.id));
+         }
++
++        let normalized = normalize_path(&path)?;
+ 
+         match self.id_or_new_timestamp_of(normalized.as_ref(), format)? {
+             SourceState::UpToDate(id) => Ok(CacheOp::Cached(id)),
+             SourceState::Stale(timestamp) => self
+                 .add_normalized_file(normalized, format, timestamp)
+                 .map(CacheOp::Done),
+         }
+     }
+--- a/src/eval/fixpoint.rs
++++ b/src/eval/fixpoint.rs
+@@ -49,12 +49,12 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
+         .map(|(id, field)| {
+             if let Some(ref value) = field.value {
+                 let idx = value.as_thunk().cloned().unwrap_or_else(|| {
+-                    // If we are in this branch, `value` must be a constant after closurization
+-                    // (the evaluation of a recursive record starts by closurizing all fields and
+-                    // contracts).
+-                    debug_assert!(value.is_constant());
++                    // Nickel sources are closurized before recursive evaluation. External formats
++                    // are parsed straight to runtime values, which can be non-constant records
++                    // without free variables and are equally safe to close with an empty
++                    // environment.
+                     // Constants don't need an environment: they contain no variable.
+                     let closure: Closure = value.clone().into();
+ 
+                     cache.add(closure, BindingType::Normal)
+                 });

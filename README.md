@@ -150,11 +150,20 @@ See [Kolu's `.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for 
 
 ## Development
 
+`nix develop` provides the pinned PureScript, Spago, esbuild, bats, Node.js, Rust, wasm-bindgen, and just toolchain for contributors. Nickel remains available as an editor/debugging nicety; runtime workflow evaluation is provided by `nickel-vm` WASM:
+
 ```bash
+nix develop
 just test      # run bats tests (unit + integration)
 just lint      # run shellcheck on bash scripts
-just ci        # full CI: tests + lint
+just build     # compile and bundle the PureScript core
+just ci        # full CI: tests + lint + bundle freshness
+just nickel-build  # build the Nickel WASM evaluator and Node glue
+node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite
 ```
+
+One-off CLI invocations outside the dev shell should pin the interpreter too:
+`nix develop --command node pure/dist/agency-do.js …`.
 
 Testing requires [bats-core](https://github.com/bats-core/bats-core): `sudo apt-get install bats`, `brew install bats-core`, or `nix profile install nixpkgs#bats`.
 

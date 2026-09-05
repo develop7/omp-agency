@@ -1,6 +1,8 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { evaluateWorkflow } from "../nickel-vm/scripts/workflow-runtime.mjs";
+import { workflowEntryPoints } from "./workflow-vocabulary.js";
 
 type ApiRequest = {
   tool: string;
@@ -30,7 +32,25 @@ async function loadApi(): Promise<AgencyApi> {
   apiPromise ??= import("../pure/dist/agency-api.js") as unknown as Promise<AgencyApi>;
   return apiPromise;
 }
-
+async function executeWorkflow(
+  params: { field: "cli" } | { field: "cli_seed"; from: string },
+  ctx: ToolContext,
+): Promise<{
+  content: Array<{ type: "text"; text: string }>;
+  details: ApiResult;
+}> {
+  const request = params.field === "cli"
+    ? { operation: "cli" as const, cwd: ctx.cwd }
+    : { operation: "cli_seed" as const, seed: params.from, cwd: ctx.cwd };
+  const result = await evaluateWorkflow(request);
+  if (result.exit !== 0) {
+    throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
+  }
+  return {
+    content: [{ type: "text", text: result.stdout || "ok" }],
+    details: result,
+  };
+}
 async function executeApi(tool: string, args: string[]): Promise<{
   content: Array<{ type: "text"; text: string }>;
   details: ApiResult;
@@ -48,9 +68,6 @@ async function executeApi(tool: string, args: string[]): Promise<{
 
 function emptyFailureMessage(tool: string, args: string[], exit: number): string {
   const operation = args[0] ?? "operation";
-  if (tool === "vcs_read" && operation === "dirty") {
-    return "vcs_read dirty: working copy clean";
-  }
   if (tool === "forge" && operation === "supports") {
     return `forge supports ${args[1] ?? "operation"}: not supported`;
   }
@@ -218,7 +235,7 @@ export default function (pi: ExtensionAPI) {
     name: "workflow",
     label: "Workflow",
     description:
-      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with one of default, followup, post-implement, polish, or ci-only to seed/resume from that entry point.",
+      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared workflow entry point to seed/resume from that entry point.",
     parameters: z.union([
       z.object({
         field: z.literal("cli"),
@@ -226,11 +243,14 @@ export default function (pi: ExtensionAPI) {
       }).strict(),
       z.object({
         field: z.literal("cli_seed"),
-        from: z.enum(["default", "followup", "post-implement", "polish", "ci-only"]),
+        from: z.enum(workflowEntryPoints),
       }).strict(),
     ]),
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      return executeApi("workflow", [params.field, ...(params.field === "cli_seed" ? [params.from] : [])]);
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (params.field === "cli") {
+        return executeWorkflow({ field: params.field }, ctx);
+      }
+      return executeWorkflow({ field: params.field, from: params.from }, ctx);
     },
   });
 

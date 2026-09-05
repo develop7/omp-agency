@@ -20,6 +20,12 @@ For local development:
 omp plugin link ./path/to/agency
 ```
 
+For PureScript and Nickel WASM development, the repository root provides a pinned Nix dev shell:
+`nix develop` enters the complete toolchain, or `nix develop -c just bundle-check` builds
+the PureScript and Nickel evaluator bundles and runs the freshness/smoke checks. The system
+`nickel` package is retained only as an editor/debugging nicety; workflow runtime evaluation
+uses the checked-in `nickel-vm` WebAssembly artifact.
+
 ## Configure model tiers
 
 Agency's sub-agents use the `@task` model role. Set it in your OMP config:

@@ -5,7 +5,6 @@ module Agency.Scripts.Do.Binaries
   ( git
   , jj
   , gh
-  , nickel
   ) where
 
 
@@ -20,7 +19,3 @@ jj = "jj"
 -- | GitHub CLI executable name.
 gh :: String
 gh = "gh"
-
--- | Nickel executable name.
-nickel :: String
-nickel = "nickel"
