@@ -16,48 +16,6 @@
 #   workflow.cli state
 #   NICKEL
 {
-  # ── Pattern configs (flat, no inheritance) ─────────────────────────────────
-
-  CheckLoopDefault = {
-    max_attempts = 3,
-    flaky_classification = false,
-    flaky_budget = 0,
-    loop_artifacts = 'none,
-    coverage_check = false,
-    rerun_on_new_commit = false,
-  },
-
-  PatternConfigs = {
-    check = CheckLoopDefault,
-    docs = CheckLoopDefault,
-    test = {
-      max_attempts = 4,
-      flaky_classification = false,
-      flaky_budget = 0,
-      loop_artifacts = 'commit-per-fix,
-      coverage_check = true,
-      rerun_on_new_commit = false,
-    },
-    ci = {
-      max_attempts = 5,
-      flaky_classification = true,
-      flaky_budget = 3,
-      loop_artifacts = 'commit-per-fix,
-      coverage_check = false,
-      rerun_on_new_commit = true,
-    },
-    police = {
-      max_attempts = 3,
-      flaky_classification = false,
-      flaky_budget = 0,
-      loop_artifacts = 'commit-per-fix,
-      coverage_check = false,
-      rerun_on_new_commit = false,
-    },
-    hickey-lowy = {
-      cross_validate = true,
-    },
-  },
 
   # ── State contract ──────────────────────────────────────────────────────────
   # Contract for workflow state, accepting both JSON strings and Nickel tags.
@@ -102,16 +60,18 @@
   normalize_state | not_exported = State,
 
   # ── Step definitions ───────────────────────────────────────────────────────
-  # Each step: { pattern, next, skip_when, requires, instructions }
-  #   pattern:      which retry/parallel shape to use
-  #   next:         static string or function(state) → next step name
-  #   skip_when:    function(state) → Bool
-  #   requires:     data this step needs from prior steps (declarative)
-  #   instructions: path to node file
+  # Each step: { pattern, pattern_config, next, skip_when, requires, instructions }
+  #   pattern:        which retry/parallel shape to use
+  #   pattern_config: configuration for that pattern
+  #   next:           static string or function(state) → next step name
+  #   skip_when:      function(state) → Bool
+  #   requires:       data this step needs from prior steps (declarative)
+  #   instructions:   path to node file
 
   Steps = {
     sync = {
       pattern = 'one-shot,
+      pattern_config = {},
       next = "research",
       skip_when | not_exported = fun state => false,
       requires = [],
@@ -120,6 +80,7 @@
 
     research = {
       pattern = 'one-shot,
+      pattern_config = {},
       next | not_exported = fun state =>
         if state.review then "plan-approval" else "branch",
       skip_when | not_exported = fun state => false,
@@ -129,6 +90,7 @@
 
     plan-approval = {
       pattern = 'one-shot,
+      pattern_config = {},
       next = "branch",
       skip_when | not_exported = fun state => !state.review,
       requires = ["research.plan"],
@@ -137,6 +99,7 @@
 
     branch = {
       pattern = 'one-shot,
+      pattern_config = {},
       next = "implement",
       skip_when | not_exported = fun state => state.noVcs,
       requires = ["sync.base"],
@@ -145,6 +108,7 @@
 
     implement = {
       pattern = 'one-shot,
+      pattern_config = {},
       next = "check",
       skip_when | not_exported = fun state => false,
       requires = ["research.plan"],
@@ -153,6 +117,14 @@
 
     check = {
       pattern = 'check-loop,
+      pattern_config = {
+        max_attempts = 3,
+        flaky_classification = false,
+        flaky_budget = 0,
+        loop_artifacts = 'none,
+        coverage_check = false,
+        rerun_on_new_commit = false,
+      },
       next | not_exported = fun state =>
         if state.minimal then "fmt" else "docs",
       skip_when | not_exported = fun state => false,
@@ -162,6 +134,14 @@
 
     docs = {
       pattern = 'check-loop,
+      pattern_config = {
+        max_attempts = 3,
+        flaky_classification = false,
+        flaky_budget = 0,
+        loop_artifacts = 'none,
+        coverage_check = false,
+        rerun_on_new_commit = false,
+      },
       next = "fmt",
       skip_when | not_exported = fun state => state.minimal,
       requires = [],
@@ -170,6 +150,7 @@
 
     fmt = {
       pattern = 'one-shot,
+      pattern_config = {},
       next | not_exported = fun state =>
         if state.noVcs then "hickey-lowy" else "commit",
       skip_when | not_exported = fun state => false,
@@ -179,6 +160,7 @@
 
     commit = {
       pattern = 'one-shot,
+      pattern_config = {},
       next = "hickey-lowy",
       skip_when | not_exported = fun state => state.noVcs,
       requires = [],
@@ -187,6 +169,9 @@
 
     hickey-lowy = {
       pattern = 'fanout-fix,
+      pattern_config = {
+        cross_validate = true,
+      },
       next = "police",
       skip_when | not_exported = fun state => state.minimal,
       requires = ["diff", "research.context"],
@@ -195,6 +180,14 @@
 
     police = {
       pattern = 'check-loop,
+      pattern_config = {
+        max_attempts = 3,
+        flaky_classification = false,
+        flaky_budget = 0,
+        loop_artifacts = 'commit-per-fix,
+        coverage_check = false,
+        rerun_on_new_commit = false,
+      },
       next = "test",
       skip_when | not_exported = fun state => state.minimal,
       requires = ["diff"],
@@ -203,6 +196,14 @@
 
     test = {
       pattern = 'check-loop,
+      pattern_config = {
+        max_attempts = 4,
+        flaky_classification = false,
+        flaky_budget = 0,
+        loop_artifacts = 'commit-per-fix,
+        coverage_check = true,
+        rerun_on_new_commit = false,
+      },
       next = "create-pr",
       skip_when | not_exported = fun state => false,
       requires = [],
@@ -211,6 +212,7 @@
 
     create-pr = {
       pattern = 'one-shot,
+      pattern_config = {},
       next = "ci",
       skip_when | not_exported = fun state =>
         state.noVcs || !state.supportsPrCreate,
@@ -220,6 +222,14 @@
 
     ci = {
       pattern = 'check-loop,
+      pattern_config = {
+        max_attempts = 5,
+        flaky_classification = true,
+        flaky_budget = 3,
+        loop_artifacts = 'commit-per-fix,
+        coverage_check = false,
+        rerun_on_new_commit = true,
+      },
       next = "evidence",
       skip_when | not_exported = fun state => false,
       requires = [],
@@ -228,6 +238,7 @@
 
     evidence = {
       pattern = 'one-shot,
+      pattern_config = {},
       next = "done",
       skip_when | not_exported = fun state => false,
       requires = [],
@@ -236,6 +247,7 @@
 
     done = {
       pattern = 'one-shot,
+      pattern_config = {},
       next = "",
       skip_when | not_exported = fun state => false,
       requires = [],
@@ -463,19 +475,13 @@
       else
         let step_def = Steps."%{next_step}" in
         let skip_val = step_def.skip_when state in
-        let pconfig =
-          if step_def.pattern == 'check-loop || step_def.pattern == 'fanout-fix then
-            PatternConfigs."%{next_step}"
-          else
-            {}
-        in
         {
           step = next_step,
           skip = skip_val,
           pattern = step_def.pattern,
           instructions = step_def.instructions,
           requires = step_def.requires,
-          pattern_config = pconfig,
+          pattern_config = step_def.pattern_config,
         },
 
   # ── Seed CLI: returns the full step list for todo UI initialization ────────
