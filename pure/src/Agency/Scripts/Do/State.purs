@@ -42,6 +42,7 @@ import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
 import Effect.Exception (throwException, try)
+import Effect.Exception as Exception
 import Foreign.Object as Obj
 import Node.Errors.SystemError as SystemError
 import Node.FS.Sync as FSSync
@@ -441,9 +442,19 @@ withStateLock path action = do
       result <- try action
       released <- try (FSSync.rmdir lockPath)
       case result, released of
-        Left error, _ -> throwException error
-        Right _, Left error ->
-          pure (Left ("state: unable to release lock '" <> lockPath <> "': " <> SystemError.message (unsafeCoerce error)))
+        Left actionError, Left releaseError ->
+          throwException
+            ( Exception.error
+                ( Exception.message actionError
+                    <> "; additionally failed to release state lock '"
+                    <> lockPath
+                    <> "': "
+                    <> Exception.message releaseError
+                )
+            )
+        Left actionError, Right _ -> throwException actionError
+        Right _, Left releaseError ->
+          pure (Left ("state: unable to release lock '" <> lockPath <> "': " <> Exception.message releaseError))
         Right value, Right _ -> pure (Right value)
 
 writeState :: String -> State -> Effect Unit
