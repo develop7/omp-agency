@@ -714,9 +714,9 @@ remoteGitDefault remote = do
     Right true -> pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
     Right false -> do
       master <- gitRefExists ("refs/remotes/" <> remote <> "/master")
-      pure case master of
-        Left error -> failureValue error
-        Right true -> { code: 0, value: "master", stdout: "master\n", stderr: "" }
+      case master of
+        Left error -> pure (failureValue error)
+        Right true -> pure { code: 0, value: "master", stdout: "master\n", stderr: "" }
         Right false -> localGitDefault
 
 localGitDefault :: Effect VcsValue
