@@ -781,6 +781,7 @@ SH
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-range
   [ "$status" -eq 0 ]
   [[ "$output" == *"feat: remote base"* ]]
+}
 
 @test "jj: commit preserves workflow state and never retargets trunk" {
   command -v jj >/dev/null || skip "jj not installed"
