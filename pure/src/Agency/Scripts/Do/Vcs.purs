@@ -506,9 +506,15 @@ commit context message files =
     case valid of
       Left error -> pure (Outcome.failure 1 (error <> "\n"))
       Right _ -> case context.vcs of
-        Git -> passthroughCommand context Binaries.git ([ "commit", "--only", "--message", message, "--" ] <> files)
+        Git -> stageThenCommit context message files
         Jj -> preserveState context (jjCommit context message files)
         Unknown -> pure noVcsOutcome
+
+stageThenCommit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
+stageThenCommit context message files = do
+  staged <- passthroughCommand context Binaries.git ([ "add", "--" ] <> files)
+  if staged.exit /= 0 then pure staged
+  else passthroughCommand context Binaries.git ([ "commit", "--only", "--message", message, "--" ] <> files)
 
 validateDirty :: VcsKind -> Array String -> Effect (Either String Unit)
 validateDirty vcs files = do
@@ -549,16 +555,22 @@ jjCommit context message files = do
 
 -- | A jj commit only advances the feature bookmark created by `branch`.
 -- | Refusing an absent/trunk bookmark avoids ever retargeting the base.
+-- | A prior jj push can make the empty child immutable, leaving the feature
+-- | bookmark on its parent. Either revision is safe unless it is the base.
 featureBookmark :: WorkflowContext -> Effect (Either Outcome.OpOutcome String)
 featureBookmark context = case context.base of
   Nothing -> pure (Left (failureLine "vcs-op commit: jj requires a resolved base to protect the trunk bookmark"))
   Just base -> do
     found <- bookmarkAt "@"
-    pure case found of
-      Left outcome -> Left outcome
-      Right Nothing -> Left (failureLine "vcs-op commit: no feature bookmark at the working copy; refusing to move the trunk")
-      Right (Just name) | name == base -> Left (failureLine ("vcs-op commit: refusing to move trunk bookmark '" <> name <> "'"))
-      Right (Just name) -> Right name
+    case found of
+      Right Nothing -> protect base <$> bookmarkAt "@-"
+      _ -> pure (protect base found)
+  where
+  protect base found = case found of
+    Left outcome -> Left outcome
+    Right Nothing -> Left (failureLine "vcs-op commit: no feature bookmark at the working copy or its parent; refusing to move the trunk")
+    Right (Just name) | name == base -> Left (failureLine ("vcs-op commit: refusing to move trunk bookmark '" <> name <> "'"))
+    Right (Just name) -> Right name
 
 describeAndMove :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 describeAndMove context bookmark message = do
@@ -574,7 +586,7 @@ splitAndMove context bookmark message unrelated = do
   described <- passthroughCommand context Binaries.jj [ "describe", "--message=" <> message ]
   if described.exit /= 0 then pure described
   else do
-    splitCode <- passthroughCommand context Binaries.jj ([ "split", "--message=chore: unrelated changes", "--" ] <> unrelated)
+    splitCode <- passthroughCommand context Binaries.jj ([ "split", "--message=chore: unrelated changes", "--" ] <> map jjSplitPath unrelated)
     if splitCode.exit /= 0 then pure splitCode
     else do
       rebase <- passthroughCommand context Binaries.jj [ "rebase", "--revision", "@-", "--insert-after", "@" ]
@@ -582,7 +594,7 @@ splitAndMove context bookmark message unrelated = do
       else do
         moved <- moveBookmark context bookmark "@"
         if moved.exit /= 0 then pure moved
-        else passthroughCommand context Binaries.jj [ "new", bookmark ]
+        else passthroughCommand context Binaries.jj [ "edit", "@+" ]
 
 moveBookmark :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 moveBookmark context name target =
@@ -860,6 +872,10 @@ lines :: String -> Array String
 lines value = Array.filter (_ /= "") (map trim (split (Pattern "\n") value))
 joinWithSpace :: Array String -> String
 joinWithSpace values = joinWith " " values
+-- | jj split requires a `./` prefix for a dash-leading path, even after `--`.
+jjSplitPath :: String -> String
+jjSplitPath path = if Args.startsWith "-" path then "./" <> path else path
+
 noVcsOutcome :: Outcome.OpOutcome
 noVcsOutcome = failureLine "vcs-op: no VCS detected"
 
