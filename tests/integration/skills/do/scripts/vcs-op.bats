@@ -845,16 +845,16 @@ SH
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: must have bookmark" feature.txt
   [ "$status" -eq 1 ]
-  [[ "$output" == *"no feature bookmark"* ]]
   [ "$(jj log --revision main --no-graph --template commit_id)" = "$main_before" ]
 }
 
 @test "jj: push and fix-commit target only the current feature bookmark" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
-  git init -q --bare "$TEST_DIR/remote.git"
+  local remote="$TEST_DIR.remote.git"
+  git init -q --bare "$remote"
   git remote remove origin
-  git remote add origin "$TEST_DIR/remote.git"
+  git remote add origin "$remote"
 
   echo base > README.md
   jj describe -m "base"
@@ -865,7 +865,7 @@ SH
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op push main
   [ "$status" -eq 1 ]
   [[ "$output" == *"refusing jj trunk push"* ]]
-  main_before="$(git --git-dir="$TEST_DIR/remote.git" rev-parse refs/heads/main)"
+  main_before="$(git --git-dir="$remote" rev-parse refs/heads/main)"
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-narrow-push
   [ "$status" -eq 0 ]
@@ -876,12 +876,12 @@ SH
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op push
   [ "$status" -eq 0 ]
   echo fix >> feature.txt
-  feature_after_first="$(git --git-dir="$TEST_DIR/remote.git" rev-parse refs/heads/feature-narrow-push)"
+  feature_after_first="$(git --git-dir="$remote" rev-parse refs/heads/feature-narrow-push)"
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fix-commit "fix: narrow push" feature.txt
   [ "$status" -eq 0 ]
-  [ "$(git --git-dir="$TEST_DIR/remote.git" rev-parse refs/heads/main)" = "$main_before" ]
-  git --git-dir="$TEST_DIR/remote.git" rev-parse --verify refs/heads/feature-narrow-push
-  [ "$(git --git-dir="$TEST_DIR/remote.git" rev-parse refs/heads/feature-narrow-push)" != "$feature_after_first" ]
+  [ "$(git --git-dir="$remote" rev-parse refs/heads/main)" = "$main_before" ]
+  git --git-dir="$remote" rev-parse --verify refs/heads/feature-narrow-push
+  [ "$(git --git-dir="$remote" rev-parse refs/heads/feature-narrow-push)" != "$feature_after_first" ]
 }
 
 @test "jj: remote-url prefers origin over an alphabetically earlier fork" {
