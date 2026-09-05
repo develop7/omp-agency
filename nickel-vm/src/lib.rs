@@ -54,11 +54,16 @@ pub struct WorkflowResult {
 /// diagnostic stderr text.
 #[wasm_bindgen]
 pub fn eval_workflow(req: JsValue) -> JsValue {
-    let request: WorkflowRequest = match serde_wasm_bindgen::from_value(req) {
-        Ok(r) => r,
-        Err(e) => return js_result(1, String::new(), format!("Request parsing failed: {}", e)),
-    };
-    serde_wasm_bindgen::to_value(&evaluate_workflow(request)).unwrap()
+    let result = serde_wasm_bindgen::from_value(req)
+        .map(evaluate_workflow)
+        .unwrap_or_else(|error| {
+            WorkflowResult {
+                exit: 1,
+                stdout: String::new(),
+                stderr: format!("Request parsing failed: {}", error),
+            }
+        });
+    serde_wasm_bindgen::to_value(&result).unwrap()
 }
 
 fn evaluate_workflow(request: WorkflowRequest) -> WorkflowResult {
@@ -321,6 +326,3 @@ mod tests {
 }
 
 
-fn js_result(exit: u32, stdout: String, stderr: String) -> JsValue {
-    serde_wasm_bindgen::to_value(&WorkflowResult { exit, stdout, stderr }).unwrap()
-}
