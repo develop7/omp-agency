@@ -244,10 +244,10 @@ var pure = function(dict) {
 };
 var liftA1 = function(dictApplicative) {
   var apply2 = apply(dictApplicative.Apply0());
-  var pure13 = pure(dictApplicative);
+  var pure14 = pure(dictApplicative);
   return function(f) {
     return function(a) {
-      return apply2(pure13(f))(a);
+      return apply2(pure14(f))(a);
     };
   };
 };
@@ -306,13 +306,13 @@ var discardUnit = {
 
 // output/Control.Monad/index.js
 var ap = function(dictMonad) {
-  var bind6 = bind(dictMonad.Bind1());
-  var pure13 = pure(dictMonad.Applicative0());
+  var bind5 = bind(dictMonad.Bind1());
+  var pure11 = pure(dictMonad.Applicative0());
   return function(f) {
     return function(a) {
-      return bind6(f)(function(f$prime) {
-        return bind6(a)(function(a$prime) {
-          return pure13(f$prime(a$prime));
+      return bind5(f)(function(f$prime) {
+        return bind5(a)(function(a$prime) {
+          return pure11(f$prime(a$prime));
         });
       });
     };
@@ -423,6 +423,9 @@ var semiringInt = {
   zero: 0,
   mul: intMul,
   one: 1
+};
+var one = function(dict) {
+  return dict.one;
 };
 
 // output/Data.Ring/index.js
@@ -1146,13 +1149,13 @@ var traverseArrayImpl = /* @__PURE__ */ (function() {
   }
   return function(apply2) {
     return function(map15) {
-      return function(pure13) {
+      return function(pure11) {
         return function(f) {
           return function(array) {
             function go(bot, top3) {
               switch (top3 - bot) {
                 case 0:
-                  return pure13([]);
+                  return pure11([]);
                 case 1:
                   return map15(array1)(f(array[bot]));
                 case 2:
@@ -1179,12 +1182,12 @@ var traverse = function(dict) {
 };
 var traversableMaybe = {
   traverse: function(dictApplicative) {
-    var pure13 = pure(dictApplicative);
+    var pure11 = pure(dictApplicative);
     var map15 = map(dictApplicative.Apply0().Functor0());
     return function(v) {
       return function(v1) {
         if (v1 instanceof Nothing) {
-          return pure13(Nothing.value);
+          return pure11(Nothing.value);
         }
         ;
         if (v1 instanceof Just) {
@@ -1196,11 +1199,11 @@ var traversableMaybe = {
     };
   },
   sequence: function(dictApplicative) {
-    var pure13 = pure(dictApplicative);
+    var pure11 = pure(dictApplicative);
     var map15 = map(dictApplicative.Apply0().Functor0());
     return function(v) {
       if (v instanceof Nothing) {
-        return pure13(Nothing.value);
+        return pure11(Nothing.value);
       }
       ;
       if (v instanceof Just) {
@@ -1628,8 +1631,10 @@ function bundleDir() {
 }
 var tempSequence = 0;
 function uniqueTempPath(path) {
-  tempSequence += 1;
-  return `${path}.tmp.${process.pid}.${tempSequence}`;
+  return function() {
+    tempSequence += 1;
+    return `${path}.tmp.${process.pid}.${tempSequence}`;
+  };
 }
 function isCanonicalIso(value) {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) return false;
@@ -1746,6 +1751,11 @@ function parse(dateString) {
 }
 
 // output/Effect.Exception/foreign.js
+function throwException(e) {
+  return function() {
+    throw e;
+  };
+}
 function catchException(c) {
   return function(t) {
     return function() {
@@ -2045,6 +2055,80 @@ var joinWith = function(s) {
   };
 };
 
+// output/Node.FS.Perms/index.js
+var semiringPerm = {
+  add: function(v) {
+    return function(v1) {
+      return {
+        r: v.r || v1.r,
+        w: v.w || v1.w,
+        x: v.x || v1.x
+      };
+    };
+  },
+  zero: {
+    r: false,
+    w: false,
+    x: false
+  },
+  mul: function(v) {
+    return function(v1) {
+      return {
+        r: v.r && v1.r,
+        w: v.w && v1.w,
+        x: v.x && v1.x
+      };
+    };
+  },
+  one: {
+    r: true,
+    w: true,
+    x: true
+  }
+};
+var permToInt = function(v) {
+  return ((function() {
+    if (v.r) {
+      return 4;
+    }
+    ;
+    return 0;
+  })() + (function() {
+    if (v.w) {
+      return 2;
+    }
+    ;
+    return 0;
+  })() | 0) + (function() {
+    if (v.x) {
+      return 1;
+    }
+    ;
+    return 0;
+  })() | 0;
+};
+var permToString = /* @__PURE__ */ (function() {
+  var $129 = show(showInt);
+  return function($130) {
+    return $129(permToInt($130));
+  };
+})();
+var permsToString = function(v) {
+  return "0" + (permToString(v.u) + (permToString(v.g) + permToString(v.o)));
+};
+var mkPerms = function(u) {
+  return function(g) {
+    return function(o) {
+      return {
+        u,
+        g,
+        o
+      };
+    };
+  };
+};
+var all2 = /* @__PURE__ */ one(semiringPerm);
+
 // output/Node.FS.Sync/index.js
 var show2 = /* @__PURE__ */ show(showEncoding);
 var writeTextFile = function(encoding) {
@@ -2058,10 +2142,28 @@ var writeTextFile = function(encoding) {
     };
   };
 };
+var unlink = function(file) {
+  return function() {
+    return unlinkSync(file);
+  };
+};
 var stat = function(file) {
   return function() {
     return statSync(file);
   };
+};
+var rmdir$prime = function(path) {
+  return function(opts) {
+    return function() {
+      return rmdirSync(path, opts);
+    };
+  };
+};
+var rmdir = function(path) {
+  return rmdir$prime(path)({
+    maxRetries: 0,
+    retryDelay: 100
+  });
 };
 var rename = function(oldFile) {
   return function(newFile) {
@@ -2078,6 +2180,22 @@ var readTextFile = function(encoding) {
       });
     };
   };
+};
+var mkdir$prime = function(file) {
+  return function(v) {
+    return function() {
+      return mkdirSync(file, {
+        recursive: v.recursive,
+        mode: permsToString(v.mode)
+      });
+    };
+  };
+};
+var mkdir = function(path) {
+  return mkdir$prime(path)({
+    recursive: false,
+    mode: mkPerms(all2)(all2)(all2)
+  });
 };
 var exists = function(file) {
   return function() {
@@ -3118,18 +3236,18 @@ var empty3 = /* @__PURE__ */ (function() {
 
 // output/Agency.Scripts.Do.State/index.js
 var elem4 = /* @__PURE__ */ elem2(eqString);
-var bind2 = /* @__PURE__ */ bind(bindEither);
+var bind1 = /* @__PURE__ */ bind(bindEither);
 var fromFoldable4 = /* @__PURE__ */ fromFoldable3(foldableArray);
 var map9 = /* @__PURE__ */ map(functorArray);
 var map12 = /* @__PURE__ */ map(functorMaybe);
 var lookup3 = /* @__PURE__ */ lookup2(ordString);
-var bind1 = /* @__PURE__ */ bind(bindMaybe);
+var bind2 = /* @__PURE__ */ bind(bindMaybe);
 var append1 = /* @__PURE__ */ append(semigroupArray);
 var sortWith2 = /* @__PURE__ */ sortWith(ordString);
 var toUnfoldable3 = /* @__PURE__ */ toUnfoldable2(unfoldableArray);
 var discard2 = /* @__PURE__ */ discard(discardUnit);
 var discard22 = /* @__PURE__ */ discard2(bindEither);
-var pure6 = /* @__PURE__ */ pure(applicativeEither);
+var pure1 = /* @__PURE__ */ pure(applicativeEither);
 var map22 = /* @__PURE__ */ map(functorEither);
 var show3 = /* @__PURE__ */ show(showInt);
 var bindFlipped2 = /* @__PURE__ */ bindFlipped(bindEither);
@@ -3237,9 +3355,47 @@ var ActiveUnknown = /* @__PURE__ */ (function() {
   };
   return ActiveUnknown2;
 })();
+var withStateLock = function(path) {
+  return function(action) {
+    var lockPath = path + ".lock";
+    return function __do3() {
+      var acquired = $$try(mkdir(lockPath))();
+      if (acquired instanceof Left) {
+        return new Left((function() {
+          var $71 = code(acquired.value0) === "EEXIST";
+          if ($71) {
+            return "state: lock '" + (lockPath + "' already exists; another state mutation is running, or it is stale after a crash \u2014 remove the lock explicitly after confirming no mutation is active");
+          }
+          ;
+          return "state: unable to acquire lock '" + (lockPath + ("': " + message2(acquired.value0)));
+        })());
+      }
+      ;
+      if (acquired instanceof Right) {
+        var result = $$try(action)();
+        var released = $$try(rmdir(lockPath))();
+        if (result instanceof Left) {
+          return throwException(result.value0)();
+        }
+        ;
+        if (result instanceof Right && released instanceof Left) {
+          return new Left("state: unable to release lock '" + (lockPath + ("': " + message2(released.value0))));
+        }
+        ;
+        if (result instanceof Right && released instanceof Right) {
+          return new Right(result.value0);
+        }
+        ;
+        throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 443, column 7 - line 447, column 51): " + [result.constructor.name, released.constructor.name]);
+      }
+      ;
+      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 430, column 3 - line 447, column 51): " + [acquired.constructor.name]);
+    };
+  };
+};
 var validStepName = function(name2) {
-  var $70 = elem4(name2)(workflowSteps);
-  if ($70) {
+  var $81 = elem4(name2)(workflowSteps);
+  if ($81) {
     return new Right(unit);
   }
   ;
@@ -3262,10 +3418,10 @@ var stringValue = function(key) {
         return new Left("state: field '" + (key + "' must be a string"));
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 209, column 19 - line 211, column 72): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 211, column 19 - line 213, column 72): " + [v1.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 207, column 3 - line 211, column 72): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 209, column 3 - line 213, column 72): " + [v.constructor.name]);
   };
 };
 var startPending = function(pending) {
@@ -3283,7 +3439,7 @@ var startPending = function(pending) {
 };
 var requiredString = function(key) {
   return function(object) {
-    return bind2(stringValue(key)(object))(function(value) {
+    return bind1(stringValue(key)(object))(function(value) {
       if (value instanceof Just) {
         return new Right(value.value0);
       }
@@ -3292,7 +3448,7 @@ var requiredString = function(key) {
         return new Left("state: field '" + (key + "' must be a string"));
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 216, column 3 - line 218, column 70): " + [value.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 218, column 3 - line 220, column 70): " + [value.constructor.name]);
     });
   };
 };
@@ -3317,7 +3473,7 @@ var renderWorkflowStatus = function(status) {
     return status.value0;
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 93, column 31 - line 98, column 33): " + [status.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 95, column 31 - line 100, column 33): " + [status.constructor.name]);
 };
 var renderStepStatus = function(status) {
   if (status instanceof StepPassed) {
@@ -3336,7 +3492,7 @@ var renderStepStatus = function(status) {
     return status.value0;
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 117, column 27 - line 121, column 29): " + [status.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 119, column 27 - line 123, column 29): " + [status.constructor.name]);
 };
 var stepJson = function(step) {
   var base = fromFoldable4([new Tuple("name", id(step.name)), new Tuple("status", id(renderStepStatus(step.status))), new Tuple("verification", id(step.verification)), new Tuple("startedAt", id(step.startedAt)), new Tuple("completedAt", id(step.completedAt))]);
@@ -3348,7 +3504,7 @@ var stepJson = function(step) {
     return id(insert("reason")(id(step.reason.value0))(base));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 298, column 6 - line 300, column 77): " + [step.reason.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 300, column 6 - line 302, column 77): " + [step.reason.constructor.name]);
 };
 var renderActiveStatus = function(status) {
   if (status instanceof ActiveIdle) {
@@ -3367,7 +3523,7 @@ var renderActiveStatus = function(status) {
     return status.value0;
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 68, column 29 - line 72, column 31): " + [status.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 70, column 29 - line 74, column 31): " + [status.constructor.name]);
 };
 var pendingJson = function(pending) {
   return id(fromFoldable4([new Tuple("name", id(pending.name)), new Tuple("startedAt", id(pending.startedAt))]));
@@ -3403,7 +3559,7 @@ var stateGetJson = function(key) {
 };
 var stateGet = function(key) {
   return function(state2) {
-    var v = bind1(stateGetJson(key)(state2))(toString4);
+    var v = bind2(stateGetJson(key)(state2))(toString4);
     if (v instanceof Just) {
       return v.value0;
     }
@@ -3412,7 +3568,7 @@ var stateGet = function(key) {
       return "";
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 342, column 3 - line 344, column 18): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 344, column 3 - line 346, column 18): " + [v.constructor.name]);
   };
 };
 var stringifyState = function(state2) {
@@ -3426,7 +3582,7 @@ var stringifyState = function(state2) {
       return append1(known)([new Tuple("pendingStep", pendingJson(state2.pendingStep.value0))]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 321, column 19 - line 323, column 77): " + [state2.pendingStep.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 323, column 19 - line 325, column 77): " + [state2.pendingStep.constructor.name]);
   })();
   var extras = sortWith2(fst)(toUnfoldable3(state2.extras));
   return stringify(id(fromFoldable4(append1(withPending)(extras))));
@@ -3435,8 +3591,20 @@ var writeState = function(path) {
   return function(state2) {
     return function __do3() {
       var temporary = uniqueTempPath(path)();
-      writeUtf8(temporary)(stringifyState(state2))();
-      return rename2(temporary)(path)();
+      var result = $$try(function __do4() {
+        writeUtf8(temporary)(stringifyState(state2))();
+        return rename2(temporary)(path)();
+      })();
+      if (result instanceof Left) {
+        $$try(unlink(temporary))();
+        return throwException(result.value0)();
+      }
+      ;
+      if (result instanceof Right) {
+        return unit;
+      }
+      ;
+      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 455, column 3 - line 460, column 25): " + [result.constructor.name]);
     };
   };
 };
@@ -3492,13 +3660,13 @@ var validStepStatus = function(value) {
 };
 var validStep = function(step) {
   return discard22(validStepName(step.name))(function() {
-    return bind2(validStepStatus(renderStepStatus(step.status)))(function() {
-      return pure6(step);
+    return bind1(validStepStatus(renderStepStatus(step.status)))(function() {
+      return pure1(step);
     });
   });
 };
 var parseStep = function(value) {
-  return bind2((function() {
+  return bind1((function() {
     var v = toObject(value);
     if (v instanceof Just) {
       return new Right(v.value0);
@@ -3508,17 +3676,17 @@ var parseStep = function(value) {
       return new Left("state: each step must be an object");
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 225, column 13 - line 227, column 57): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 227, column 13 - line 229, column 57): " + [v.constructor.name]);
   })())(function(object) {
-    return bind2(requiredString("name")(object))(function(name2) {
+    return bind1(requiredString("name")(object))(function(name2) {
       return discard22(validStepName(name2))(function() {
-        return bind2(requiredString("status")(object))(function(statusText) {
-          return bind2(validStepStatus(statusText))(function(status) {
-            return bind2(requiredString("verification")(object))(function(verification) {
-              return bind2(requiredString("startedAt")(object))(function(startedAt) {
-                return bind2(requiredString("completedAt")(object))(function(completedAt) {
-                  return bind2(stringValue("reason")(object))(function(reason) {
-                    return pure6({
+        return bind1(requiredString("status")(object))(function(statusText) {
+          return bind1(validStepStatus(statusText))(function(status) {
+            return bind1(requiredString("verification")(object))(function(verification) {
+              return bind1(requiredString("startedAt")(object))(function(startedAt) {
+                return bind1(requiredString("completedAt")(object))(function(completedAt) {
+                  return bind1(stringValue("reason")(object))(function(reason) {
+                    return pure1({
                       name: name2,
                       status,
                       verification,
@@ -3537,7 +3705,7 @@ var parseStep = function(value) {
   });
 };
 var parsePending = function(value) {
-  return bind2((function() {
+  return bind1((function() {
     var v = toObject(value);
     if (v instanceof Just) {
       return new Right(v.value0);
@@ -3547,19 +3715,19 @@ var parsePending = function(value) {
       return new Left("state: pendingStep must be an object");
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 240, column 13 - line 242, column 59): " + [v.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 242, column 13 - line 244, column 59): " + [v.constructor.name]);
   })())(function(object) {
-    return bind2(requiredString("name")(object))(function(name2) {
+    return bind1(requiredString("name")(object))(function(name2) {
       return discard22((function() {
-        var $100 = elem4(name2)(workflowSteps);
-        if ($100) {
-          return pure6(unit);
+        var $114 = elem4(name2)(workflowSteps);
+        if ($114) {
+          return pure1(unit);
         }
         ;
         return new Left("state: unknown pending step '" + (name2 + "'"));
       })())(function() {
-        return bind2(requiredString("startedAt")(object))(function(startedAt) {
-          return pure6({
+        return bind1(requiredString("startedAt")(object))(function(startedAt) {
+          return pure1({
             name: name2,
             startedAt
           });
@@ -3696,16 +3864,16 @@ var initState = function(startedAt) {
   };
 };
 var boundedStepValues = function(values) {
-  var $116 = length(values) > maxPersistedSteps;
-  if ($116) {
+  var $130 = length(values) > maxPersistedSteps;
+  if ($130) {
     return new Left(stepHistoryLimitError("exceeded"));
   }
   ;
   return new Right(values);
 };
 var parseState = function(source) {
-  return bind2(jsonParser(source))(function(json) {
-    return bind2((function() {
+  return bind1(jsonParser(source))(function(json) {
+    return bind1((function() {
       var v = toObject(json);
       if (v instanceof Just) {
         return new Right(v.value0);
@@ -3715,15 +3883,15 @@ var parseState = function(source) {
         return new Left("state: top-level value must be an object");
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 251, column 13 - line 253, column 63): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 253, column 13 - line 255, column 63): " + [v.constructor.name]);
     })())(function(object) {
-      return bind2(optionalString("workflow")("do")(object))(function(workflow) {
-        return bind2(optionalString("startedAt")("")(object))(function(startedAt) {
-          return bind2(optionalString("active")("idle")(object))(function(activeText) {
-            return bind2(validActiveStatus(activeText))(function(active) {
-              return bind2(optionalString("status")("idle")(object))(function(statusText) {
-                return bind2(validWorkflowStatus(statusText))(function(status) {
-                  return bind2((function() {
+      return bind1(optionalString("workflow")("do")(object))(function(workflow) {
+        return bind1(optionalString("startedAt")("")(object))(function(startedAt) {
+          return bind1(optionalString("active")("idle")(object))(function(activeText) {
+            return bind1(validActiveStatus(activeText))(function(active) {
+              return bind1(optionalString("status")("idle")(object))(function(statusText) {
+                return bind1(validWorkflowStatus(statusText))(function(status) {
+                  return bind1((function() {
                     var v = lookup("steps")(object);
                     if (v instanceof Nothing) {
                       return new Right([]);
@@ -3739,34 +3907,34 @@ var parseState = function(source) {
                         return bindFlipped2(traverse3(parseStep))(boundedStepValues(v1.value0));
                       }
                       ;
-                      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 262, column 19 - line 264, column 69): " + [v1.constructor.name]);
+                      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 264, column 19 - line 266, column 69): " + [v1.constructor.name]);
                     }
                     ;
-                    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 260, column 12 - line 264, column 69): " + [v.constructor.name]);
+                    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 262, column 12 - line 266, column 69): " + [v.constructor.name]);
                   })())(function(steps) {
-                    return bind2((function() {
+                    return bind1((function() {
                       var v = lookup("pendingStep")(object);
                       if (v instanceof Nothing) {
                         return new Right(Nothing.value);
                       }
                       ;
                       if (v instanceof Just) {
-                        var $124 = isNull2(v.value0);
-                        if ($124) {
+                        var $138 = isNull2(v.value0);
+                        if ($138) {
                           return new Right(Nothing.value);
                         }
                         ;
                         return map22(Just.create)(parsePending(v.value0));
                       }
                       ;
-                      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 265, column 18 - line 267, column 91): " + [v.constructor.name]);
+                      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 267, column 18 - line 269, column 91): " + [v.constructor.name]);
                     })())(function(pendingStep) {
                       var extras = foldl2(function(acc) {
                         return function(key) {
-                          var $126 = any3(function(known) {
+                          var $140 = any3(function(known) {
                             return known === key;
                           })(knownKeys);
-                          if ($126) {
+                          if ($140) {
                             return acc;
                           }
                           ;
@@ -3779,10 +3947,10 @@ var parseState = function(source) {
                             return acc;
                           }
                           ;
-                          throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 272, column 18 - line 274, column 29): " + [v.constructor.name]);
+                          throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 274, column 18 - line 276, column 29): " + [v.constructor.name]);
                         };
                       })(empty3)(keys(object));
-                      return pure6({
+                      return pure1({
                         workflow,
                         startedAt,
                         active,
@@ -3806,8 +3974,8 @@ var readState = function(path) {
   return function __do3() {
     var readResult = $$try(readUtf8(path))();
     if (readResult instanceof Left) {
-      var $130 = code(readResult.value0) === "ENOENT";
-      if ($130) {
+      var $144 = code(readResult.value0) === "ENOENT";
+      if ($144) {
         return new Right(Nothing.value);
       }
       ;
@@ -3824,10 +3992,10 @@ var readState = function(path) {
         return new Right(new Just(v.value0));
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 417, column 21 - line 419, column 40): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 419, column 21 - line 421, column 40): " + [v.constructor.name]);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 413, column 8 - line 419, column 40): " + [readResult.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 415, column 8 - line 421, column 40): " + [readResult.constructor.name]);
   };
 };
 var setField = function(key) {
@@ -3843,7 +4011,7 @@ var setField = function(key) {
           return new Left("state: field '" + (field + "' must be a string"));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 375, column 5 - line 377, column 74): " + [v2.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 377, column 5 - line 379, column 74): " + [v2.constructor.name]);
       };
       var setStringField = function(field) {
         return function(update) {
@@ -3879,9 +4047,9 @@ var setField = function(key) {
       }
       ;
       if (key === "active") {
-        return bind2(stringField(key))(function(text) {
-          return bind2(validActiveStatus(text))(function(active) {
-            return pure6({
+        return bind1(stringField(key))(function(text) {
+          return bind1(validActiveStatus(text))(function(active) {
+            return pure1({
               extras: state2.extras,
               pendingStep: state2.pendingStep,
               startedAt: state2.startedAt,
@@ -3895,9 +4063,9 @@ var setField = function(key) {
       }
       ;
       if (key === "status") {
-        return bind2(stringField(key))(function(text) {
-          return bind2(validWorkflowStatus(text))(function(status) {
-            return pure6({
+        return bind1(stringField(key))(function(text) {
+          return bind1(validWorkflowStatus(text))(function(status) {
+            return pure1({
               active: state2.active,
               extras: state2.extras,
               pendingStep: state2.pendingStep,
@@ -3917,9 +4085,9 @@ var setField = function(key) {
         }
         ;
         if (v instanceof Just) {
-          return bind2(boundedStepValues(v.value0))(function(boundedValues) {
-            return bind2(traverse3(parseStep)(boundedValues))(function(steps) {
-              return pure6({
+          return bind1(boundedStepValues(v.value0))(function(boundedValues) {
+            return bind1(traverse3(parseStep)(boundedValues))(function(steps) {
+              return pure1({
                 active: state2.active,
                 extras: state2.extras,
                 pendingStep: state2.pendingStep,
@@ -3932,12 +4100,12 @@ var setField = function(key) {
           });
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 361, column 16 - line 366, column 39): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.State (line 363, column 16 - line 368, column 39): " + [v.constructor.name]);
       }
       ;
       if (key === "pendingStep") {
-        var $141 = isNull2(value);
-        if ($141) {
+        var $155 = isNull2(value);
+        if ($155) {
           return new Right({
             active: state2.active,
             extras: state2.extras,
@@ -3949,8 +4117,8 @@ var setField = function(key) {
           });
         }
         ;
-        return bind2(parsePending(value))(function(pending) {
-          return pure6({
+        return bind1(parsePending(value))(function(pending) {
+          return pure1({
             active: state2.active,
             extras: state2.extras,
             startedAt: state2.startedAt,
@@ -3976,9 +4144,9 @@ var setField = function(key) {
 };
 var appendStep = function(step) {
   return function(state2) {
-    return bind2(validStep(step))(function() {
-      var $142 = length(state2.steps) >= maxPersistedSteps;
-      if ($142) {
+    return bind1(validStep(step))(function() {
+      var $156 = length(state2.steps) >= maxPersistedSteps;
+      if ($156) {
         return new Left(stepHistoryLimitError("reached"));
       }
       ;
@@ -4019,7 +4187,7 @@ var Unknown2 = /* @__PURE__ */ (function() {
 })();
 
 // output/Agency.Scripts.Do.Vcs/index.js
-var pure7 = /* @__PURE__ */ pure(applicativeEffect);
+var pure6 = /* @__PURE__ */ pure(applicativeEffect);
 var map10 = /* @__PURE__ */ map(functorEffect);
 var append12 = /* @__PURE__ */ append(semigroupArray);
 var map13 = /* @__PURE__ */ map(functorArray);
@@ -4574,7 +4742,7 @@ var headRevisionValue = function(context) {
   }
   ;
   if (context.vcs instanceof Unknown2) {
-    return pure7({
+    return pure6({
       code: 1,
       value: "",
       stdout: "",
@@ -4671,11 +4839,11 @@ var failureLines = function(values) {
 };
 var resolveBase = function(context) {
   if (context.base instanceof Just) {
-    return pure7(withStdout(context.base.value0 + "\n"));
+    return pure6(withStdout(context.base.value0 + "\n"));
   }
   ;
   if (context.base instanceof Nothing) {
-    return pure7(failureLines(["vcs-op: base is not set. sync must run first to resolve the base", "        (from --base <branch>, --stack, or the default branch).", "        If this was a --from re-run, the parent run did not persist base."]));
+    return pure6(failureLines(["vcs-op: base is not set. sync must run first to resolve the base", "        (from --base <branch>, --stack, or the default branch).", "        If this was a --from re-run, the parent run did not persist base."]));
   }
   ;
   throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 249, column 23 - line 255, column 7): " + [context.base.constructor.name]);
@@ -4726,7 +4894,7 @@ var inspectDirty = function(context) {
   }
   ;
   if (context.vcs instanceof Unknown2) {
-    return pure7(Clean.value);
+    return pure6(Clean.value);
   }
   ;
   throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 357, column 24 - line 368, column 24): " + [context.vcs.constructor.name]);
@@ -4742,7 +4910,7 @@ var logHead = function(context) {
   }
   ;
   if (context.vcs instanceof Unknown2) {
-    return pure7(noVcsOutcome);
+    return pure6(noVcsOutcome);
   }
   ;
   throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 458, column 19 - line 461, column 31): " + [context.vcs.constructor.name]);
@@ -4858,7 +5026,7 @@ var currentBranchValue = function(context) {
   }
   ;
   if (context.vcs instanceof Unknown2) {
-    return pure7({
+    return pure6({
       code: 0,
       value: "",
       stdout: "",
@@ -4944,7 +5112,7 @@ var remoteEntries = function(context) {
   }
   ;
   if (context.vcs instanceof Unknown2) {
-    return pure7(new Left("vcs-op: no VCS detected"));
+    return pure6(new Left("vcs-op: no VCS detected"));
   }
   ;
   throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 669, column 25 - line 680, column 51): " + [context.vcs.constructor.name]);
@@ -5020,7 +5188,7 @@ var defaultBranchValue = function(context) {
   }
   ;
   if (context.vcs instanceof Unknown2) {
-    return pure7(failureValue("vcs-op: unable to resolve default branch (no VCS detected)"));
+    return pure6(failureValue("vcs-op: unable to resolve default branch (no VCS detected)"));
   }
   ;
   throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 287, column 30 - line 309, column 94): " + [context.vcs.constructor.name]);
@@ -5124,7 +5292,7 @@ var currentAtDefault = function(context) {
     }
     ;
     if (context.vcs instanceof Unknown2) {
-      return pure7(new Left("vcs-op: no VCS detected"));
+      return pure6(new Left("vcs-op: no VCS detected"));
     }
     ;
     throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 332, column 33 - line 343, column 51): " + [context.vcs.constructor.name]);
@@ -5189,7 +5357,7 @@ var diffNames = function(context) {
       }
       ;
       if (context.vcs instanceof Unknown2) {
-        return pure7(noVcsOutcome);
+        return pure6(noVcsOutcome);
       }
       ;
       throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 394, column 17 - line 402, column 33): " + [context.vcs.constructor.name]);
@@ -5227,7 +5395,7 @@ var diffRange = function(context) {
       }
       ;
       if (context.vcs instanceof Unknown2) {
-        return pure7(noVcsOutcome);
+        return pure6(noVcsOutcome);
       }
       ;
       throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 381, column 17 - line 389, column 33): " + [context.vcs.constructor.name]);
@@ -5265,7 +5433,7 @@ var diffStat = function(context) {
       }
       ;
       if (context.vcs instanceof Unknown2) {
-        return pure7(noVcsOutcome);
+        return pure6(noVcsOutcome);
       }
       ;
       throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 407, column 17 - line 415, column 33): " + [context.vcs.constructor.name]);
@@ -5328,7 +5496,7 @@ var newFiles = function(context) {
       }
       ;
       if (context.vcs instanceof Unknown2) {
-        return pure7(noVcsOutcome);
+        return pure6(noVcsOutcome);
       }
       ;
       throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 420, column 17 - line 433, column 33): " + [context.vcs.constructor.name]);
@@ -5380,7 +5548,7 @@ var logRange = function(context) {
       }
       ;
       if (context.vcs instanceof Unknown2) {
-        return pure7(noVcsOutcome);
+        return pure6(noVcsOutcome);
       }
       ;
       throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 442, column 17 - line 455, column 33): " + [context.vcs.constructor.name]);
@@ -5392,7 +5560,7 @@ var logRange = function(context) {
 var validateBase = function(context) {
   return function(base) {
     if (base === "") {
-      return pure7(new Left("base must not be empty"));
+      return pure6(new Left("base must not be empty"));
     }
     ;
     if (otherwise) {
@@ -5409,7 +5577,7 @@ var validateBase = function(context) {
       }
       ;
       if (context.vcs instanceof Unknown2) {
-        return pure7(new Left("vcs-op: no VCS detected"));
+        return pure6(new Left("vcs-op: no VCS detected"));
       }
       ;
       throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 349, column 17 - line 352, column 55): " + [context.vcs.constructor.name]);
@@ -5482,7 +5650,7 @@ var push2 = function(context) {
     }
     ;
     if (context.vcs instanceof Unknown2) {
-      return pure7(noVcsOutcome);
+      return pure6(noVcsOutcome);
     }
     ;
     throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 592, column 20 - line 606, column 31): " + [context.vcs.constructor.name]);
@@ -5543,11 +5711,11 @@ var capturedCommand = function(command) {
 };
 var fastForwardIfSafe = function(context) {
   if (context.vcs instanceof Jj) {
-    return pure7(success);
+    return pure6(success);
   }
   ;
   if (context.vcs instanceof Unknown2) {
-    return pure7(success);
+    return pure6(success);
   }
   ;
   if (context.vcs instanceof Git) {
@@ -5596,7 +5764,7 @@ var fastForwardIfSafe = function(context) {
 };
 var fetchValue = function(context) {
   if (context.vcs instanceof Unknown2) {
-    return pure7(noVcsOutcome);
+    return pure6(noVcsOutcome);
   }
   ;
   if (context.vcs instanceof Git) {
@@ -5621,11 +5789,11 @@ var refreshDefaultBranchValue = function(context) {
   }
   ;
   if (context.vcs instanceof Jj) {
-    return pure7(success);
+    return pure6(success);
   }
   ;
   if (context.vcs instanceof Unknown2) {
-    return pure7(success);
+    return pure6(success);
   }
   ;
   throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 210, column 37 - line 214, column 34): " + [context.vcs.constructor.name]);
@@ -5634,7 +5802,7 @@ var branch = function(context) {
   return function(name2) {
     var v = validateBranchName(name2);
     if (v instanceof Left) {
-      return pure7(failureLine(v.value0));
+      return pure6(failureLine(v.value0));
     }
     ;
     if (v instanceof Right) {
@@ -5680,7 +5848,7 @@ var branch = function(context) {
         }
         ;
         if (context.vcs instanceof Unknown2) {
-          return pure7(noVcsOutcome);
+          return pure6(noVcsOutcome);
         }
         ;
         throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 479, column 19 - line 492, column 35): " + [context.vcs.constructor.name]);
@@ -5712,7 +5880,7 @@ var bookmarkAt = function(revision) {
 };
 var featureBookmark = function(context) {
   if (context.base instanceof Nothing) {
-    return pure7(new Left(failureLine("vcs-op commit: jj requires a resolved base to protect the trunk bookmark")));
+    return pure6(new Left(failureLine("vcs-op commit: jj requires a resolved base to protect the trunk bookmark")));
   }
   ;
   if (context.base instanceof Just) {
@@ -5802,7 +5970,7 @@ var commit = function(context) {
     return function(files) {
       var $253 = $$null(files);
       if ($253) {
-        return pure7(failureLine("vcs-op: at least one file required (got none \u2014 pass the files you changed)"));
+        return pure6(failureLine("vcs-op: at least one file required (got none \u2014 pass the files you changed)"));
       }
       ;
       return function __do3() {
@@ -5850,7 +6018,7 @@ var fixCommit = function(context) {
 var runVcsOp = function(context) {
   return function(operation) {
     if (operation instanceof Detect2) {
-      return pure7(withStdout(vcsName(context.vcs) + "\n"));
+      return pure6(withStdout(vcsName(context.vcs) + "\n"));
     }
     ;
     if (operation instanceof Fetch) {
@@ -5875,7 +6043,7 @@ var runVcsOp = function(context) {
       }
       ;
       if (context.vcs instanceof Unknown2) {
-        return pure7(noVcsOutcome);
+        return pure6(noVcsOutcome);
       }
       ;
       throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 177, column 20 - line 180, column 33): " + [context.vcs.constructor.name]);
@@ -6082,7 +6250,7 @@ var parseVcsOp = function(args) {
 };
 
 // output/Agency.Scripts.Do.Results/index.js
-var pure8 = /* @__PURE__ */ pure(applicativeEffect);
+var pure7 = /* @__PURE__ */ pure(applicativeEffect);
 var bind13 = /* @__PURE__ */ bind(bindEither);
 var eq12 = /* @__PURE__ */ eq(eqActiveStatus);
 var show4 = /* @__PURE__ */ show(showInt);
@@ -6146,7 +6314,7 @@ var resolveNow = function(value) {
     return nowIso;
   }
   ;
-  return pure8(value);
+  return pure7(value);
 };
 var putCapabilities = function(forge) {
   return function(state2) {
@@ -6328,7 +6496,7 @@ var runStepEnd = function(context) {
       return function(reason) {
         return withLoadedState(context)(function(state2) {
           if (state2.pendingStep instanceof Nothing) {
-            return pure8(failText("do-results: no pendingStep \u2014 call step-start first"));
+            return pure7(failText("do-results: no pendingStep \u2014 call step-start first"));
           }
           ;
           if (state2.pendingStep instanceof Just) {
@@ -6370,7 +6538,7 @@ var runStepStart = function(context) {
   return function(name2) {
     return withLoadedState(context)(function(state2) {
       if (state2.pendingStep instanceof Just) {
-        return pure8(failText("do-results: pendingStep '" + (state2.pendingStep.value0.name + ("' already active \u2014 call step-end before starting '" + (name2 + "'")))));
+        return pure7(failText("do-results: pendingStep '" + (state2.pendingStep.value0.name + ("' already active \u2014 call step-end before starting '" + (name2 + "'")))));
       }
       ;
       if (state2.pendingStep instanceof Nothing) {
@@ -6438,7 +6606,7 @@ var runSet = function(context) {
           return setField(field)(json)(state2);
         });
         if (updated instanceof Left) {
-          return pure8(failText(updated.value0));
+          return pure7(failText(updated.value0));
         }
         ;
         if (updated instanceof Right) {
@@ -6456,7 +6624,7 @@ var runSet = function(context) {
 
 // output/Agency.Scripts.Do.DoneSummary/index.js
 var bind14 = /* @__PURE__ */ bind(bindEither);
-var pure1 = /* @__PURE__ */ pure(applicativeEither);
+var pure12 = /* @__PURE__ */ pure(applicativeEither);
 var max3 = /* @__PURE__ */ max(ordInt);
 var show5 = /* @__PURE__ */ show(showInt);
 var div2 = /* @__PURE__ */ div(euclideanRingInt);
@@ -6478,7 +6646,7 @@ var timedStep = function(step) {
     var completed = isoToEpoch(step.completedAt)();
     return bind14(started)(function(start) {
       return bind14(completed)(function(end) {
-        return pure1({
+        return pure12({
           step,
           seconds: max3(0)(end - start | 0)
         });
@@ -6493,7 +6661,7 @@ var timedPending = function(now2) {
       var ended = isoToEpoch(now2)();
       return bind14(started)(function(start) {
         return bind14(ended)(function(end) {
-          return pure1({
+          return pure12({
             name: pending.name,
             seconds: max3(0)(end - start | 0)
           });
@@ -6756,7 +6924,7 @@ var compute = function(state2) {
             })(nonSkipped);
             var slowest = slowestStep(durations);
             var dominant = mapMaybe(dominantName(totalDuration))(durations);
-            return pure1({
+            return pure12({
               rows: timed,
               pending,
               totalSeconds: totalDuration,
@@ -6805,7 +6973,7 @@ var run3 = function(context) {
 // output/Agency.Scripts.Do.NickelRuntime/index.js
 var bind3 = /* @__PURE__ */ bind(bindMaybe);
 var bind15 = /* @__PURE__ */ bind(bindEither);
-var pure9 = /* @__PURE__ */ pure(applicativeEither);
+var pure8 = /* @__PURE__ */ pure(applicativeEither);
 var fromFoldable5 = /* @__PURE__ */ fromFoldable3(foldableArray);
 var requiredJsonString = function(field) {
   return function(object) {
@@ -6848,7 +7016,7 @@ var decodeBridge = function(json) {
     })())(function(exit2) {
       return bind15(requiredJsonString("stdout")(object))(function(stdout2) {
         return bind15(requiredJsonString("stderr")(object))(function(stderr2) {
-          return pure9({
+          return pure8({
             exit: exit2,
             stdout: stdout2,
             stderr: stderr2
@@ -6907,7 +7075,7 @@ var run4 = function(context) {
 
 // output/Agency.Scripts.Do.Sync/index.js
 var bind4 = /* @__PURE__ */ bind(bindEither);
-var pure10 = /* @__PURE__ */ pure(applicativeEffect);
+var pure9 = /* @__PURE__ */ pure(applicativeEffect);
 var show6 = /* @__PURE__ */ show(showBoolean);
 var quietResult = function(result) {
   if (result.output instanceof Passthrough) {
@@ -7011,7 +7179,7 @@ var resolveSyncBase = function(options) {
       }
       ;
       if (options.base instanceof Nothing) {
-        return pure10(new Right(defaultRef));
+        return pure9(new Right(defaultRef));
       }
       ;
       throw new Error("Failed pattern match at Agency.Scripts.Do.Sync (line 177, column 46 - line 193, column 37): " + [options.base.constructor.name]);
@@ -7021,7 +7189,7 @@ var resolveSyncBase = function(options) {
 var fetchPhase = function(context) {
   return function(noVcs) {
     if (noVcs) {
-      return pure10(new Right({
+      return pure9(new Right({
         quietFetch: success,
         quietRefresh: success,
         forwarded: success
@@ -7189,7 +7357,7 @@ var basePhase = function(context) {
   return function(options) {
     return function(state1) {
       if (options.noVcs) {
-        return pure10(noVcsBase(state1));
+        return pure9(noVcsBase(state1));
       }
       ;
       return function __do3() {
@@ -7289,8 +7457,8 @@ var run5 = function(context) {
 };
 
 // output/Agency.Scripts.Do.Ops/index.js
-var bind5 = /* @__PURE__ */ bind(bindMaybe);
-var pure11 = /* @__PURE__ */ pure(applicativeMaybe);
+var bind16 = /* @__PURE__ */ bind(bindMaybe);
+var pure13 = /* @__PURE__ */ pure(applicativeMaybe);
 var elem7 = /* @__PURE__ */ elem2(eqString);
 var discard3 = /* @__PURE__ */ discard(discardUnit)(bindEither);
 var notEq1 = /* @__PURE__ */ notEq(/* @__PURE__ */ eqMaybe(eqString));
@@ -7462,13 +7630,29 @@ var DriverSummary = /* @__PURE__ */ (function() {
   DriverSummary2.value = new DriverSummary2();
   return DriverSummary2;
 })();
+var withMutationLock = function(context) {
+  return function(action) {
+    return function __do3() {
+      var result = withStateLock(statePath(context))(action)();
+      if (result instanceof Left) {
+        return failure(1)(result.value0 + "\n");
+      }
+      ;
+      if (result instanceof Right) {
+        return result.value0;
+      }
+      ;
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 330, column 8 - line 332, column 29): " + [result.constructor.name]);
+    };
+  };
+};
 var takeFive = function(values) {
-  return bind5(requiredNonEmpty(values))(function(name2) {
-    return bind5(requiredNonEmpty(name2.rest))(function(status) {
-      return bind5(uncons(status.rest))(function(verification) {
-        return bind5(requiredNonEmpty(verification.tail))(function(startedAt) {
-          return bind5(requiredNonEmpty(startedAt.rest))(function(completedAt) {
-            return pure11({
+  return bind16(requiredNonEmpty(values))(function(name2) {
+    return bind16(requiredNonEmpty(name2.rest))(function(status) {
+      return bind16(uncons(status.rest))(function(verification) {
+        return bind16(requiredNonEmpty(verification.tail))(function(startedAt) {
+          return bind16(requiredNonEmpty(startedAt.rest))(function(completedAt) {
+            return pure13({
               name: name2.value,
               status: status.value,
               verification: verification.head,
@@ -7484,32 +7668,34 @@ var takeFive = function(values) {
 };
 var runSyncOp = function(context) {
   return function(v) {
-    return run5(context)(v.value0);
+    return withMutationLock(context)(run5(context)(v.value0));
   };
 };
 var runResultsOp = function(context) {
   return function(operation) {
-    if (operation instanceof ResultsInit) {
-      return runInit(context);
-    }
-    ;
-    if (operation instanceof ResultsStepStart) {
-      return runStepStart(context)(operation.value0);
-    }
-    ;
-    if (operation instanceof ResultsStepEnd) {
-      return runStepEnd(context)(operation.value0)(operation.value1)(operation.value2);
-    }
-    ;
-    if (operation instanceof ResultsStep) {
-      return runStep(context)(operation.value0)(operation.value1)(operation.value2)(operation.value3)(operation.value4)(operation.value5);
-    }
-    ;
-    if (operation instanceof ResultsSet) {
-      return runSet(context)(operation.value0)(operation.value1);
-    }
-    ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 301, column 34 - line 307, column 63): " + [operation.constructor.name]);
+    return withMutationLock(context)((function() {
+      if (operation instanceof ResultsInit) {
+        return runInit(context);
+      }
+      ;
+      if (operation instanceof ResultsStepStart) {
+        return runStepStart(context)(operation.value0);
+      }
+      ;
+      if (operation instanceof ResultsStepEnd) {
+        return runStepEnd(context)(operation.value0)(operation.value1)(operation.value2);
+      }
+      ;
+      if (operation instanceof ResultsStep) {
+        return runStep(context)(operation.value0)(operation.value1)(operation.value2)(operation.value3)(operation.value4)(operation.value5);
+      }
+      ;
+      if (operation instanceof ResultsSet) {
+        return runSet(context)(operation.value0)(operation.value1);
+      }
+      ;
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 304, column 7 - line 310, column 69): " + [operation.constructor.name]);
+    })());
   };
 };
 var runNickelOp = function(context) {
@@ -7522,36 +7708,36 @@ var runNickelOp = function(context) {
       return run4(context)(new Just(operation.value0));
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 348, column 33 - line 350, column 62): " + [operation.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 360, column 33 - line 362, column 62): " + [operation.constructor.name]);
   };
 };
 var runDriverOp = function(context) {
   return function(operation) {
     if (operation instanceof DriverInit) {
-      return runDriverInit(context)(operation.value0);
+      return withMutationLock(context)(runDriverInit(context)(operation.value0));
     }
     ;
     if (operation instanceof DriverStart) {
-      return runStepStart(context)(operation.value0);
+      return withMutationLock(context)(runStepStart(context)(operation.value0));
     }
     ;
     if (operation instanceof DriverEnd) {
-      return runStepEnd(context)(operation.value0)(operation.value1)(operation.value2);
+      return withMutationLock(context)(runStepEnd(context)(operation.value0)(operation.value1)(operation.value2));
     }
     ;
     if (operation instanceof DriverSkip) {
-      return runDriverSkip(context)(operation.value0)(operation.value1);
+      return withMutationLock(context)(runDriverSkip(context)(operation.value0)(operation.value1));
     }
     ;
     if (operation instanceof DriverSet) {
-      return runSet(context)(operation.value0)(operation.value1);
+      return withMutationLock(context)(runSet(context)(operation.value0)(operation.value1));
     }
     ;
     if (operation instanceof DriverSummary) {
       return run3(context);
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 311, column 33 - line 317, column 42): " + [operation.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 315, column 33 - line 321, column 42): " + [operation.constructor.name]);
   };
 };
 var resultsCommandNames = "init|step-start|step-end|step|set";
@@ -7571,10 +7757,10 @@ var resolveWorkflowContext = function(captureOutput) {
     if (stateResult instanceof Right) {
       var jjPresent = isDir(root + "/.jj")();
       var gitPresent = isDir(root + "/.git")();
-      var stateVcs = bind5(stateResult.value0)((function() {
-        var $179 = stateGet("vcs");
-        return function($180) {
-          return nonEmpty($179($180));
+      var stateVcs = bind16(stateResult.value0)((function() {
+        var $182 = stateGet("vcs");
+        return function($183) {
+          return nonEmpty($182($183));
         };
       })());
       var vcsOverride = (function() {
@@ -7586,13 +7772,13 @@ var resolveWorkflowContext = function(captureOutput) {
           return nonEmpty(vcsOverrideText);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 287, column 25 - line 289, column 53): " + [stateVcs.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 288, column 25 - line 290, column 53): " + [stateVcs.constructor.name]);
       })();
       var vcs = detectVcs(vcsOverride)(stateVcs)(jjPresent)(gitPresent);
-      var stateForge = bind5(stateResult.value0)((function() {
-        var $181 = stateGet("forge");
-        return function($182) {
-          return nonEmpty($181($182));
+      var stateForge = bind16(stateResult.value0)((function() {
+        var $184 = stateGet("forge");
+        return function($185) {
+          return nonEmpty($184($185));
         };
       })());
       var forgeOverride = (function() {
@@ -7604,12 +7790,12 @@ var resolveWorkflowContext = function(captureOutput) {
           return nonEmpty(forgeOverrideText);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 290, column 27 - line 292, column 55): " + [stateForge.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 291, column 27 - line 293, column 55): " + [stateForge.constructor.name]);
       })();
-      var base = bind5(stateResult.value0)((function() {
-        var $183 = stateGet("base");
-        return function($184) {
-          return nonEmpty($183($184));
+      var base = bind16(stateResult.value0)((function() {
+        var $186 = stateGet("base");
+        return function($187) {
+          return nonEmpty($186($187));
         };
       })());
       var partial = {
@@ -7634,7 +7820,7 @@ var resolveWorkflowContext = function(captureOutput) {
       });
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 280, column 3 - line 298, column 47): " + [stateResult.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 281, column 3 - line 299, column 47): " + [stateResult.constructor.name]);
   };
 };
 var parseError = function(code2) {
@@ -7646,8 +7832,8 @@ var parseError = function(code2) {
   };
 };
 var validEntryPoint = function(entry) {
-  var $84 = elem7(entry)(entryPoints);
-  if ($84) {
+  var $87 = elem7(entry)(entryPoints);
+  if ($87) {
     return new Right(unit);
   }
   ;
@@ -7676,8 +7862,8 @@ var parseNickelOp = function(args) {
       ;
       if (v1 instanceof Just) {
         return discard3(validEntryPoint(v1.value0.value))(function() {
-          var $88 = $$null(v1.value0.rest);
-          if ($88) {
+          var $91 = $$null(v1.value0.rest);
+          if ($91) {
             return new Right(new NickelCliSeed(v1.value0.value));
           }
           ;
@@ -7685,25 +7871,25 @@ var parseNickelOp = function(args) {
         });
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 248, column 19 - line 253, column 80): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 249, column 19 - line 254, column 80): " + [v1.constructor.name]);
     }
     ;
     return new Left(parseError(2)("nickel-cli: unknown field: " + v.value0.value));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 243, column 22 - line 254, column 72): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 244, column 22 - line 255, column 72): " + [v.constructor.name]);
 };
 var validStepStatus2 = function(status) {
-  var $95 = elem7(status)(["passed", "failed", "skipped"]);
-  if ($95) {
+  var $98 = elem7(status)(["passed", "failed", "skipped"]);
+  if ($98) {
     return new Right(unit);
   }
   ;
   return new Left(parseError(1)("do-results: invalid status '" + (status + "' (passed|failed|skipped)")));
 };
 var validWorkflowStep = function(step) {
-  var $96 = elem7(step)(workflowSteps);
-  if ($96) {
+  var $99 = elem7(step)(workflowSteps);
+  if ($99) {
     return new Right(unit);
   }
   ;
@@ -7732,7 +7918,7 @@ var parseResultsOp = function(args) {
         });
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 104, column 23 - line 108, column 40): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 105, column 23 - line 109, column 40): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "step-end") {
@@ -7743,11 +7929,11 @@ var parseResultsOp = function(args) {
       ;
       if (v1 instanceof Just) {
         return discard3(validStepStatus2(v1.value0.value))(function() {
-          return new Right(new ResultsStepEnd(v1.value0.value, fromMaybe("")(head(v1.value0.rest)), bind5(index(v1.value0.rest)(1))(nonEmpty)));
+          return new Right(new ResultsStepEnd(v1.value0.value, fromMaybe("")(head(v1.value0.rest)), bind16(index(v1.value0.rest)(1))(nonEmpty)));
         });
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 109, column 21 - line 113, column 126): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 110, column 21 - line 114, column 126): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "step") {
@@ -7759,12 +7945,12 @@ var parseResultsOp = function(args) {
       if (v1 instanceof Just) {
         return discard3(validWorkflowStep(v1.value0.name))(function() {
           return discard3(validStepStatus2(v1.value0.status))(function() {
-            return new Right(new ResultsStep(v1.value0.name, v1.value0.status, v1.value0.verification, v1.value0.startedAt, v1.value0.completedAt, bind5(head(v1.value0.tail))(nonEmpty)));
+            return new Right(new ResultsStep(v1.value0.name, v1.value0.status, v1.value0.verification, v1.value0.startedAt, v1.value0.completedAt, bind16(head(v1.value0.tail))(nonEmpty)));
           });
         });
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 114, column 17 - line 119, column 114): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 115, column 17 - line 120, column 114): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "set") {
@@ -7783,24 +7969,24 @@ var parseResultsOp = function(args) {
           return new Right(new ResultsSet(v1.value0.value, v2.value0.value));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 122, column 47 - line 124, column 59): " + [v2.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 123, column 47 - line 125, column 59): " + [v2.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 120, column 16 - line 124, column 59): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 121, column 16 - line 125, column 59): " + [v1.constructor.name]);
     }
     ;
     return new Left(parseError(1)("Unknown command: " + (v.value0.value + ("\n" + resultsUsage))));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 100, column 3 - line 125, column 88): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 101, column 3 - line 126, column 88): " + [v.constructor.name]);
 };
 var parseDriverInit = function(args) {
   var go = function(remaining) {
     return function(state2) {
       var v = uncons(remaining);
       if (v instanceof Nothing) {
-        var $125 = state2.review && (state2.from !== "" && state2.from !== "default");
-        if ($125) {
+        var $128 = state2.review && (state2.from !== "" && state2.from !== "default");
+        if ($128) {
           return new Left(parseError(2)("do-driver: --review is incompatible with --from=" + (state2.from + ("\n" + ("         --from=" + (state2.from + " starts past research, where the plan-approval pause lives.\n         drop --review if the plan is already approved, or drop --from for a full workflow."))))));
         }
         ;
@@ -7879,7 +8065,7 @@ var parseDriverInit = function(args) {
             return new Left(parseError(2)("do-driver: --from requires a non-empty step"));
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 194, column 44 - line 198, column 85): " + [v1.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 195, column 44 - line 199, column 85): " + [v1.constructor.name]);
         }
         ;
         if (startsWith("--")(v.value0.head)) {
@@ -7901,10 +8087,10 @@ var parseDriverInit = function(args) {
           });
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 187, column 40 - line 201, column 55): " + [v.value0.head.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 188, column 40 - line 202, column 55): " + [v.value0.head.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 179, column 24 - line 201, column 55): " + [v.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 180, column 24 - line 202, column 55): " + [v.constructor.name]);
     };
   };
   return go(args)({
@@ -7931,7 +8117,7 @@ var parseDriverOp = function(args) {
           return new Left(parseError(1)(message3));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 170, column 53 - line 174, column 43): " + [v3.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 171, column 53 - line 175, column 43): " + [v3.constructor.name]);
       };
     };
   };
@@ -7957,11 +8143,11 @@ var parseDriverOp = function(args) {
       ;
       if (v1 instanceof Just) {
         return discard3(validStepStatus2(v1.value0.value))(function() {
-          return new Right(new DriverEnd(v1.value0.value, fromMaybe("")(head(v1.value0.rest)), bind5(index(v1.value0.rest)(1))(nonEmpty)));
+          return new Right(new DriverEnd(v1.value0.value, fromMaybe("")(head(v1.value0.rest)), bind16(index(v1.value0.rest)(1))(nonEmpty)));
         });
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 150, column 16 - line 154, column 109): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 151, column 16 - line 155, column 109): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "skip") {
@@ -7981,11 +8167,11 @@ var parseDriverOp = function(args) {
             return new Right(new DriverSkip(v1.value0.value, v22.value0.value));
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 159, column 11 - line 161, column 69): " + [v22.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 160, column 11 - line 162, column 69): " + [v22.constructor.name]);
         });
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 155, column 17 - line 161, column 69): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 156, column 17 - line 162, column 69): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "set") {
@@ -8004,10 +8190,10 @@ var parseDriverOp = function(args) {
           return new Right(new DriverSet(v1.value0.value, v2.value0.value));
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 164, column 47 - line 166, column 58): " + [v2.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 165, column 47 - line 167, column 58): " + [v2.constructor.name]);
       }
       ;
-      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 162, column 16 - line 166, column 58): " + [v1.constructor.name]);
+      throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 163, column 16 - line 167, column 58): " + [v1.constructor.name]);
     }
     ;
     if (v.value0.value === "summary") {
@@ -8017,7 +8203,7 @@ var parseDriverOp = function(args) {
     return new Left(parseError(1)("Unknown command: " + (v.value0.value + "\nUsage: do-driver <init|start|end|skip|set|summary> ...")));
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 145, column 3 - line 168, column 126): " + [v.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 146, column 3 - line 169, column 126): " + [v.constructor.name]);
 };
 var parseBoolean = function(value) {
   if (value === "true") {
@@ -8067,8 +8253,8 @@ var parseSyncOp = function(args) {
             }
             ;
             if (v1 instanceof Just) {
-              var $164 = notEq1(state2.base)(Nothing.value);
-              if ($164) {
+              var $167 = notEq1(state2.base)(Nothing.value);
+              if ($167) {
                 $tco_done = true;
                 return new Left(parseError(2)("sync: --base may be passed only once"));
               }
@@ -8082,7 +8268,7 @@ var parseSyncOp = function(args) {
               return;
             }
             ;
-            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 220, column 19 - line 224, column 54): " + [v1.constructor.name]);
+            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 221, column 19 - line 225, column 54): " + [v1.constructor.name]);
           }
           ;
           if (startsWith("--")(v.value0.head)) {
@@ -8112,13 +8298,13 @@ var parseSyncOp = function(args) {
               return;
             }
             ;
-            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 228, column 23 - line 230, column 61): " + [state2.noVcs.constructor.name]);
+            throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 229, column 23 - line 231, column 61): " + [state2.noVcs.constructor.name]);
           }
           ;
-          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 226, column 12 - line 230, column 61): " + [v1.constructor.name]);
+          throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 227, column 12 - line 231, column 61): " + [v1.constructor.name]);
         }
         ;
-        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 214, column 24 - line 230, column 61): " + [v.constructor.name]);
+        throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 215, column 24 - line 231, column 61): " + [v.constructor.name]);
       }
       ;
       while (!$tco_done) {
@@ -8138,13 +8324,13 @@ var parseSyncOp = function(args) {
     }
     ;
     if (parsed.noVcs instanceof Just) {
-      var $176 = notEq1(parsed.base)(Nothing.value) && parsed.stack;
-      if ($176) {
+      var $179 = notEq1(parsed.base)(Nothing.value) && parsed.stack;
+      if ($179) {
         return new Left(parseError(2)("sync: --base and --stack are mutually exclusive"));
       }
       ;
-      var $177 = parsed.noVcs.value0 && (notEq1(parsed.base)(Nothing.value) || parsed.stack);
-      if ($177) {
+      var $180 = parsed.noVcs.value0 && (notEq1(parsed.base)(Nothing.value) || parsed.stack);
+      if ($180) {
         return new Left(parseError(2)("sync: --base/--stack are incompatible with --no-vcs\n       --no-vcs skips branch/commit/PR; the base has no effect."));
       }
       ;
@@ -8155,12 +8341,12 @@ var parseSyncOp = function(args) {
       }));
     }
     ;
-    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 206, column 3 - line 212, column 74): " + [parsed.noVcs.constructor.name]);
+    throw new Error("Failed pattern match at Agency.Scripts.Do.Ops (line 207, column 3 - line 213, column 74): " + [parsed.noVcs.constructor.name]);
   });
 };
 
 // output/Agency.Scripts.Do.Api/index.js
-var pure12 = /* @__PURE__ */ pure(applicativeEffect);
+var pure10 = /* @__PURE__ */ pure(applicativeEffect);
 var map14 = /* @__PURE__ */ map(functorEffect);
 var eq4 = /* @__PURE__ */ eq(/* @__PURE__ */ eqMaybe(eqString));
 var elem8 = /* @__PURE__ */ elem2(eqString);
@@ -8444,7 +8630,7 @@ var runParsed = function(captureOutput) {
   return function(parsed) {
     return function(runner) {
       if (parsed instanceof Left) {
-        return pure12(failureResult(parsed.value0.code)(parsed.value0.message));
+        return pure10(failureResult(parsed.value0.code)(parsed.value0.message));
       }
       ;
       if (parsed instanceof Right) {
@@ -8461,7 +8647,7 @@ var runForge = function(request) {
 var runVcsRead = function(request) {
   var v = parseVcsRead(request.args);
   if (v instanceof Left) {
-    return pure12(failureResult(1)(v.value0));
+    return pure10(failureResult(1)(v.value0));
   }
   ;
   if (v instanceof Right) {
@@ -8473,7 +8659,7 @@ var runVcsRead = function(request) {
 var runVcsWrite = function(request) {
   var v = parseVcsWrite(request.args);
   if (v instanceof Left) {
-    return pure12(failureResult(1)(v.value0));
+    return pure10(failureResult(1)(v.value0));
   }
   ;
   if (v instanceof Right) {
@@ -8485,7 +8671,7 @@ var runVcsWrite = function(request) {
 var runWorkflow = function(request) {
   var $64 = eq4(head(request.args))(new Just("cli")) && length(request.args) > 1;
   if ($64) {
-    return pure12(failureResult(1)("workflow: from is only valid with cli_seed"));
+    return pure10(failureResult(1)("workflow: from is only valid with cli_seed"));
   }
   ;
   return runParsed(request.captureOutput)(parseNickelOp(request.args))(runNickelOp);
@@ -8512,7 +8698,7 @@ var runAgencyDriver = function(request) {
   };
   var v = uncons(request.args);
   if (v instanceof Nothing) {
-    return pure12(failureResult(1)(agencyDriverUsage));
+    return pure10(failureResult(1)(agencyDriverUsage));
   }
   ;
   if (v instanceof Just) {
@@ -8529,7 +8715,7 @@ var runAgencyDriver = function(request) {
     }
     ;
     if (otherwise) {
-      return pure12(failureResult(1)(agencyDriverUsage));
+      return pure10(failureResult(1)(agencyDriverUsage));
     }
     ;
     throw new Error("Failed pattern match at Agency.Scripts.Do.Api (line 61, column 47 - line 65, column 62): " + [v.value0.head.constructor.name]);
@@ -8558,7 +8744,7 @@ var runTool = function(request) {
     return runAgencyDriver(request);
   }
   ;
-  return pure12(failureResult(1)("agency: unknown tool '" + (request.tool + "'")));
+  return pure10(failureResult(1)("agency: unknown tool '" + (request.tool + "'")));
 };
 export {
   runTool
