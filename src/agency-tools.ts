@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { evaluateWorkflow } from "../nickel-vm/scripts/workflow-runtime.mjs";
 import { workflowEntryPoints } from "./workflow-vocabulary.js";
 
 type ApiRequest = {
@@ -32,56 +32,6 @@ async function loadApi(): Promise<AgencyApi> {
   apiPromise ??= import("../pure/dist/agency-api.js") as unknown as Promise<AgencyApi>;
   return apiPromise;
 }
-
-type NickelApi = {
-  eval_workflow(req: unknown): ApiResult | Promise<ApiResult>;
-};
-
-let nickelPromise: Promise<NickelApi> | undefined;
-async function loadNickel(): Promise<NickelApi> {
-  if (nickelPromise === undefined) {
-    nickelPromise = (import("../nickel-vm/dist/nickel_vm.js") as unknown as Promise<NickelApi>).catch(
-      (error: unknown) => {
-        nickelPromise = undefined;
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `workflow: cannot load Nickel WASM glue (${detail}); run 'just nickel-build' and retry`,
-        );
-      },
-    );
-  }
-  return nickelPromise;
-}
-
-async function readWorkflowAsset(pluginRoot: string, cwd: string, asset: string): Promise<string> {
-  const bundledPath = join(pluginRoot, "skills/do", asset);
-  const fallbackPath = join(cwd, "skills/do", asset);
-  try {
-    return await readFile(bundledPath, "utf8");
-  } catch (error: unknown) {
-    const detail = error instanceof Error ? error.message : String(error);
-    if (
-      error === null ||
-      typeof error !== "object" ||
-      !("code" in error) ||
-      error.code !== "ENOENT"
-    ) {
-      throw new Error(
-        `workflow: cannot read ${asset} at ${bundledPath} or in cwd at ${fallbackPath}: ${detail}`,
-      );
-    }
-    try {
-      return await readFile(fallbackPath, "utf8");
-    } catch (fallbackError: unknown) {
-      const fallbackDetail =
-        fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      throw new Error(
-        `workflow: cannot read ${asset} at ${bundledPath} or in cwd at ${fallbackPath}: ${fallbackDetail}`,
-      );
-    }
-  }
-}
-
 async function executeWorkflow(
   params: { field: string; from?: string },
   ctx: ToolContext,
@@ -89,46 +39,19 @@ async function executeWorkflow(
   content: Array<{ type: "text"; text: string }>;
   details: ApiResult;
 }> {
-  // Stage: read — a bundled workflow asset takes precedence over the cwd copy.
-  const pluginRoot = join(fileURLToPath(import.meta.url), "../..");
-  const statePath = join(ctx.cwd, ".do-results.json");
-  const [workflowSource, vocabularySource] = await Promise.all([
-    readWorkflowAsset(pluginRoot, ctx.cwd, "workflow.ncl"),
-    readWorkflowAsset(pluginRoot, ctx.cwd, "workflow-manifest.json"),
-  ]);
-
-  let stateSource: string;
-  try {
-    stateSource = await readFile(statePath, "utf8");
-  } catch (error: unknown) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`workflow: cannot read state file .do-results.json at ${statePath}: ${detail}`);
-  }
-
-  // Stage: encode — pass the bridge's JSON request as structured data.
-  const request = {
-    workflow_source: workflowSource,
-    vocabulary_source: vocabularySource,
-    state_source: stateSource,
+  const result = await evaluateWorkflow({
     operation: params.field,
     seed: params.from,
-  };
-
-  // Stage: launch — evaluate the request in the Nickel WASM bridge.
-  const nickel = await loadNickel();
-  const result = await nickel.eval_workflow(request);
-
-  // Stage: decode — translate the bridge result into the tool outcome.
+    cwd: ctx.cwd,
+  });
   if (result.exit !== 0) {
     throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
   }
-
   return {
     content: [{ type: "text", text: result.stdout || "ok" }],
     details: result,
   };
 }
-
 async function executeApi(tool: string, args: string[]): Promise<{
   content: Array<{ type: "text"; text: string }>;
   details: ApiResult;

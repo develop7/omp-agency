@@ -1,10 +1,14 @@
 # nickel-vm
 
-`nickel-vm` is the in-process Nickel evaluator used by Agency's `/do` workflow. It is compiled to WebAssembly and loaded by Node.js through the generated `wasm-bindgen` glue. Both the OMP workflow tool and the PureScript CLI use this one evaluator; neither starts a system `nickel` executable.
+`nickel-vm` is the in-process Nickel evaluator used by Agency's `/do` workflow. It is compiled to WebAssembly and loaded by Node.js through the generated `wasm-bindgen` glue. Both the OMP workflow tool and the PureScript CLI use the same Node runtime adapter; neither starts a system `nickel` executable.
+
+## Workflow runtime
+
+`scripts/workflow-runtime.mjs` exports `evaluateWorkflow({ operation, seed?, cwd? })`, which returns `{ exit, stdout, stderr }`. It is the only Node implementation that loads the WASM glue, discovers workflow assets, reads `.do-results.json`, constructs the evaluator request, and converts failures to that result protocol. It loads `skills/do` assets packaged beside the runtime first, then falls back to `<cwd>/skills/do`; state is always `<cwd>/.do-results.json`. The CLI bridge only frames stdin/stdout around this primitive, while the OMP extension invokes it directly.
 
 ## Evaluation seam
 
-The public `eval_workflow` function accepts the workflow source, workflow vocabulary manifest, `.do-results.json` source, operation (`cli` or `cli_seed`), and optional seed. It registers one in-memory `main.ncl` invocation and injects `workflow.ncl`, `workflow-manifest.json`, `.do-results.json`, and `seed.json` into Nickel's source cache as `SourcePath::Path` entries. The invocation imports them through Nickel's `%inmem_src%:` seam, so no temporary files or working-directory imports are needed. Seed values are serialized with `serde_json` as JSON strings in the in-memory `seed.json` document before Nickel evaluates the request.
+The WASM-level `eval_workflow` function accepts the workflow source, workflow vocabulary manifest, `.do-results.json` source, operation (`cli` or `cli_seed`), and optional seed. The shared Node runtime supplies those sources after discovery. It registers one in-memory `main.ncl` invocation and injects `workflow.ncl`, `workflow-manifest.json`, `.do-results.json`, and `seed.json` into Nickel's source cache as `SourcePath::Path` entries. The invocation imports them through Nickel's `%inmem_src%:` seam, so no temporary files or working-directory imports are needed. Seed values are serialized with `serde_json` as JSON strings in the in-memory `seed.json` document before Nickel evaluates the request.
 
 The evaluator intentionally uses the single-input path: merging multiple input documents would change the workflow/state contract by merging state fields into the workflow record.
 
@@ -35,5 +39,5 @@ node nickel-vm/scripts/smoke.mjs
 For one-off invocations outside the dev shell, pin the interpreter the same
 way: `nix develop --command node nickel-vm/scripts/smoke.mjs`.
 
-The smoke test compares the documented valid `cli` and `cli_seed` results byte-for-byte, and verifies that an unknown nonempty `cli_seed` entry point is rejected.
+The smoke test compares the documented valid `cli` and `cli_seed` results byte-for-byte through the shared runtime, verifies that an unknown nonempty `cli_seed` entry point is rejected, and checks that a missing state file reports the initialization action.
 
