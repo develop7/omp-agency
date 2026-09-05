@@ -44,20 +44,21 @@ dispatchVcs args = case Vcs.parseVcsOp args of
   Left message -> do
     Sys.stderrWrite (message <> "\n")
     pure 1
-  Right operation -> runWithContext (Vcs.runVcsOp) operation
+  Right operation -> runWithContext false Vcs.runVcsOp operation
 
 dispatchForge :: Array String -> Effect Int
 dispatchForge args = case Forge.parseForgeOp args of
   Left message -> do
     Sys.stderrWrite (message <> "\n")
     pure 1
-  Right operation -> runWithContext (Forge.runForgeOp) operation
+  Right operation -> runWithContext false Forge.runForgeOp operation
 
 dispatchResults :: Array String -> Effect Int
 dispatchResults args = runParsed (Ops.parseResultsOp args) Ops.runResultsOp
 
 dispatchDriver :: Array String -> Effect Int
-dispatchDriver args = runParsed (Ops.parseDriverOp args) Ops.runDriverOp
+dispatchDriver args =
+  runParsedWith Ops.allowsCorruptState (Ops.parseDriverOp args) Ops.runDriverOp
 
 dispatchSync :: Array String -> Effect Int
 dispatchSync args = runParsed (Ops.parseSyncOp args) Ops.runSyncOp
@@ -69,15 +70,18 @@ dispatchNickel :: Array String -> Effect Int
 dispatchNickel args = runParsed (Ops.parseNickelOp args) Ops.runNickelOp
 
 runParsed :: forall a. Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect Int
-runParsed parsed runner = case parsed of
+runParsed = runParsedWith (const false)
+
+runParsedWith :: forall a. (a -> Boolean) -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect Int
+runParsedWith allowCorruptState parsed runner = case parsed of
   Left error -> do
     Sys.stderrWrite (error.message <> "\n")
     pure error.code
-  Right operation -> runWithContext runner operation
+  Right operation -> runWithContext (allowCorruptState operation) runner operation
 
-runWithContext :: forall a. (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> Effect Int
-runWithContext runner operation = do
-  resolved <- Ops.resolveWorkflowContext false
+runWithContext :: forall a. Boolean -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> Effect Int
+runWithContext allowCorruptState runner operation = do
+  resolved <- Ops.resolveWorkflowContext false allowCorruptState
   case resolved of
     Left error -> do
       Sys.stderrWrite (error <> "\n")

@@ -35,12 +35,12 @@ runTool request = case request.tool of
 runVcsRead :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
 runVcsRead request = case parseVcsRead request.args of
   Left message -> pure (failureResult 1 message)
-  Right operation -> runOperation request.captureOutput Vcs.runVcsOp operation
+  Right operation -> runOperation request.captureOutput false Vcs.runVcsOp operation
 
 runVcsWrite :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
 runVcsWrite request = case parseVcsWrite request.args of
   Left message -> pure (failureResult 1 message)
-  Right operation -> runOperation request.captureOutput Vcs.runVcsOp operation
+  Right operation -> runOperation request.captureOutput false Vcs.runVcsOp operation
 
 runForge :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
 runForge request = runParsed request.captureOutput (parseMessageError (Forge.parseForgeOp request.args)) Forge.runForgeOp
@@ -59,17 +59,18 @@ runAgencyDriver request = case Array.uncons request.args of
   -- driver parsers; sync consumes only its operands.
   Nothing -> pure (failureResult 1 agencyDriverUsage)
   Just { head: operation, tail: operands } -> case operation of
-    "sync" -> dispatchWith Ops.parseSyncOp Ops.runSyncOp operands
+    "sync" -> dispatchWith (const false) Ops.parseSyncOp Ops.runSyncOp operands
     _ | Array.elem operation resultsOperationNames -> dispatchResults operation operands
       | Array.elem operation driverOperationNames -> dispatchDriver operation operands
       | otherwise -> pure (failureResult 1 agencyDriverUsage)
   where
   dispatchResults operation operands =
-    dispatchWith Ops.parseResultsOp Ops.runResultsOp (Array.cons operation operands)
+    dispatchWith (const false) Ops.parseResultsOp Ops.runResultsOp (Array.cons operation operands)
   dispatchDriver operation operands =
-    dispatchWith Ops.parseDriverOp Ops.runDriverOp (Array.cons operation operands)
-  dispatchWith :: forall op. (Array String -> Either Ops.ParseError op) -> (Context.WorkflowContext -> op -> Effect Outcome.OpOutcome) -> Array String -> Effect ToolResult
-  dispatchWith parser runner args = runParsed request.captureOutput (parser args) runner
+    dispatchWith Ops.allowsCorruptState Ops.parseDriverOp Ops.runDriverOp (Array.cons operation operands)
+  dispatchWith :: forall op. (op -> Boolean) -> (Array String -> Either Ops.ParseError op) -> (Context.WorkflowContext -> op -> Effect Outcome.OpOutcome) -> Array String -> Effect ToolResult
+  dispatchWith allowCorruptState parser runner args =
+    runParsedWith request.captureOutput allowCorruptState (parser args) runner
 
 resultsOperationNames :: Array String
 resultsOperationNames = ["step-start", "step-end", "step"]
@@ -140,9 +141,13 @@ isWriteOperation operation = case operation of
   Vcs.FastForwardIfSafe -> false
 
 runParsed :: forall a. Boolean -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect ToolResult
-runParsed captureOutput parsed runner = case parsed of
+runParsed captureOutput = runParsedWith captureOutput (const false)
+
+runParsedWith :: forall a. Boolean -> (a -> Boolean) -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect ToolResult
+runParsedWith captureOutput allowCorruptState parsed runner = case parsed of
   Left error -> pure (failureResult error.code error.message)
-  Right operation -> runOperation captureOutput runner operation
+  Right operation -> runOperation captureOutput (allowCorruptState operation) runner operation
+
 parseMessageError :: forall a. Either String a -> Either Ops.ParseError a
 parseMessageError parsed = case parsed of
   Left message -> Left (messageParseError message)
@@ -150,11 +155,10 @@ parseMessageError parsed = case parsed of
 
 messageParseError :: String -> Ops.ParseError
 messageParseError message = { code: 1, message }
- 
 
-runOperation :: forall a. Boolean -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> Effect ToolResult
-runOperation captureOutput runner operation = do
-  resolved <- Ops.resolveWorkflowContext captureOutput
+runOperation :: forall a. Boolean -> Boolean -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> Effect ToolResult
+runOperation captureOutput allowCorruptState runner operation = do
+  resolved <- Ops.resolveWorkflowContext captureOutput allowCorruptState
   case resolved of
     Left message -> pure (failureResult 1 message)
     Right context -> outcomeResult <$> runner context operation
