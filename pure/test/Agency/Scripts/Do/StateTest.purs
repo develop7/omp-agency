@@ -3,7 +3,7 @@ module Agency.Scripts.Do.StateTest (run) where
 import Prelude
 
 import Data.Array as Array
-import Data.Argonaut.Core (fromBoolean, toBoolean, toString)
+import Data.Argonaut.Core (fromBoolean, fromString, toBoolean, toString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
@@ -11,10 +11,13 @@ import Effect (Effect)
 import Effect.Exception (try)
 import Effect.Console as Console
 
+import Agency.Scripts.Do.ForgeKind as ForgeKind
+import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Ops as Ops
 import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
+import Agency.Scripts.Do.VcsKind as VcsKind
 import Node.Errors.SystemError as SystemError
 import Node.FS.Sync as FSSync
 import Unsafe.Coerce (unsafeCoerce)
@@ -188,3 +191,44 @@ run = do
     Right _ -> do
       Console.error "FAIL: append accepted an unknown step status"
       Sys.exit 1
+  lockDirectory <- Sys.uniqueTempPath (cwd <> "/.state-lock")
+  let lockStatePath = lockDirectory <> "/.do-results.json"
+      lockPath = lockStatePath <> ".lock"
+      lockContext =
+        { stateDir: lockDirectory
+        , vcs: VcsKind.Unknown
+        , forge: ForgeKind.Unknown
+        , base: Nothing
+        , vcsOverride: Nothing
+        , forgeOverride: Nothing
+        , captureOutput: true
+        }
+  FSSync.mkdir lockDirectory
+  case State.setField "task" (fromString "original") State.emptyState of
+    Left error -> do
+      Console.error ("FAIL: prepare locked state: " <> error)
+      Sys.exit 1
+    Right original -> do
+      State.writeState lockStatePath original
+      FSSync.mkdir lockPath
+      blocked <- Ops.runResultsOp lockContext (Ops.ResultsSet "task" "replacement")
+      unchanged <- State.readState lockStatePath
+      lockRemains <- FSSync.exists lockPath
+      FSSync.rmdir lockPath
+      normalRelease <- State.withStateLock lockStatePath (pure "done")
+      releasedAfterSuccess <- FSSync.exists lockPath
+      failedRelease <- try (State.withStateLock lockStatePath (FSSync.rmdir (lockDirectory <> "/missing")))
+      releasedAfterFailure <- FSSync.exists lockPath
+      FSSync.rm' lockDirectory rmOptions
+      let conflict = "state: lock '" <> lockPath <> "' already exists; another state mutation is running, or it is stale after a crash — remove the lock explicitly after confirming no mutation is active\n"
+      case blocked.output of
+        Outcome.Captured output ->
+          assert "locked mutation fails with a stale-lock recovery instruction" (blocked.exit == 1 && output.stderr == conflict)
+        Outcome.Passthrough -> assert "locked mutation reports a captured conflict" false
+      case unchanged of
+        Right (Just state) -> assert "locked mutation leaves persisted state unchanged" (State.stateGet "task" state == "original" && lockRemains)
+        _ -> assert "locked mutation leaves persisted state unchanged" false
+      assert "state lock releases after a successful action" (normalRelease == Right "done" && not releasedAfterSuccess)
+      case failedRelease of
+        Left _ -> assert "state lock releases after a failing action" (not releasedAfterFailure)
+        Right _ -> assert "state lock rethrows a failing action" false

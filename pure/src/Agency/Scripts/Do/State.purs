@@ -16,6 +16,7 @@ module Agency.Scripts.Do.State
   , parseState
   , stringifyState
   , readState
+  , withStateLock
   , writeState
   , stateGet
   , stateGetJson
@@ -418,6 +419,32 @@ readState path = do
     Right source -> case parseState source of
       Left error -> Left error
       Right value -> Right (Just value)
+
+-- | Serialize a complete state transition. Creating the sibling directory is
+-- | atomic; a surviving directory may be stale after a crash and must be
+-- | explicitly removed only after confirming no mutation is still running.
+withStateLock :: forall a. String -> Effect a -> Effect (Either String a)
+withStateLock path action = do
+  let lockPath = path <> ".lock"
+  acquired <- try (FSSync.mkdir lockPath)
+  case acquired of
+    Left error ->
+      let systemError = unsafeCoerce error
+      in pure
+        ( Left
+            ( if SystemError.code systemError == "EEXIST" then
+                "state: lock '" <> lockPath <> "' already exists; another state mutation is running, or it is stale after a crash — remove the lock explicitly after confirming no mutation is active"
+              else "state: unable to acquire lock '" <> lockPath <> "': " <> SystemError.message systemError
+            )
+        )
+    Right _ -> do
+      result <- try action
+      released <- try (FSSync.rmdir lockPath)
+      case result, released of
+        Left error, _ -> throw error
+        Right _, Left error ->
+          pure (Left ("state: unable to release lock '" <> lockPath <> "': " <> SystemError.message (unsafeCoerce error)))
+        Right value, Right _ -> pure (Right value)
 
 writeState :: String -> State -> Effect Unit
 writeState path state = do
