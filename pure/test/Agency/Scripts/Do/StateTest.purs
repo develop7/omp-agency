@@ -10,6 +10,7 @@ import Effect (Effect)
 import Effect.Console as Console
 
 import Agency.Scripts.Do.Ops as Ops
+import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 
@@ -86,7 +87,7 @@ run = do
   case Ops.parseResultsOp [ "step-start", "reserch" ] of
     Left error -> assert "result steps are restricted to workflow steps" (error.code == 2)
     Right _ -> assert "result steps are restricted to workflow steps" false
-  assert "string fields preserve literal true" (map toString (Ops.jsonValueFor "task" "true") == Right (Just "true"))
-  assert "boolean fields decode literal true" (map toBoolean (Ops.jsonValueFor "review" "true") == Right (Just true))
+  assert "string fields preserve literal true" (map toString (Results.jsonValueFor "task" "true") == Right (Just "true"))
+  assert "boolean fields decode literal true" (map toBoolean (Results.jsonValueFor "review" "true") == Right (Just true))
   let terminal = State.finishWorkflow State.WorkflowCompleted (State.initState "2024-01-01T00:00:00Z")
   assert "terminal success makes the workflow idle" (terminal.active == State.ActiveIdle && terminal.status == State.WorkflowCompleted)
