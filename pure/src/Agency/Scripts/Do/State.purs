@@ -41,7 +41,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
-import Effect.Exception (throw, try)
+import Effect.Exception (throwException, try)
 import Foreign.Object as Obj
 import Node.Errors.SystemError as SystemError
 import Node.FS.Sync as FSSync
@@ -441,7 +441,7 @@ withStateLock path action = do
       result <- try action
       released <- try (FSSync.rmdir lockPath)
       case result, released of
-        Left error, _ -> throw error
+        Left error, _ -> throwException error
         Right _, Left error ->
           pure (Left ("state: unable to release lock '" <> lockPath <> "': " <> SystemError.message (unsafeCoerce error)))
         Right value, Right _ -> pure (Right value)
@@ -456,5 +456,5 @@ writeState path state = do
     Left error -> do
       -- The write may have created a partial file; cleanup must not replace its error.
       _ <- try (FSSync.unlink temporary)
-      throw error
+      throwException error
     Right _ -> pure unit
