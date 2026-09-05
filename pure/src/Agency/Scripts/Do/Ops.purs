@@ -31,7 +31,7 @@ import Prelude
 
 import Agency.Scripts.Do.Args as Args
 import Agency.Scripts.Do.Context (WorkflowContext)
-import Agency.Scripts.Do.DoneSummary as DoneReport
+import Agency.Scripts.Do.Context as Context
 import Agency.Scripts.Do.Forge as Forge
 import Agency.Scripts.Do.NickelRuntime as NickelRuntime
 import Agency.Scripts.Do.Outcome as Outcome
@@ -296,29 +296,40 @@ resolveWorkflowContext captureOutput = do
       remote <- Vcs.remoteUrlValue partial
       let forge = Forge.detectForge forgeOverride stateForge remote
       pure (Right (partial { forge = forge }))
--- | Dispatch parsed result commands to the lifecycle axis.
+-- | Dispatch parsed result commands under one exclusive state transition.
 runResultsOp :: WorkflowContext -> ResultsOp -> Effect Outcome.OpOutcome
-runResultsOp context operation = case operation of
-  ResultsInit -> Results.runInit context
-  ResultsStepStart name -> Results.runStepStart context name
-  ResultsStepEnd status verification reason -> Results.runStepEnd context status verification reason
-  ResultsStep name status verification startedAt completedAt reason ->
-    Results.runStep context name status verification startedAt completedAt reason
-  ResultsSet field value -> Results.runSet context field value
+runResultsOp context operation =
+  withMutationLock context
+    ( case operation of
+        ResultsInit -> Results.runInit context
+        ResultsStepStart name -> Results.runStepStart context name
+        ResultsStepEnd status verification reason -> Results.runStepEnd context status verification reason
+        ResultsStep name status verification startedAt completedAt reason ->
+          Results.runStep context name status verification startedAt completedAt reason
+        ResultsSet field value -> Results.runSet context field value
+    )
 
--- | Dispatch driver lifecycle commands without owning their state transitions.
+-- | Dispatch driver lifecycle commands; reporting does not mutate state.
 runDriverOp :: WorkflowContext -> DriverOp -> Effect Outcome.OpOutcome
 runDriverOp context operation = case operation of
-  DriverInit options -> Results.runDriverInit context options
-  DriverStart step -> Results.runStepStart context step
-  DriverEnd status verification reason -> Results.runStepEnd context status verification reason
-  DriverSkip step reason -> Results.runDriverSkip context step reason
-  DriverSet field value -> Results.runSet context field value
+  DriverInit options -> withMutationLock context (Results.runDriverInit context options)
+  DriverStart step -> withMutationLock context (Results.runStepStart context step)
+  DriverEnd status verification reason -> withMutationLock context (Results.runStepEnd context status verification reason)
+  DriverSkip step reason -> withMutationLock context (Results.runDriverSkip context step reason)
+  DriverSet field value -> withMutationLock context (Results.runSet context field value)
   DriverSummary -> DoneReport.run context
 
--- | Delegate the ordered sync transaction.
+-- | Delegate the ordered sync transaction under the same exclusive lock.
 runSyncOp :: WorkflowContext -> SyncOp -> Effect Outcome.OpOutcome
-runSyncOp context (Sync options) = SyncWorkflow.run context options
+runSyncOp context (Sync options) = withMutationLock context (SyncWorkflow.run context options)
+
+withMutationLock :: WorkflowContext -> Effect Outcome.OpOutcome -> Effect Outcome.OpOutcome
+withMutationLock context action = do
+  result <- State.withStateLock (Context.statePath context) action
+  pure case result of
+    Left error -> Outcome.failure 1 (error <> "\n")
+    Right outcome -> outcome
+
 
 -- | Delegate done reporting and rendering.
 runDoneOp :: WorkflowContext -> DoneOp -> Effect Outcome.OpOutcome
