@@ -298,9 +298,9 @@ defaultBranchValue context = case context.vcs of
         if result.code /= 0 || candidate == "" then remoteGitDefault name
         else do
           exists <- gitRefExists ("refs/remotes/" <> name <> "/" <> candidate)
-          pure case exists of
-            Left error -> failureValue error
-            Right true -> valueResult result candidate
+          case exists of
+            Left error -> pure (failureValue error)
+            Right true -> pure (valueResult result candidate)
             Right false -> remoteGitDefault name
       Left _ -> localGitDefault
   Jj -> do
