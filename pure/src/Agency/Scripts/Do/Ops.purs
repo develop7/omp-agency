@@ -744,42 +744,15 @@ fmtDur seconds = if seconds < 60 then show seconds <> "s" else show (seconds `di
 escapeVerification :: String -> String
 escapeVerification value = replaceAll (Pattern "|") (Replacement "\\|") (replaceAll (Pattern "\n") (Replacement " ") value)
 
--- | Run a workflow operation through the Node bridge, which always captures
--- | subprocess output and returns a JSON-encoded exit/stdout/stderr result.
--- | The context's captureOutput flag is intentionally ignored for this path:
--- | the bridge communicates over stdin/stdout and cannot inherit streams.
+-- | Run a workflow operation through the Node bridge, which owns workflow
+-- | asset and state discovery and returns a JSON-encoded exit/stdout/stderr
+-- | result. The context's captureOutput flag is intentionally ignored for
+-- | this path: the bridge communicates over stdin/stdout.
 runNickelOp :: WorkflowContext -> NickelOp -> Effect Outcome.OpOutcome
 runNickelOp context operation = do
-  state <- State.readState (Context.statePath context)
-  case state of
-    Left error -> pure (failText ("nickel-cli: .do-results.json is corrupt or unreadable — " <> error <> "; restore it or run do-driver init --restart"))
-    Right Nothing -> pure (failText "nickel-cli: no .do-results.json in the current directory — run do-driver init first (from the repository root)")
-    Right (Just _) -> runNickelLoaded context operation
-runNickelLoaded :: WorkflowContext -> NickelOp -> Effect Outcome.OpOutcome
-runNickelLoaded context operation = do
   bundle <- Sys.bundleDir
-  let bundleWorkflow = bundle <> "/../../skills/do/workflow.ncl"
-      adjacentWorkflow = bundle <> "/../../../skills/do/workflow.ncl"
-      cwdWorkflow = context.stateDir <> "/skills/do/workflow.ncl"
-      bundleVocabulary = bundle <> "/../../skills/do/workflow-manifest.json"
-      adjacentVocabulary = bundle <> "/../../../skills/do/workflow-manifest.json"
-      cwdVocabulary = context.stateDir <> "/skills/do/workflow-manifest.json"
-      bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
-  bundleExists <- Sys.exists bundleWorkflow
-  adjacentExists <- Sys.exists adjacentWorkflow
-  let workflowPath =
-        if bundleExists then bundleWorkflow
-        else if adjacentExists then adjacentWorkflow
-        else cwdWorkflow
-      vocabularyPath =
-        if bundleExists then bundleVocabulary
-        else if adjacentExists then adjacentVocabulary
-        else cwdVocabulary
-  workflow <- Sys.realpath workflowPath
-  workflowSource <- Sys.readUtf8 workflow
-  vocabularySource <- Sys.readUtf8 vocabularyPath
-  stateSource <- Sys.readUtf8 (Context.statePath context)
-  let operationName = case operation of
+  let bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
+      operationName = case operation of
         NickelCli -> "cli"
         NickelCliSeed _ -> "cli_seed"
       seedJson = case operation of
@@ -788,11 +761,9 @@ runNickelLoaded context operation = do
       request = Json.stringify
         (fromObject
           (Obj.fromFoldable
-            [ Tuple "workflow_source" (fromString workflowSource)
-            , Tuple "state_source" (fromString stateSource)
-            , Tuple "operation" (fromString operationName)
-            , Tuple "vocabulary_source" (fromString vocabularySource)
+            [ Tuple "operation" (fromString operationName)
             , Tuple "seed" seedJson
+            , Tuple "cwd" (fromString context.stateDir)
             ]))
   result <- Sys.execInput "node" [ bridge ] request
   pure (bridgeOutcome result)

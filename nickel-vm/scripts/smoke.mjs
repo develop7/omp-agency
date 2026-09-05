@@ -1,11 +1,8 @@
-import { eval_workflow } from '../dist/nickel_vm.js';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { evaluateWorkflow } from './workflow-runtime.mjs';
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const WORKFLOW_SOURCE = fs.readFileSync(path.join(REPO_ROOT, 'skills/do/workflow.ncl'), 'utf8');
-const VOCABULARY_SOURCE = fs.readFileSync(path.join(REPO_ROOT, 'skills/do/workflow-manifest.json'), 'utf8');
 
 const TEST_STATE = {
     active: "working",
@@ -26,14 +23,24 @@ function stateSource(state) {
     return JSON.stringify(state);
 }
 
-function workflowResult(operation, state, seed = null) {
-    return eval_workflow({
-        workflow_source: WORKFLOW_SOURCE,
-        vocabulary_source: VOCABULARY_SOURCE,
-        state_source: stateSource(state),
-        operation,
-        seed
-    });
+
+async function workflowResult(operation, state, seed = null) {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agency-workflow-'));
+    try {
+        fs.writeFileSync(path.join(cwd, '.do-results.json'), stateSource(state), 'utf8');
+        return await evaluateWorkflow({ operation, seed, cwd });
+    } finally {
+        fs.rmSync(cwd, { recursive: true, force: true });
+    }
+}
+
+async function missingStateResult() {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agency-workflow-'));
+    try {
+        return await evaluateWorkflow({ operation: 'cli', cwd });
+    } finally {
+        fs.rmSync(cwd, { recursive: true, force: true });
+    }
 }
 
 const GOLDENS = {
@@ -61,26 +68,34 @@ function assertResult(name, result) {
     }
 }
 
-function run() {
+async function run() {
     console.log('Running Nickel VM smoke tests...');
+    const missingState = await missingStateResult();
+    assert('shared runtime reports missing state', missingState.exit, 1);
+    assert(
+        'shared runtime makes missing state actionable',
+        missingState.stderr.includes('run do-driver init first'),
+        true,
+    );
 
-    const res1 = workflowResult('cli', TEST_STATE);
+
+    const res1 = await workflowResult('cli', TEST_STATE);
     assertResult('cli', res1);
     assert('cli', res1.stdout, GOLDENS.cli);
 
-    const res2 = workflowResult('cli_seed', TEST_STATE, '');
+    const res2 = await workflowResult('cli_seed', TEST_STATE, '');
     assertResult('cli_seed ""', res2);
     assert('cli_seed ""', res2.stdout, GOLDENS.cli_seed_empty);
 
-    const res3 = workflowResult('cli_seed', TEST_STATE, 'followup');
+    const res3 = await workflowResult('cli_seed', TEST_STATE, 'followup');
     assertResult('cli_seed "followup"', res3);
     assert('cli_seed "followup"', res3.stdout, GOLDENS.cli_seed_followup);
 
-    const invalidSeed = workflowResult('cli_seed', TEST_STATE, "\u0000\n\"\\雪");
+    const invalidSeed = await workflowResult('cli_seed', TEST_STATE, "\u0000\n\"\\雪");
     assert('cli_seed rejects an unknown nonempty entry point', invalidSeed.exit !== 0, true);
 
     for (const status of ["failed", "completed"]) {
-        const terminal = workflowResult('cli', { ...TEST_STATE, status });
+        const terminal = await workflowResult('cli', { ...TEST_STATE, status });
         assertResult(`cli respects ${status} workflow status`, terminal);
         assert(`cli respects ${status} workflow status`, terminal.stdout, `{ done = true }`);
     }
@@ -89,7 +104,7 @@ function run() {
         "sync", "research", "branch", "implement", "check", "docs", "fmt",
         "commit", "hickey-lowy", "police", "test", "create-pr", "ci"
     ].map((name) => ({ name, status: "passed" }));
-    const evidence = workflowResult('cli', { ...TEST_STATE, steps: completedThroughCi });
+    const evidence = await workflowResult('cli', { ...TEST_STATE, steps: completedThroughCi });
     assertResult('cli reaches evidence', evidence);
     assert(
         'cli reaches evidence',
@@ -98,24 +113,24 @@ function run() {
     );
 
     for (const status of ["pending", "running", "in_progress"]) {
-        const resumed = workflowResult('cli', { ...TEST_STATE, steps: [{ name: "ci", status }] });
+        const resumed = await workflowResult('cli', { ...TEST_STATE, steps: [{ name: "ci", status }] });
         assertResult(`cli resumes ${status} step`, resumed);
         assert(`cli resumes ${status} step`, resumed.stdout.match(/step = "([^"]+)"/)?.[1], "ci");
     }
 
     const minimal = { ...TEST_STATE, minimal: true };
-    const minimalSeed = workflowResult('cli_seed', minimal, '');
+    const minimalSeed = await workflowResult('cli_seed', minimal, '');
     assertResult('cli_seed minimal', minimalSeed);
     assert('cli_seed minimal', minimalSeed.stdout, GOLDENS.cli_seed_minimal);
 
-    const minimalPolishSeed = workflowResult('cli_seed', minimal, 'polish');
+    const minimalPolishSeed = await workflowResult('cli_seed', minimal, 'polish');
     assertResult('cli_seed minimal polish', minimalPolishSeed);
     assert(
         'cli_seed minimal polish',
         minimalPolishSeed.stdout,
         `[{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`
     );
-    const minimalPolishCli = workflowResult('cli', { ...minimal, from: 'polish' });
+    const minimalPolishCli = await workflowResult('cli', { ...minimal, from: 'polish' });
     assertResult('minimal cli polish', minimalPolishCli);
     assert('minimal cli polish', minimalPolishCli.stdout.match(/step = "([^"]+)"/)?.[1], 'test');
 
@@ -125,7 +140,7 @@ function run() {
     ];
     let minimalState = { ...minimal, steps: [] };
     for (const name of minimalPath) {
-        const result = workflowResult('cli', minimalState);
+        const result = await workflowResult('cli', minimalState);
         assertResult(`minimal cli ${name}`, result);
         const step = result.stdout.match(/step = "([^"]+)"/)?.[1];
         assert(`minimal cli ${name}`, step, name);
@@ -137,14 +152,12 @@ function run() {
             steps: [...minimalState.steps, { name, status: "passed" }]
         };
     }
-    const minimalComplete = workflowResult('cli', minimalState);
+    const minimalComplete = await workflowResult('cli', minimalState);
     assertResult('minimal cli complete', minimalComplete);
     assert('minimal cli complete', minimalComplete.stdout, `{ done = true }`);
 }
 
-try {
-    run();
-} catch (error) {
+run().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
-}
+});

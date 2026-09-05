@@ -1,4 +1,4 @@
-import { eval_workflow } from '../dist/nickel_vm.js';
+import { evaluateWorkflow, workflowFailure } from "./workflow-runtime.mjs";
 import fs from 'node:fs';
 
 const MAX_STDIN_BYTES = 10 * 1024 * 1024;
@@ -20,26 +20,17 @@ function readStdin() {
     } while (bytesRead > 0);
     return Buffer.concat(chunks).toString('utf8');
 }
-function failure(error) {
-    return {
-        exit: 1,
-        stdout: '',
-        stderr: error instanceof Error ? error.stack || error.message : String(error)
-    };
-}
 
-function main() {
+async function main() {
     try {
         const input = readStdin();
         if (!input) {
-            throw new Error('Empty stdin');
+            throw new Error("Empty stdin");
         }
-
-        const request = JSON.parse(input);
-        const result = eval_workflow(request);
+        const result = await evaluateWorkflow(input);
         process.stdout.write(`${JSON.stringify(result)}\n`);
     } catch (error) {
-        process.stderr.write(`${JSON.stringify(failure(error))}\n`);
+        process.stderr.write(`${JSON.stringify(workflowFailure(error))}\n`);
         process.exitCode = 1;
     }
 }
