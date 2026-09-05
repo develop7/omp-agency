@@ -40,9 +40,10 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
-import Effect.Exception (try)
+import Effect.Exception (throw, try)
 import Foreign.Object as Obj
 import Node.Errors.SystemError as SystemError
+import Node.FS.Sync as FSSync
 import Unsafe.Coerce (unsafeCoerce)
 
 import Agency.Scripts.Do.WorkflowVocabulary as Vocabulary
@@ -421,5 +422,12 @@ readState path = do
 writeState :: String -> State -> Effect Unit
 writeState path state = do
   temporary <- Sys.uniqueTempPath path
-  Sys.writeUtf8 temporary (stringifyState state)
-  Sys.rename temporary path
+  result <- try do
+    Sys.writeUtf8 temporary (stringifyState state)
+    Sys.rename temporary path
+  case result of
+    Left error -> do
+      -- The write may have created a partial file; cleanup must not replace its error.
+      _ <- try (FSSync.unlink temporary)
+      throw error
+    Right _ -> pure unit
