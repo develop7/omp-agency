@@ -23,8 +23,8 @@ module Agency.Scripts.Do.State
   , appendStep
   , startPending
   , finishPending
+  , finishWorkflow
   ) where
-
 import Prelude
 
 import Data.Argonaut.Core (Json, fromArray, fromObject, fromString, toArray, toObject, toString)
@@ -44,10 +44,10 @@ import Foreign.Object as Obj
 import Node.Errors.SystemError as SystemError
 import Unsafe.Coerce (unsafeCoerce)
 
+import Agency.Scripts.Do.Args as Args
 import Agency.Scripts.Do.Sys as Sys
 
--- | Activity values written by the workflow. Unknown strings remain
--- | representable so newer workflow states can round-trip through this core.
+-- | Activity values accepted by the persisted workflow protocol.
 data ActiveStatus
   = ActiveIdle
   | ActiveWorking
@@ -70,8 +70,7 @@ renderActiveStatus status = case status of
   ActiveWaiting -> "waiting"
   ActiveUnknown value -> value
 
--- | Lifecycle status values written by the workflow. Unknown strings are
--- | preserved rather than rejected to keep the JSON protocol forward-safe.
+-- | Lifecycle status values accepted by the persisted workflow protocol.
 data WorkflowStatus
   = WorkflowIdle
   | WorkflowRunning
@@ -97,8 +96,7 @@ renderWorkflowStatus status = case status of
   WorkflowFailed -> "failed"
   WorkflowUnknown value -> value
 
--- | Step result values used by the summary renderer. Unknown values survive
--- | load/save and render as their original strings.
+-- | Step result values accepted by the persisted workflow protocol.
 data StepStatus
   = StepPassed
   | StepFailed
@@ -120,6 +118,21 @@ renderStepStatus status = case status of
   StepFailed -> "failed"
   StepSkipped -> "skipped"
   StepUnknown value -> value
+
+validActiveStatus :: String -> Either String ActiveStatus
+validActiveStatus value = case parseActiveStatus value of
+  ActiveUnknown _ -> Left ("state: invalid active '" <> value <> "'")
+  status -> Right status
+
+validWorkflowStatus :: String -> Either String WorkflowStatus
+validWorkflowStatus value = case parseWorkflowStatus value of
+  WorkflowUnknown _ -> Left ("state: invalid status '" <> value <> "'")
+  status -> Right status
+
+validStepStatus :: String -> Either String StepStatus
+validStepStatus value = case parseStepStatus value of
+  StepUnknown _ -> Left ("state: invalid step status '" <> value <> "'")
+  status -> Right status
 
 -- | A step that has begun but has not yet been recorded as complete.
 type PendingStep =
@@ -197,12 +210,14 @@ parseStep value = do
     Just result -> Right result
     Nothing -> Left "state: each step must be an object"
   name <- requiredString "name" object
-  status <- requiredString "status" object
+  if Args.isWorkflowStep name then pure unit else Left ("state: unknown step '" <> name <> "'")
+  statusText <- requiredString "status" object
+  status <- validStepStatus statusText
   verification <- requiredString "verification" object
   startedAt <- requiredString "startedAt" object
   completedAt <- requiredString "completedAt" object
   reason <- stringValue "reason" object
-  pure { name, status: parseStepStatus status, verification, startedAt, completedAt, reason }
+  pure { name, status, verification, startedAt, completedAt, reason }
 
 parsePending :: Json -> Either String PendingStep
 parsePending value = do
@@ -210,6 +225,7 @@ parsePending value = do
     Just result -> Right result
     Nothing -> Left "state: pendingStep must be an object"
   name <- requiredString "name" object
+  if Args.isWorkflowStep name then pure unit else Left ("state: unknown pending step '" <> name <> "'")
   startedAt <- requiredString "startedAt" object
   pure { name, startedAt }
 
@@ -222,7 +238,9 @@ parseState source = do
   workflow <- optionalString "workflow" "do" object
   startedAt <- optionalString "startedAt" "" object
   activeText <- optionalString "active" "idle" object
+  active <- validActiveStatus activeText
   statusText <- optionalString "status" "idle" object
+  status <- validWorkflowStatus statusText
   steps <- case Obj.lookup "steps" object of
     Nothing -> Right []
     Just value -> case toArray value of
@@ -243,8 +261,8 @@ parseState source = do
   pure
     { workflow
     , startedAt
-    , active: parseActiveStatus activeText
-    , status: parseWorkflowStatus statusText
+    , active
+    , status
     , steps
     , pendingStep
     , extras
@@ -316,8 +334,14 @@ setField key value state =
   case key of
     "workflow" -> setStringField key (\text -> state { workflow = text })
     "startedAt" -> setStringField key (\text -> state { startedAt = text })
-    "active" -> setStringField key (\text -> state { active = parseActiveStatus text })
-    "status" -> setStringField key (\text -> state { status = parseWorkflowStatus text })
+    "active" -> do
+      text <- stringField key
+      active <- validActiveStatus text
+      pure (state { active = active })
+    "status" -> do
+      text <- stringField key
+      status <- validWorkflowStatus text
+      pure (state { status = status })
     "steps" -> case toArray value of
       Nothing -> Left "state: field 'steps' must be an array"
       Just values -> do
@@ -330,10 +354,11 @@ setField key value state =
         pure (state { pendingStep = Just pending })
     _ -> Right (state { extras = Map.insert key value state.extras })
   where
-  setStringField field update =
+  stringField field =
     case toString value of
-      Just text -> Right (update text)
+      Just text -> Right text
       Nothing -> Left ("state: field '" <> field <> "' must be a string")
+  setStringField field update = update <$> stringField field
 
 -- | State is rewritten for one workflow lifetime. A normal run appends roughly
 -- | 15 steps, so retaining the complete history is bounded by that run's step
@@ -346,6 +371,10 @@ startPending pending state = state { pendingStep = Just pending }
 
 finishPending :: State -> State
 finishPending state = state { pendingStep = Nothing }
+
+-- | Mark a terminal lifecycle result and clear active-work signaling.
+finishWorkflow :: WorkflowStatus -> State -> State
+finishWorkflow status state = state { active = ActiveIdle, status = status }
 
 -- | Load state if present. ENOENT is the documented detection fallback;
 -- | every other read error and every parse error remains visible to callers.
@@ -362,5 +391,6 @@ readState path = do
 
 writeState :: String -> State -> Effect Unit
 writeState path state = do
-  Sys.writeUtf8 (path <> ".tmp") (stringifyState state)
-  Sys.rename (path <> ".tmp") path
+  temporary <- Sys.uniqueTempPath path
+  Sys.writeUtf8 temporary (stringifyState state)
+  Sys.rename temporary path

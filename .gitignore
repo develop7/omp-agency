@@ -11,3 +11,6 @@ result-*
 # Rust build state (cargo workspaces — nickel-vm and any future members)
 target/
 nickel-vm/target/
+
+# Agency
+.do-results.json

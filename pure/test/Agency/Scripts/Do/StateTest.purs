@@ -2,13 +2,14 @@ module Agency.Scripts.Do.StateTest (run) where
 
 import Prelude
 
-import Data.Argonaut.Core (fromBoolean, toBoolean)
+import Data.Argonaut.Core (fromBoolean, toBoolean, toString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Effect.Console as Console
 
+import Agency.Scripts.Do.Ops as Ops
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 
@@ -58,3 +59,31 @@ run = do
                       Console.error ("FAIL: reload state after set: " <> error)
                       Sys.exit 1
                     Right finalState -> assert "set unknown field survives load/save" ((State.stateGetJson "newFlag" finalState >>= toBoolean) == Just true)
+  case State.parseState "{\"active\":\"finished\"}" of
+    Left error -> assert "unknown active status is rejected" (error == "state: invalid active 'finished'")
+    Right _ -> assert "unknown active status is rejected" false
+  case State.parseState "{\"status\":\"done\"}" of
+    Left error -> assert "unknown workflow status is rejected" (error == "state: invalid status 'done'")
+    Right _ -> assert "unknown workflow status is rejected" false
+  case State.parseState "{\"steps\":[{\"name\":\"sync\",\"status\":\"bananas\",\"verification\":\"\",\"startedAt\":\"2024-01-01T00:00:00Z\",\"completedAt\":\"2024-01-01T00:00:00Z\"}]}" of
+    Left error -> assert "unknown step status is rejected" (error == "state: invalid step status 'bananas'")
+    Right _ -> assert "unknown step status is rejected" false
+  case Ops.parseResultsOp [ "step", "sync", "bananas", "", "now", "now" ] of
+    Left error -> assert "invalid step status is rejected at the command boundary" (error.code == 1)
+    Right _ -> assert "invalid step status is rejected at the command boundary" false
+  case Ops.parseDriverOp [ "init", "first", "second" ] of
+    Left error -> assert "multiple task arguments are rejected" (error.code == 2)
+    Right _ -> assert "multiple task arguments are rejected" false
+  case Ops.parseDriverOp [ "init", "--from=followpu", "resume" ] of
+    Left error -> assert "unknown entry point is rejected" (error.code == 2)
+    Right _ -> assert "unknown entry point is rejected" false
+  case Ops.parseDriverOp [ "start", "reserch" ] of
+    Left error -> assert "unknown workflow step is rejected" (error.code == 2)
+    Right _ -> assert "unknown workflow step is rejected" false
+  case Ops.parseResultsOp [ "step-start", "reserch" ] of
+    Left error -> assert "result steps are restricted to workflow steps" (error.code == 2)
+    Right _ -> assert "result steps are restricted to workflow steps" false
+  assert "string fields preserve literal true" (map toString (Ops.jsonValueFor "task" "true") == Right (Just "true"))
+  assert "boolean fields decode literal true" (map toBoolean (Ops.jsonValueFor "review" "true") == Right (Just true))
+  let terminal = State.finishWorkflow State.WorkflowCompleted (State.initState "2024-01-01T00:00:00Z")
+  assert "terminal success makes the workflow idle" (terminal.active == State.ActiveIdle && terminal.status == State.WorkflowCompleted)
