@@ -20,6 +20,7 @@ module Agency.Scripts.Do.State
   , stateGet
   , stateGetJson
   , setField
+  , maxPersistedSteps
   , appendStep
   , startPending
   , finishPending
@@ -162,6 +163,21 @@ type State =
   , extras :: Map String Json
   }
 
+-- | The persisted protocol retains at most 64 completed steps. This leaves
+-- | room for recovery loops while preventing an indefinitely growing audit log.
+maxPersistedSteps :: Int
+maxPersistedSteps = 64
+
+stepHistoryLimitError :: String -> String
+stepHistoryLimitError condition =
+  "state: step history limit (" <> show maxPersistedSteps <> ") " <> condition
+
+boundedStepValues :: Array Json -> Either String (Array Json)
+boundedStepValues values =
+  if Array.length values > maxPersistedSteps then
+    Left (stepHistoryLimitError "exceeded")
+  else Right values
+
 knownKeys :: Array String
 knownKeys = [ "workflow", "startedAt", "active", "status", "steps", "pendingStep" ]
 
@@ -210,7 +226,7 @@ parseStep value = do
     Just result -> Right result
     Nothing -> Left "state: each step must be an object"
   name <- requiredString "name" object
-  if Array.elem name Vocabulary.workflowSteps then pure unit else Left ("state: unknown step '" <> name <> "'")
+  validStepName name
   statusText <- requiredString "status" object
   status <- validStepStatus statusText
   verification <- requiredString "verification" object
@@ -245,7 +261,7 @@ parseState source = do
     Nothing -> Right []
     Just value -> case toArray value of
       Nothing -> Left "state: field 'steps' must be an array"
-      Just values -> traverse parseStep values
+      Just values -> traverse parseStep =<< boundedStepValues values
   pendingStep <- case Obj.lookup "pendingStep" object of
     Nothing -> Right Nothing
     Just value -> if Json.isNull value then Right Nothing else Just <$> parsePending value
@@ -345,7 +361,8 @@ setField key value state =
     "steps" -> case toArray value of
       Nothing -> Left "state: field 'steps' must be an array"
       Just values -> do
-        steps <- traverse parseStep values
+        boundedValues <- boundedStepValues values
+        steps <- traverse parseStep boundedValues
         pure (state { steps = steps })
     "pendingStep" ->
       if Json.isNull value then Right (state { pendingStep = Nothing })
@@ -360,11 +377,23 @@ setField key value state =
       Nothing -> Left ("state: field '" <> field <> "' must be a string")
   setStringField field update = update <$> stringField field
 
--- | State is rewritten for one workflow lifetime. A normal run appends roughly
--- | 15 steps, so retaining the complete history is bounded by that run's step
--- | count; eviction would diverge from the incumbent shell contract.
-appendStep :: Step -> State -> State
-appendStep step state = state { steps = state.steps <> [ step ] }
+validStepName :: String -> Either String Unit
+validStepName name =
+  if Array.elem name Vocabulary.workflowSteps then Right unit
+  else Left ("state: unknown step '" <> name <> "'")
+
+validStep :: Step -> Either String Step
+validStep step = do
+  validStepName step.name
+  _ <- validStepStatus (renderStepStatus step.status)
+  pure step
+
+appendStep :: Step -> State -> Either String State
+appendStep step state = do
+  _ <- validStep step
+  if Array.length state.steps >= maxPersistedSteps then
+    Left (stepHistoryLimitError "reached")
+  else Right (state { steps = state.steps <> [ step ] })
 
 startPending :: PendingStep -> State -> State
 startPending pending state = state { pendingStep = Just pending }
