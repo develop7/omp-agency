@@ -151,6 +151,15 @@ run_api_driver() {
   [[ "$output" == *"recorded: research passed"* ]]
 }
 
+@test "end done terminalizes the workflow" {
+  run_driver init "test"
+  run_driver start done
+  run_driver end passed "verified"
+  [ "$status" -eq 0 ]
+  run jq -e '.active == "idle" and .status == "completed"' .do-results.json
+  [ "$status" -eq 0 ]
+}
+
 @test "end with reason passes it through" {
   run_driver init "test"
   run_driver start sync
