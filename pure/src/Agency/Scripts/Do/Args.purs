@@ -6,6 +6,7 @@ module Agency.Scripts.Do.Args
   ) where
 import Prelude
 
+import Data.Array as Array
 import Data.Maybe (Maybe(..))
 import Data.String.CodeUnits (length, take)
 
