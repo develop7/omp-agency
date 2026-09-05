@@ -4,8 +4,6 @@ module Agency.Scripts.Do.WorkflowVocabulary
   , workflowSteps
   ) where
 
-import Prelude
-
 entryPoints :: Array String
 entryPoints =
   [ "default"
