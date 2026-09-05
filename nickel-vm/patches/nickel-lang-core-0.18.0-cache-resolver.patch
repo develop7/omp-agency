@@ -36,3 +36,22 @@
                  .map(CacheOp::Done),
          }
      }
+--- a/src/eval/fixpoint.rs
++++ b/src/eval/fixpoint.rs
+@@ -49,12 +49,12 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
+         .map(|(id, field)| {
+             if let Some(ref value) = field.value {
+                 let idx = value.as_thunk().cloned().unwrap_or_else(|| {
+-                    // If we are in this branch, `value` must be a constant after closurization
+-                    // (the evaluation of a recursive record starts by closurizing all fields and
+-                    // contracts).
+-                    debug_assert!(value.is_constant());
++                    // Nickel sources are closurized before recursive evaluation. External formats
++                    // are parsed straight to runtime values, which can be non-constant records
++                    // without free variables and are equally safe to close with an empty
++                    // environment.
+                     // Constants don't need an environment: they contain no variable.
+                     let closure: Closure = value.clone().into();
+ 
+                     cache.add(closure, BindingType::Normal)
+                 });

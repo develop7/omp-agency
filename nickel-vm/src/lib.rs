@@ -8,7 +8,7 @@ use nickel_lang_core::{
     cache::{CacheHub, InputFormat, SourcePath},
     error::NullReporter,
     eval::{cache::CacheImpl, value::NickelValue, VmContext, VirtualMachine},
-    pretty::{Allocator, Pretty},
+    serialize::{to_string, ExportFormat},
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -79,7 +79,7 @@ fn evaluate_workflow(request: WorkflowRequest) -> WorkflowResult {
                 state_source,
                 "let workflow = import \"%inmem_src%:workflow.ncl\" in \
                  let state = workflow.normalize_state (import \"%inmem_src%:.do-results.json\") in \
-                 std.serialize 'Json (workflow.cli state)"
+                 workflow.cli state"
                     .to_owned(),
                 None,
             ),
@@ -106,7 +106,7 @@ fn evaluate_workflow(request: WorkflowRequest) -> WorkflowResult {
                     "let workflow = import \"%inmem_src%:workflow.ncl\" in \
                      let state = workflow.normalize_state (import \"%inmem_src%:.do-results.json\") in \
                      let seed = import \"%inmem_src%:seed.json\" in \
-                     std.serialize 'Json (workflow.cli_seed seed state)"
+                     workflow.cli_seed seed state"
                         .to_owned(),
                     Some(seed_source),
                 )
@@ -154,8 +154,8 @@ fn evaluate_workflow(request: WorkflowRequest) -> WorkflowResult {
     let result = match vm_ctxt.prepare_eval(main_id) {
         Ok(prepared) => {
             let mut vm = VirtualMachine::new(&mut vm_ctxt);
-            match vm.eval_full_closure(prepared.into()) {
-                Ok(evaled) => match serialize_value(&evaled.value) {
+            match vm.eval_full(prepared) {
+                Ok(evaled) => match serialize_value(&evaled) {
                     Ok(stdout) => WorkflowResult {
                         exit: 0,
                         stdout,
@@ -184,15 +184,8 @@ fn evaluate_workflow(request: WorkflowRequest) -> WorkflowResult {
 }
 
 fn serialize_value(value: &NickelValue) -> Result<String, String> {
-    let allocator = Allocator::default();
-    let doc = value.pretty(&allocator);
-    let mut output = Vec::new();
-    doc.render(usize::MAX, &mut output)
-        .map_err(|error| format!("JSON wire rendering failed: {}", error))?;
-    let serialized = String::from_utf8(output)
-        .map_err(|error| format!("JSON wire was not valid UTF-8: {}", error))?;
-    serde_json::from_str(&serialized)
-        .map_err(|error| format!("Nickel JSON serialization returned an invalid string: {}", error))
+    to_string(ExportFormat::Json, value)
+        .map_err(|error| format!("JSON wire serialization failed: {:?}", error))
 }
 
 #[cfg(test)]
