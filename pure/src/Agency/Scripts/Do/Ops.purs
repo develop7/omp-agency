@@ -13,6 +13,7 @@ module Agency.Scripts.Do.Ops
   , parseDoneOp
   , parseNickelOp
   , resolveWorkflowContext
+  , allowsCorruptState
   , runResultsOp
   , runDriverOp
   , runSyncOp
@@ -272,18 +273,24 @@ validStepStatus status =
 parseError :: Int -> String -> ParseError
 parseError code message = { code, message }
 
-resolveWorkflowContext :: Boolean -> Effect (Either String WorkflowContext)
-resolveWorkflowContext captureOutput = do
+-- | Resolve execution context. Only a parsed restarting driver init may discard
+-- | unreadable persisted state; all other operations fail before dispatch.
+resolveWorkflowContext :: Boolean -> Boolean -> Effect (Either String WorkflowContext)
+resolveWorkflowContext captureOutput allowCorruptState = do
   root <- Sys.cwd
   vcsOverrideText <- Sys.getEnv "VCS_OVERRIDE"
   forgeOverrideText <- Sys.getEnv "FORGE_OVERRIDE"
   stateResult <- State.readState (root <> "/.do-results.json")
   case stateResult of
-    Left error -> pure (Left ("workflow: .do-results.json is corrupt or unreadable — " <> error <> "; restore it or run do-driver init --restart"))
-    Right state -> do
+    Left error | not allowCorruptState ->
+      pure (Left ("workflow: .do-results.json is corrupt or unreadable — " <> error <> "; restore it or run do-driver init --restart"))
+    _ -> do
       jjPresent <- Sys.isDir (root <> "/.jj")
       gitPresent <- Sys.isDir (root <> "/.git")
-      let stateVcs = state >>= Args.nonEmpty <<< State.stateGet "vcs"
+      let state = case stateResult of
+            Left _ -> Nothing
+            Right value -> value
+          stateVcs = state >>= Args.nonEmpty <<< State.stateGet "vcs"
           stateForge = state >>= Args.nonEmpty <<< State.stateGet "forge"
           vcsOverride = case stateVcs of
             Just _ -> Nothing
@@ -297,6 +304,12 @@ resolveWorkflowContext captureOutput = do
       remote <- Vcs.remoteUrlValue partial
       let forge = Forge.detectForge forgeOverride stateForge remote
       pure (Right (partial { forge = forge }))
+
+-- | Recovery is deliberately limited to the parsed restart form of init.
+allowsCorruptState :: DriverOp -> Boolean
+allowsCorruptState operation = case operation of
+  DriverInit options -> options.restart
+  _ -> false
 -- | Dispatch parsed result commands under one exclusive state transition.
 runResultsOp :: WorkflowContext -> ResultsOp -> Effect Outcome.OpOutcome
 runResultsOp context operation =

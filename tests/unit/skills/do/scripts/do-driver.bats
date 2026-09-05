@@ -12,7 +12,13 @@ teardown() {
 }
 
 run_driver() {
-  run node "$REPO_ROOT/pure/dist/agency-do.js" do-driver "$@"
+  run node "${AGENCY_DO_BIN:-$REPO_ROOT/pure/dist/agency-do.js}" do-driver "$@"
+}
+
+run_api_driver() {
+  run env AGENCY_API_BUNDLE="${AGENCY_API_BUNDLE:-$REPO_ROOT/pure/dist/agency-api.js}" \
+    node --input-type=module --eval \
+      'const { runTool } = await import(process.env.AGENCY_API_BUNDLE); const result = await runTool({ tool: "agency_driver", args: JSON.parse(process.env.AGENCY_DRIVER_ARGS), captureOutput: true })(); process.stdout.write(JSON.stringify(result)); process.exitCode = result.exit'
 }
 
 @test "init creates .do-results.json with default flags" {
@@ -47,6 +53,21 @@ run_driver() {
   [[ "$output" != *"corrupt or unreadable"* ]]
   run jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []' .do-results.json
   [ "$status" -eq 0 ]
+}
+
+@test "API init --restart replaces corrupt state but summary remains strict" {
+  printf 'not json' > .do-results.json
+
+  AGENCY_DRIVER_ARGS='["init","--restart","recovered task"]' run_api_driver
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"exit":0'* ]]
+  run jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []' .do-results.json
+  [ "$status" -eq 0 ]
+
+  printf 'not json' > .do-results.json
+  AGENCY_DRIVER_ARGS='["summary"]' run_api_driver
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"corrupt or unreadable"* ]]
 }
 
 @test "init --review sets review=true" {
