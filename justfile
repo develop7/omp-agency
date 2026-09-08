@@ -1,65 +1,74 @@
 repo := justfile_directory()
 
+# Route every recipe through the pinned Nix toolchain. No-op inside the
+# dev shell (`nix develop`), so recipes stay recursion-safe there.
+nix_shell := if env('IN_NIX_SHELL', '') != '' { '' } else { 'nix develop ' + repo + ' --accept-flake-config -c' }
+
 mod website "website/mod.just"
 
 # Run all bats tests (unit + integration)
 test:
-    REPO_ROOT={{ repo }} bats -r tests/
+    {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/
 
 # Run unit tests only (black-box, no VCS fixtures)
 test-unit:
-    REPO_ROOT={{ repo }} bats -r tests/unit/
+    {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/unit/
 
 # Run integration tests (real git fixtures)
 test-integration:
-    REPO_ROOT={{ repo }} bats -r tests/integration/
+    {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/integration/
+
+# Run the PureScript core unit tests
+test-pure:
+    {{ nix_shell }} bash -c 'cd pure && spago test -m Test.Main'
 
 # Run shellcheck on all bash scripts
 # SC2148/SC1113/SC2096: scripts are intentionally shebang-less (run via `bash script`)
 lint:
-    find scripts tests/helpers \
-        -type f \( -name '*.sh' -o -name '*.bash' \) \
-        -exec shellcheck --shell=bash --exclude=SC2148,SC1113,SC2096 {} +
+    {{ nix_shell }} bash -c 'find scripts tests/helpers \
+        -type f \( -name "*.sh" -o -name "*.bash" \) \
+        -exec shellcheck --shell=bash --exclude=SC2148,SC1113,SC2096 {} +'
 
 # Lint skill markdown: no raw VCS/forge commands where the vcs_* / forge tools
 # should be used. Scans the real skills/ tree, not test fixtures.
 lint-skills:
-    bash scripts/lint-vcs-refs.sh
+    {{ nix_shell }} bash scripts/lint-vcs-refs.sh
 
 # Generate vocabulary consumers from the sole workflow manifest.
 workflow-vocabulary:
-    node scripts/generate-workflow-vocabulary.mjs
+    {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs
 
 # Reject generated vocabulary consumers that no longer match the manifest.
 workflow-vocabulary-check:
-    node scripts/generate-workflow-vocabulary.mjs --check
+    {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs --check
 
-# Build the PureScript core and bundle the CLI and tool API entrypoints
-# (requires purs 0.15.x and spago — dev-only toolchain)
+# Build the PureScript core and bundle the CLI and tool API entrypoints.
+# The pinned spago/purs/esbuild come from the dev shell.
 build: workflow-vocabulary
-    cd pure && spago build
-    cd pure && spago bundle --module Agency.Scripts.Do.Cli \
-        --outfile dist/agency-do.js --force --platform node
-    cd pure && spago bundle --module Agency.Scripts.Do.Api \
-        --outfile dist/agency-api.js --force --platform node --bundle-type=module
+    {{ nix_shell }} bash -c 'cd pure && spago build \
+        && spago bundle --module Agency.Scripts.Do.Cli \
+            --outfile dist/agency-do.js --force --platform node \
+        && spago bundle --module Agency.Scripts.Do.Api \
+            --outfile dist/agency-api.js --force --platform node --bundle-type=module'
 
 # Verify the checked-in bundle matches the sources (drift guard for the
 # distributed artifact — the bundle IS the distributable, so it must
 # never go stale silently)
 bundle-check: workflow-vocabulary-check nickel-build
-    @trap 'rm -f pure/dist/agency-do.check.js pure/dist/agency-api.check.js' EXIT; \
+    {{ nix_shell }} bash -c 'set -euo pipefail; \
+      trap "rm -f pure/dist/agency-do.check.js pure/dist/agency-api.check.js" EXIT; \
       (cd pure && spago bundle --module Agency.Scripts.Do.Cli \
         --outfile dist/agency-do.check.js --force --platform node) && \
       (cd pure && spago bundle --module Agency.Scripts.Do.Api \
         --outfile dist/agency-api.check.js --force --platform node --bundle-type=module) && \
       cmp pure/dist/agency-do.check.js pure/dist/agency-do.js \
-        || { echo "bundle drift: pure/dist/agency-do.js is stale — run 'just build' and commit it"; exit 1; }; \
+        || { echo "bundle drift: pure/dist/agency-do.js is stale — run just build and commit it"; exit 1; }; \
       cmp pure/dist/agency-api.check.js pure/dist/agency-api.js \
-        || { echo "bundle drift: pure/dist/agency-api.js is stale — run 'just build' and commit it"; exit 1; }
-    @node nickel-vm/scripts/smoke.mjs
+        || { echo "bundle drift: pure/dist/agency-api.js is stale — run just build and commit it"; exit 1; }'
+    {{ nix_shell }} node nickel-vm/scripts/smoke.mjs
 
-# Full CI: tests + lint + skill prose lint + bundle freshness
-ci: test lint lint-skills bundle-check
+# Full CI: bats + PureScript tests + lint + skill prose lint + bundle freshness
+ci: test test-pure lint lint-skills bundle-check
 
 # Build the Nickel WASM VM in a temporary directory and compare the fresh
 # derivation output with the checked-in runtime artifact. Regeneration remains

@@ -203,6 +203,12 @@
               pkgs.nickel
               pkgs.nodejs
               pkgs.just
+              # Gate tools driven by the justfile recipes: shellcheck backs
+              # `just lint`; git and jj are the VCS binaries the bats
+              # integration fixtures drive (jj arms skip when absent).
+              pkgs.shellcheck
+              pkgs.git
+              pkgs.jj
               (rustToolchainFor system)
               (wasmBindgenCliFor system)
             ];

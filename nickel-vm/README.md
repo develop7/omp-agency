@@ -25,14 +25,15 @@ the core version requires re-verifying the smoke goldens.
 
 ## Build and smoke test
 
-Run inside the pinned toolchain: `nix develop` first (it provides the exact
-Node.js and wasm-bindgen the artifact was built with).
+`just nickel-build` self-routes through the pinned Nix toolchain, so it works from a bare
+host. Enter `nix develop` before running the smoke test directly to use the exact Node.js
+and wasm-bindgen the artifact was built with.
 
 The generated files in `dist/` are checked in because they are the runtime plugin artifact. `Cargo.lock` pins the dependency graph, including `wasm-bindgen = 0.2.127`, which must match the `wasm-bindgen-cli` used by the Nix development shell.
 
 ```bash
-nix develop
 just nickel-build
+nix develop
 node nickel-vm/scripts/smoke.mjs
 ```
 

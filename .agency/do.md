@@ -1,12 +1,12 @@
 # /do config
 
-All commands below run under the pinned toolchain: enter `nix develop` first
-(PureScript, Spago, esbuild, bats, Rust, wasm-bindgen, Node.js, just — see the
-root `flake.nix`). The `/do` workflow's check/test/ci gates assume the dev
-shell is active; on a bare host the `just` recipes fail with missing `purs`/
-`spago`. The Nickel WASM evaluator artifact is produced by the flake's
-`nickelVmWasm` derivation and checked by `just nickel-build`'s freshness gate
-(see `nickel-vm/README.md` for the resolver-order patch it carries).
+All commands below self-route through the pinned Nix toolchain (PureScript,
+Spago, esbuild, bats, shellcheck, git, jj, Node.js, just — see the root
+`flake.nix`); run them as-is from a bare host. Enter `nix develop` only to get
+the tools on PATH directly. The Nickel WASM evaluator artifact is produced by
+the flake's `nickelVmWasm` derivation and checked by `just nickel-build`'s
+freshness gate (see `nickel-vm/README.md` for the resolver-order patch it
+carries).
 
 ## Check command
 just lint

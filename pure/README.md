@@ -37,7 +37,9 @@ Sync policy is represented by two explicit VCS operations:
 
 ## Build, bundle, and test
 
-From this directory:
+From this directory, the root justfile recipes `just build`, `just bundle-check`, and
+`just test-pure` self-route through `nix develop`, so they work from a bare host. After
+entering `nix develop`, run the equivalent commands by hand:
 
 ```sh
 spago build

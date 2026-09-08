@@ -12,22 +12,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: extractions/setup-just@v2
-      - run: sudo apt-get update && sudo apt-get install -y bats
-      - run: just test
+      - uses: nixbuild/nix-quick-install-action@v31
+      # The devShell provides `just` (runners ship neither nix-profiles nor
+      # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
+      - run: nix develop --accept-flake-config -c just test
 
   lint:
     name: Shellcheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: extractions/setup-just@v2
-      - run: just lint
+      - uses: nixbuild/nix-quick-install-action@v31
+      - run: nix develop --accept-flake-config -c just lint
 
   lint-skills:
     name: Skill prose
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: extractions/setup-just@v2
-      - run: just lint-skills
+      - uses: nixbuild/nix-quick-install-action@v31
+      - run: nix develop --accept-flake-config -c just lint-skills
+
+  build:
+    name: Bundle check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nixbuild/nix-quick-install-action@v31
+      - run: nix develop --accept-flake-config -c just bundle-check

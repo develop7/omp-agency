@@ -150,36 +150,41 @@ See [Kolu's `.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for 
 
 ## Development
 
-`nix develop` provides the pinned PureScript, Spago, esbuild, bats, Node.js, Rust, wasm-bindgen, and just toolchain for contributors. Nickel remains available as an editor/debugging nicety; runtime workflow evaluation is provided by `nickel-vm` WASM:
+All recipes self-route through the pinned Nix toolchain (PureScript, Spago,
+esbuild, bats, Node.js, Rust, wasm-bindgen, shellcheck, git, jj, just) — no
+`nix develop` needed first; enter the shell only if you want the tools on
+PATH directly. Nickel remains available as an editor/debugging nicety; runtime
+workflow evaluation is provided by `nickel-vm` WASM:
 
 ```bash
-nix develop
-just test      # run bats tests (unit + integration)
-just lint      # run shellcheck on bash scripts
-just lint-skills  # lint skill markdown: no raw VCS/forge commands
-just build     # compile and bundle the PureScript core
-just ci        # full CI: tests + lint + skill prose lint + bundle freshness
+just test          # run bats tests (unit + integration)
+just test-pure     # run the PureScript core unit tests
+just lint          # run shellcheck on bash scripts
+just lint-skills   # lint skill markdown: no raw VCS/forge commands
+just build         # compile and bundle the PureScript core
+just ci            # full CI: tests + lint + skill prose lint + bundle freshness
 just nickel-build  # build the Nickel WASM evaluator and Node glue
-node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite
+node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite (inside nix develop)
 ```
 
 One-off CLI invocations outside the dev shell should pin the interpreter too:
 `nix develop --command node pure/dist/agency-do.js …`.
 
-Testing requires [bats-core](https://github.com/bats-core/bats-core): `sudo apt-get install bats`, `brew install bats-core`, or `nix profile install nixpkgs#bats`.
-
-The `/do` operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and `agency_driver`) is implemented in PureScript under `pure/`. The CLI bundle, `pure/dist/agency-do.js`, remains the black-box test entrypoint; the OMP adapter lazily loads `pure/dist/agency-api.js`. See `pure/README.md` for the module map and these recipes:
+All test and build tools (bats, shellcheck, purs, spago, git, jj) come from the
+pinned Nix dev shell via the recipes above — nothing to install. The `/do`
+operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and
+`agency_driver`) is implemented in PureScript under `pure/`. The CLI bundle,
+`pure/dist/agency-do.js`, remains the black-box test entrypoint; the OMP
+adapter lazily loads `pure/dist/agency-api.js`. See `pure/README.md` for the
+module map and these recipes:
 
 ```bash
-(cd pure && spago build)      # compile the PureScript core
-(cd pure && spago test)       # PureScript unit tests
-(cd pure && spago bundle --module Agency.Scripts.Do.Cli \
-  --outfile dist/agency-do.js --force --platform node)   # rebuild the CLI bundle
-(cd pure && spago bundle --module Agency.Scripts.Do.Api \
-  --outfile dist/agency-api.js --force --platform node --bundle-type=module)   # rebuild the tool API bundle
+just test-pure    # PureScript unit tests
+just build        # compile and bundle the PureScript core (CLI + tool API)
+just bundle-check # verify the checked-in bundles match the sources
 ```
 
-Requires `purs` (0.15.x) and `spago` for development; consumers only need `node`.
+Consumers only need `node`; development requires nothing beyond Nix.
 
 ## Resources
 
