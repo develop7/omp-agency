@@ -4,8 +4,6 @@ repo := justfile_directory()
 # dev shell (`nix develop`), so recipes stay recursion-safe there.
 nix_shell := if env('IN_NIX_SHELL', '') != '' { '' } else { 'nix develop ' + repo + ' --accept-flake-config -c' }
 
-mod website "website/mod.just"
-
 # Run all bats tests (unit + integration)
 test:
     {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/
