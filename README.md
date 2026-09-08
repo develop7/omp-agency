@@ -156,8 +156,9 @@ See [Kolu's `.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for 
 nix develop
 just test      # run bats tests (unit + integration)
 just lint      # run shellcheck on bash scripts
+just lint-skills  # lint skill markdown: no raw VCS/forge commands
 just build     # compile and bundle the PureScript core
-just ci        # full CI: tests + lint + bundle freshness
+just ci        # full CI: tests + lint + skill prose lint + bundle freshness
 just nickel-build  # build the Nickel WASM evaluator and Node glue
 node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite
 ```

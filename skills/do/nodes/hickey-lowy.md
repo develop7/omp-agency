@@ -17,98 +17,67 @@ description: Parallel structural review with hickey and lowy sub-agents.
 - Review findings applied as individual commits (or working-tree fixes under --no-vcs)
 - Findings ledger for PR comment
 
-## Pattern
-
-Instances [fanout-fix](../patterns/fanout-fix.md) with:
-
-- `reviewers`: [`hickey` sub-agent, `lowy` sub-agent]
-- Config: `cross_validate: true`
-
 ## Strategies
 
-Invoke `hickey` and `lowy` as two **parallel sub-agents** via the `task` tool (`agent: "hickey"` and `agent: "lowy"`).
+Invoke `hickey` and `lowy` as two **parallel sub-agents** via the `task` tool (`agent: "hickey"` and
+`agent: "lowy"`), both `task` calls emitted in a single response.
 
-**Fallback, never skip.** If a sub-agent invocation fails for harness/tooling reasons
-before producing a review, retry that reviewer once; if it still cannot produce a sub-agent review, run that review in
-the main model by loading the reviewer skill against the same diff.
+**Fallback, never skip.** If a sub-agent invocation fails for harness/tooling reasons before producing
+a review, retry that reviewer once; if it still cannot produce a sub-agent review, run that review in
+the main model by loading the reviewer skill against the same diff. Do not replace it with an informal
+review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
+model override.
 
-**Why post-implement, not pre-implement.** Hickey's complecting critique and Lowy's volatility lens both bite harder on
-a concrete diff than on a plan sketch. Reviewing a plan tends to surface generic concerns; reviewing a real diff
-surfaces the specific interleavings and boundary misalignments that matter.
-
-<use_parallel_tool_calls>
-For maximum efficiency, invoke the `hickey` and `lowy` Agent tools **in parallel** rather than sequentially. You MUST
-use parallel tool calls: emit both `Agent`/`task` tool_use blocks in a single response, with no other tool calls or text
-in that response.
-</use_parallel_tool_calls>
-
-Each prompt must be self-contained. Brief each one with:
+Each sub-agent prompt must be self-contained (sub-agents inherit no context). Brief each one with:
 
 - The full task prompt plus anything relevant that **research** uncovered
 - Scope: the actual diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
-- **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using `{ args: ["new-files"] }` and
-  only include the hint if the output is non-empty
+- **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
+  `{ args: ["new-files"] }` and only include the hint if the output is non-empty: survey the codebase
+  for the canonical in-repo pattern for the same *kind* of operation and flag it as the headline finding
+  if the diff reinvents rather than extends it
 
-**Do not seed structural questions.** The implementer's prompt must NOT include pre-formed questions like _"Is module X
-the right home for function Y?"_
+**Do not seed structural questions** beyond that hint — pre-formed questions ("is module X the right
+home for Y?") produce circular reasoning at the reviewer. If a concern feels worth flagging, fix it in
+the diff instead. (`RATIONALE.md`)
 
-**Model selection lives in the agent definitions, not here.** Both agents declare `model: "@task"` in their frontmatter, resolved through OMP's `modelRoles.task` setting.
+**Why post-implement, not pre-implement.** Both lenses bite harder on a concrete diff than on a plan
+sketch: reviewing a plan surfaces generic concerns; reviewing a real diff surfaces the specific
+interleavings and boundary misalignments that matter.
 
-**No deferrals.** There is no "Defer" disposition. `/do` is not optimizing for minimal diff — it is optimizing for the
-simpler artifact landing in `master`. A PR that grows because hickey caught a real fragmentation bug is a *better* PR.
+**No deferrals.** There is no "Defer" disposition — `/do` optimizes for the simpler artifact landing in
+`master`, not for minimal diff. Findings have two dispositions: **Fix in this PR** and **No-op** (narrow:
+the diff already deletes the offending code, or the finding is subsumed verbatim by another). If a
+sub-agent emits anything resembling a defer — "out of scope", "follow-up", "pre-existing, separate PR" —
+flip the disposition to **Fix in this PR** unconditionally and apply the fix here. Findings that
+genuinely require coordination outside this repo shouldn't have surfaced as structural-review findings;
+if one did, apply a local workaround or interface boundary in this PR and flag the upstream dependency
+in the PR description as a strategic note, not a deferred finding.
 
-If a sub-agent emits anything resembling a defer, flip the disposition to **Fix in this PR** unconditionally and apply
-the fix here. Findings that genuinely require coordination outside this repo (upstream library bug, breaking dep upgrade,
-schema migration that must ship separately) shouldn't have surfaced as structural-review findings; if one did, apply a
-local workaround or interface boundary in this PR rather than punt — and flag the upstream dependency in the PR
-description as a strategic note, not as a deferred finding.
+**Cross-validate the parallel findings.** Skip only when both reviewers returned zero findings.
+Otherwise, for each reviewer that produced findings, spawn a **second invocation of that same skill**
+in parallel, with a self-contained prompt containing:
 
-**Cross-validate the parallel findings.** After first-pass reviews, for each reviewer that produced findings, spawn a
-second invocation of *that same skill* with a self-contained prompt containing the diff and the other reviewer's full
-findings output. Ask: _"Apply your lens to the diff **and** to the other reviewer's recommendations. Does any
-recommendation, if applied, create a problem your lens would flag?"_
+- The actual diff (`vcs_read` with `{ args: ["diff-range"] }`)
+- The other reviewer's full findings output — paste verbatim; the cross-validator must see the
+  recommendations being audited, not a summary
+- The question, phrased neutrally: _"Apply your lens to the diff **and** to the other reviewer's
+  recommendations. Does any recommendation, if applied, create a problem your lens would flag? If yes,
+  surface it as a new finding with the same disposition rules (Fix in this PR / No-op, no Defer)."_
 
-Run the two cross-validation calls in parallel. If either surfaces a new finding, treat it identically to a first-pass
-finding — apply as its own commit with prefix `refactor(hickey): cross-validate — <short label>` (or
-`refactor(lowy): cross-validate — …`) so the commit log distinguishes cross-validation findings from first-pass ones.
+Treat any new finding identically to a first-pass finding, with commit prefix
+`refactor(hickey): cross-validate — <short label>` (or `refactor(lowy): cross-validate — …`) so the log
+distinguishes cross-validation findings.
 
-**Apply each "Fix in this PR" finding as its own commit** — do not batch:
+**Apply each "Fix in this PR" finding as its own commit** — do not batch. A reviewer reading the PR's
+commit history should follow the structural refinement one finding at a time:
 
 1. Apply the fix narrowly — only the lines that address this specific finding.
-2. Run the project's format command on the changed files, if configured.
-3. Call the `vcs_write` tool with `{ op: "fix-commit", message: "refactor(hickey): <short finding label>", files: ["<file1>", "<file2>", ...] }` (or `refactor(lowy)`). Pass the files the finding fix touched. Body restates the finding in one line.
+2. Run the project's format command on the changed files, if one is configured.
+3. Call the `vcs_write` tool with `{ op: "fix-commit", message: "refactor(hickey): <short finding label>", files: ["<file1>", "<file2>", ...] }` (or `refactor(lowy): …`). Body restates the finding in one line; the dispatcher stages only the passed files and pushes.
 
-The `fix-commit` variant requires both `message` and a non-empty `files` list;
-do not pass branch or push fields with it.
+**Under `--no-vcs`**: skip commit/push. Apply fixes to the working tree and move on.
 
-**Under `--no-vcs`**: Skip commit/push. Apply fixes to working tree.
-
-**Verify**: Both hickey and lowy produced review output. Cross-validation ran (or skipped because zero findings). Every
-finding has action recorded: **Fix in this PR** or **No-op**. Every "Fix" has a corresponding commit, except under
-`--no-vcs`.
-
-## Delegation
-
-```prose
-# Phase 1: parallel first-pass
-spawn hickey(diff, task, context) and lowy(diff, task, context) in parallel
-await both
-merge all findings
-
-# Phase 2: cross-validation (if at least two reviewers found something)
-if cross_validate and both reviewers produced findings:
-  for each reviewer that produced findings:
-    spawn that reviewer again with diff + other reviewer's findings
-    ask: "Does any recommendation create a problem your lens would flag?"
-  await both cross-validation calls
-  merge new findings
-
-# Phase 3: apply fixes
-for each finding with disposition "Fix in this PR":
-  apply the fix narrowly
-  run fmt on changed files
-  call the `vcs_write` tool with `{ op: "fix-commit", message: "refactor(hickey|lowy): <short label>", files: ["<changed-files>"] }`
-  (under --no-vcs: skip commit/push, apply to working tree only)
-
-return { commits, findings_ledger }
-```
+**Verify**: Both hickey and lowy produced review output. Cross-validation ran (or was correctly skipped
+because both reviewers returned zero findings). Every finding has a disposition — **Fix in this PR** or
+**No-op**, no defers. Every Fix has a corresponding commit, except under `--no-vcs`.

@@ -15,8 +15,7 @@ description: Run the project's format command.
 
 ## Strategies
 
-Read `.agency/do.md` and look for a `## Format command` section. Run it.
+Read `.agency/do.md` and look for a `## Format command` section. Run it. If no format command is
+documented, skip this step with a note.
 
-If no format command is documented, skip this step with a note.
-
-**Verify**: Format command ran without error, or no command configured.
+**Verify**: format command ran without error, or no command configured.

@@ -16,18 +16,19 @@ description: Create a descriptive feature branch from the resolved base.
 
 ## Strategies
 
-Read `vcs` and `base` from `.do-results.json`. Then:
+Call the `vcs_write` tool with `{ op: "branch", name: "<descriptive-name>" }`.
 
-```
-call the `vcs_write` tool with `{ op: "branch", name: "<descriptive-name>" }`
-```
+No base argument — `vcs_write` reads the resolved `base` from state. The tool handles VCS-specific
+details: git creates the branch from `origin/<base>` (hard-erroring if that ref is missing — the
+parent must be pushed before stacking); jj creates a new change on `<base>` and a bookmark pointing
+at it.
 
-No base argument — `vcs_write` reads the resolved `base` from state. The tool handles the VCS-specific details: git
-creates `git branch <name> origin/<base>` (and hard-errors if `origin/<base>` is missing — the parent must be pushed
-before stacking); jj creates `jj new <base>` followed by `jj bookmark create <name> -r @`.
+`base` is what makes stacked PRs work: it is the parent branch (not necessarily master/main), resolved
+by sync from `--base <branch>`, `--stack`, or the default branch. create-pr targets this same `base`
+and every review/diff op (hickey-lowy, police, test) diffs against it — a stacked PR's review sees
+just that PR's changes.
 
-`base` is what makes stacked PRs work: it is the parent branch (not necessarily master/main). sync resolves it from `--base <branch>`, `--stack` (auto-detect the current feature branch), or the default branch. The PR created in **create-pr** targets this same `base`, and every review/diff op (hickey-lowy, police, test) diffs against it — so a stacked PR's review sees just this PR's changes, not the cumulative stack.
+That's it — just the local branch. commit pushes it, create-pr opens the PR later.
 
-That's it — just the local branch. No commit, no push, no PR. The branch is pushed later in **commit**, and the PR is created in **create-pr** after all changes are done.
-
-**Verify**: calling the `vcs_read` tool with `{ args: ["head-revision"] }` returns the new branch name (not master/main).
+**Verify**: calling the `vcs_read` tool with `{ args: ["head-revision"] }` returns the new branch name
+(not master/main).

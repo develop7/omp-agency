@@ -17,7 +17,8 @@ description: Timing summary, optimization suggestions, and wrap-up.
 
 ## Strategies
 
-Present a summary of all steps with their verification status. If any step has a non-success status, retry it (max 3 attempts from done). If still failing after retries, set `status: "failed"`.
+Present a summary of all steps with their verification status. Retry any non-success step (max 3
+attempts from done). If still failing after retries, set `status: "failed"`.
 
 `"completed"` requires **all steps `passed`**, with six exceptions that count toward completion:
 
@@ -25,46 +26,36 @@ Present a summary of all steps with their verification status. If any step has a
 2. A step `skipped` with `reason` `"--no-vcs"`.
 3. A step `skipped` with `reason` `"no PR evidence section in .agency/do.md"`.
 4. A step `skipped` with `reason` `"--minimal"`.
-5. A step `skipped` with `reason` beginning `"no * command configured"`.
+5. A step `skipped` with a `reason` beginning `"no * command configured"`.
 6. A step `skipped` with `reason` `"docs-only changes"`.
 
-A `failed` step always blocks `"completed"`.
+A `failed` step always blocks `"completed"` — no redefining "passed". Update via
+`{ op: "set", args: ["status", "completed"|"failed"] }`.
 
 #### Timing summary
 
-Call the `agency_driver` tool with `{ op: "summary", args: [] }`. It emits:
-
-1. A markdown timing table (step, status, duration, verification), with any step that took ≥30% of total time shown in **bold**.
-2. A total wall-clock line.
-3. A `**Slowest step**:` line.
-4. A `<<<FACTS ... FACTS` block with machine-readable summary data.
-
-Do not compute durations yourself — the `agency_driver` tool handles all timestamp arithmetic.
+Call the `agency_driver` tool with `{ op: "summary", args: [] }`. It emits the markdown timing table
+(steps ≥30% of total time bold), the total wall-clock line, the `**Slowest step**:` line, and a
+`<<<FACTS ... FACTS` block with machine-readable data (`totalSeconds`, `slowestStep`, `dominantSteps`,
+`skippedSteps`, `failedSteps`). Do not compute durations yourself.
 
 #### Optimization suggestions
 
-Read the `FACTS` block the `agency_driver` summary operation emitted and generate **2–4 concrete suggestions** for reducing time-to-completion in future runs. Base these on the actual timing data — for example:
-
-- If **ci** dominates: suggest `--from ci-only` for re-runs.
-- If **research** was slow: suggest pre-reading relevant code before invoking `/do`.
-- If **test** had retries: note the flaky test and suggest hardening it.
-- If **police** required fix iterations: note which pass caught issues.
-- If **implement** was the bottleneck: suggest breaking the task into smaller PRs.
-
-Be specific to this run's data, not generic advice.
+From the FACTS block, generate **2–4 concrete suggestions** for reducing time-to-completion in future
+runs — specific to this run's data (dominant step, flaky retries, useful `--from` entry point), not
+generic advice.
 
 #### PR comment & wrap-up
 
-**If `--no-vcs`**: Print the timing table and optimization suggestions to the terminal only. List files modified in the working tree (call the `vcs_read` tool with `{ args: ["dirty"] }`). Remind the user that changes are uncommitted.
-
-**If `!supportsPrComment`** (read from state): Report the branch name (and remote URL via the `vcs_read` tool with `{ args: ["remote-url"] }`). Print timing table and suggestions to the terminal only.
-
-**If `supportsPrComment`**: Report the PR URL. Then post the final step status table as a **PR comment** by calling the
-`forge` tool with `{ op: "pr-comment", args: [], body: "<comment>" }`. Use the markdown table and slowest-step line emitted by the
-`agency_driver` summary operation verbatim (strip the trailing `<<<FACTS ... FACTS` block — that's internal). Format:
-
-This uses the body-bearing `forge` `pr-comment` variant; read operations such
-as `pr-view` remain args-only.
+- **Under `--no-vcs`**: print the timing table and suggestions to the terminal only. List files
+  modified in the working tree (the `vcs_read` tool with `{ args: ["dirty"] }`) and remind the user the
+  changes are uncommitted.
+- **If `!supportsPrComment`** (read from state): report the branch name (and remote URL via
+  `vcs_read` with `{ args: ["remote-url"] }`) instead of a PR URL. Print to the terminal only; post
+  nothing.
+- **If `supportsPrComment`**: report the PR URL. Post the final step status table as a PR comment by
+  calling the `forge` tool with `{ op: "pr-comment", args: [], body: "<comment>" }` — use the emitted
+  table and slowest-step line verbatim, strip the trailing FACTS block. Format:
 
 ```text
 call the `forge` tool with `{ op: "pr-comment", args: [], body: """`
@@ -73,7 +64,6 @@ call the `forge` tool with `{ op: "pr-comment", args: [], body: """`
 | Step | Status | Duration | Verification |
 |------|--------|----------|-------------|
 | sync | ✓ | 3s | ... |
-| research | ✓ | 45s | ... |
 ...
 | **Total** | | **4m 32s** | |
 

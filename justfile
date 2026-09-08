@@ -21,6 +21,11 @@ lint:
         -type f \( -name '*.sh' -o -name '*.bash' \) \
         -exec shellcheck --shell=bash --exclude=SC2148,SC1113,SC2096 {} +
 
+# Lint skill markdown: no raw VCS/forge commands where the vcs_* / forge tools
+# should be used. Scans the real skills/ tree, not test fixtures.
+lint-skills:
+    bash scripts/lint-vcs-refs.sh
+
 # Generate vocabulary consumers from the sole workflow manifest.
 workflow-vocabulary:
     node scripts/generate-workflow-vocabulary.mjs
@@ -53,8 +58,8 @@ bundle-check: workflow-vocabulary-check nickel-build
         || { echo "bundle drift: pure/dist/agency-api.js is stale — run 'just build' and commit it"; exit 1; }
     @node nickel-vm/scripts/smoke.mjs
 
-# Full CI: tests + lint + bundle freshness
-ci: test lint bundle-check
+# Full CI: tests + lint + skill prose lint + bundle freshness
+ci: test lint lint-skills bundle-check
 
 # Build the Nickel WASM VM in a temporary directory and compare the fresh
 # derivation output with the checked-in runtime artifact. Regeneration remains

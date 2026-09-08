@@ -16,46 +16,41 @@ description: Attach empirical evidence to the PR (opt-in).
 
 ## Strategies
 
-Nickel always routes a non-minimal run to this node. This node is the sole
-place that detects whether the project has configured PR evidence.
+Nickel always routes a non-minimal run to this node; the node itself is the sole place that detects
+whether the project has configured PR evidence.
 
-**If `--no-vcs`**: Skip with status `skipped` and reason `"--no-vcs"`. There is no PR to attach evidence to.
+- **If `--no-vcs`**: skip with status `skipped` and reason `"--no-vcs"` — there is no PR to attach evidence to.
+- **If `!supportsPrComment`**: skip with reason `"forge does not support PR comments"`.
+- **Otherwise**: read `.agency/do.md` and look for a `## PR evidence` section. If missing or empty, skip
+  with reason `"no PR evidence section in .agency/do.md"` — the default for projects that haven't opted in.
 
-**If `!supportsPrComment`**: Skip with status `skipped` and reason `"forge does not support PR comments"`. (Bitbucket comment wiring is tracked in #10.)
+**The trigger is visual *or* behavioral.** Visual: screenshots, recordings (video when motion is the
+point). **Behavioral** — proof that state survives an interaction or a restart — is easy to
+under-fire on: persistence, restore, session, autosave, debounce/coalesce, and reconnect fixes often
+have **no visual diff** yet are exactly where a survives-restart capture proves recoverability. Bug
+fixes default to "demonstrate the fixed behavior" even when nothing looks different; gate on "is there
+a behavior worth proving", not on a pixel changing.
 
-**Otherwise**: Read `.agency/do.md` and look for a `## PR evidence` section. If missing or empty, skip with status `skipped` and reason `"no PR evidence section in .agency/do.md"` — the default for projects that haven't opted in.
+**Read the trigger broadly.** The project's section supplies the capture *mechanism*; the criterion
+for *when to fire* is the visual-or-behavioral framing above. If the section's wording leans visual but
+the diff is a behavioral fix, capture the behavior anyway. Skip only when there is genuinely no
+behavior worth proving (pure refactor, docs change, internal cleanup with no observable
+before→after).
 
-**The trigger is visual *or* behavioral.** The proof that matters is sometimes a pixel diff (visual) and sometimes "does
-state survive the interaction or a restart?" (behavioral). A behavioral fix — persistence, restore, session, autosave,
-debounce/coalesce, reconnect — routinely has **no visual diff** yet is exactly where a survives-restart capture proves
-the fix didn't break recoverability. Bug fixes default to "demonstrate the fixed behavior" even when nothing _looks_
-different; gate evidence on "is there a behavior worth proving," not on a pixel changing.
-
-**Read the trigger broadly.** The project's `## PR evidence` section supplies the capture mechanism; the criterion for
-_when to fire_ is the visual-or-behavioral framing above. If the section's wording leans visual ("when the change has
-visible UI impact") but the diff is a behavioral fix, capture the behavior anyway — the absence of a visual diff is not
-a reason to skip. Only skip when there's genuinely no behavior worth proving (a pure refactor, a docs change, an
-internal cleanup with no observable before→after).
-
-**If the section is present**:
-
-The section is project-specific and free-form: inline prose, pointer to another file, script reference, or any combination. Read it, then **spawn a sub-agent** via the `task` tool (default `agent: "task"`) so the capture work doesn't pollute `/do`'s main context.
-
-The sub-agent prompt should include:
+**If the section is present**: it is free-form — inline prose, pointer to another file, script
+reference, or any combination. Read it, then **spawn a sub-agent** via the `task` tool (default
+`agent: "task"`) so the capture work doesn't pollute `/do`'s main context. The sub-agent prompt
+includes:
 
 - The literal section content from `.agency/do.md`.
-- Standard PR context: PR URL, branch name, base branch, current commit SHA, and the `vcs_read` tool with `{ args: ["diff-names"] }` (read-side seam — the toolkit's `repo_diff_range` is a real gap that `vcs_read` still covers).
-- An explicit instruction that the sub-agent's job is to return a single block of markdown suitable for posting under a `## Evidence` heading.
+- Standard PR context: PR URL, branch name, base branch, current commit SHA, and changed files via
+  the `vcs_read` tool with `{ args: ["diff-names"] }`.
+- An explicit instruction to **return a single block of markdown** suitable for posting under a
+  `## Evidence` heading — not post the comment itself.
 
-After the sub-agent returns, post its output as one PR comment using the `forge` tool with `{ op: "pr-comment", args: [], body: "<comment>" }` under a `## Evidence` heading. Put the returned markdown in the tool's `body` field so backticks and `$` survive unescaped — the tool writes a temporary body file for `gh`:
+After the sub-agent returns, post its output as one PR comment by calling the `forge` tool with
+`{ op: "pr-comment", args: [], body: "## Evidence\n\n<markdown returned by the sub-agent>" }`. Embed
+image/asset URLs inline — the comment operation cannot attach files; the section's mechanism is
+responsible for hosting binary artifacts so they end up referenceable.
 
-Use the body-bearing `forge` `pr-comment` variant here; `pr-view`,
-`issue-view`, and other read/capability variants carry only `args`.
-
-```text
-call the `forge` tool with `{ op: "pr-comment", args: [], body: "## Evidence\n\n<markdown returned by the sub-agent>" }`
-```
-
-Embed image/asset URLs inline in the markdown — the `forge` tool's `pr-comment` operation cannot attach files; the workflow section is responsible for telling the sub-agent how to host any binary artifacts so they end up referenceable.
-
-**Verify**: Either the step was skipped per the rules above, or a `## Evidence` PR comment exists.
+**Verify**: the step was skipped per the rules above, or a `## Evidence` PR comment exists.
