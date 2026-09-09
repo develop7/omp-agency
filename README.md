@@ -23,7 +23,7 @@ The autonomous loop is only as good as the feedback signal it gets. If the agent
 
 ### State, within and across PRs
 
-**Within a PR**, `/do` writes per-step lifecycle, status, and timing to `.do-results.json` at the repo root. The `stop-guard` extension reads this so the agent can't bail mid-workflow — if a run is still `working`, stops are blocked until it reaches `done` or is explicitly marked `failed`.
+**Within a PR**, `/do` writes per-step lifecycle, status, and timing to `.do-results.json` at the repo root.
 
 **Across PRs**, there is no built-in memory, by design. Scope each PR small enough to land end-to-end in a day or two; branches that linger longer are a smell. When a piece of work genuinely doesn't fit in one PR, have `/talk` produce a GitHub issue with explicit phases, then run `/do` against each phase as its own PR — the issue is the cross-PR memory. See [juspay/kolu#514](https://github.com/juspay/kolu/issues/514) for the shape.
 
@@ -86,10 +86,6 @@ tier:
 - **`fact-check`** — Standalone correctness audit: silent error swallowing, unjustified fallbacks, wishful thinking, logic errors. Prosecutor posture, no self-dismissals.
 - **`elegance`** — Iterative elegance pass: understand, research, apply, verify. 3 iterations by default, each building on the last.
 - **`forge-pr`** — PR titles and descriptions devs actually want to read. Narrative paragraphs for the why; lists/tables/diagrams when the content is genuinely structured. GitHub today; Bitbucket support tracked in [#10](https://github.com/srid/agency/issues/10).
-
-### Extension
-
-- **`stop-guard`** — OMP extension (`session_stop` event) that reads `.do-results.json` to keep the agent from stopping mid-`do` workflow.
 
 ## Model tiers
 

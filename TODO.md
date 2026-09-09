@@ -2,7 +2,7 @@
 
 This backlog audits the agency plugin against `@oh-my-pi/pi-coding-agent` **v17.2.12** at commit [`45e12e5`](https://github.com/can1357/oh-my-pi/tree/45e12e5bb758198a920c6070e7e64cb33b21beac). “Feasible” means the OMP API can support the behavior end to end; it does not by itself mean agency should add it.
 
-Agency’s current control plane remains the `/do` skill plus the `agency_driver`, `workflow`, `vcs_read`, `vcs_write`, and `forge` tools over the PureScript core. The extension contributes those tools and the `session_stop` guard in `src/stop-guard.ts`; no second TypeScript workflow state machine is needed.
+Agency’s current control plane remains the `/do` skill plus the `agency_driver`, `workflow`, `vcs_read`, `vcs_write`, and `forge` tools over the PureScript core. The extension contributes those tools (`src/agency-tools.ts`); no second TypeScript workflow state machine is needed. The former `session_stop` stop-guard (`src/stop-guard.ts`) was removed: OMP no longer requires an additional stop nudge, and stale `.do-results.json` state caused false continuations.
 
 ## Status vocabulary
 
@@ -20,7 +20,7 @@ Agency’s current control plane remains the `/do` skill plus the `agency_driver
 | 1 | `registerTool` | Feasible | **Done**: typed adapters over the existing PureScript workflow core; no second workflow engine |
 | 2 | `registerCommand` | Feasible | **Deferred**: OMP has no command-to-skill delegation primitive, and `/do` already owns the UX |
 | 3 | `before_agent_start` | Feasible | **Planned**: one bounded, model-visible workflow-state message per agent run |
-| 4 | `turn_end` / `agent_end` / `session_stop` | Feasible | **Partly done**: keep `session_stop`; reject hidden CI/test orchestration in lifecycle hooks |
+| 4 | `turn_end` / `agent_end` / `session_stop` | Feasible | **Done then removed**: the `session_stop` stop-guard shipped and was later dropped — OMP no longer needs a nudge and stale state caused false continuations. Hidden CI/test orchestration in lifecycle hooks stays rejected |
 | 5 | `mcp_notification` + `sendMessage` | Feasible | **Deferred** until a concrete producer, method, schema, and delivery policy exist |
 | 6 | `tool_call` + `context` | Feasible | **Merged/conditional**: validate workflow tools at their source; add a global guard only for a real cross-tool invariant; context belongs to #3 |
 | 7 | `input` | Interactive-only | **Rejected** as an intent classifier; reserve for explicit, deterministic syntax only |
@@ -153,24 +153,22 @@ Do not also inject the same state through `context` or `input`. `context` runs a
 
 **Agency implementation**
 
-Keep lifecycle control narrow:
+The lifecycle control here has been **removed**:
 
-1. Retain the existing `session_stop` guard. Move only its state reading behind the same stable snapshot boundary used by items #1 and #3.
-2. Continue only when `/do` state says the workflow is active. Include the current step in `additionalContext` when available.
-3. Do not launch tests, CI, reviewers, or PR operations from `turn_end` or `agent_end`. Those are explicit Nickel workflow nodes with persisted start/end evidence; hidden lifecycle automation would create a second scheduler.
-4. If `agent_end` is later used for observation, ignore events with `willContinue: true` and never mutate workflow state there.
-5. Avoid `turn_end` for progress state: one `/do` step can span many turns, so turn boundaries are not workflow boundaries.
+1. The `session_stop` stop-guard (`src/stop-guard.ts`) shipped and was later **removed**. Rationale: OMP no longer requires an additional stop nudge, and a stale or crash-orphaned `.do-results.json` could block settling indefinitely (false continuations).
+2. Do not launch tests, CI, reviewers, or PR operations from `turn_end` or `agent_end`. Those are explicit Nickel workflow nodes with persisted start/end evidence; hidden lifecycle automation would create a second scheduler.
+3. If `agent_end` is later used for observation, ignore events with `willContinue: true` and never mutate workflow state there.
+4. Avoid `turn_end` for progress state: one `/do` step can span many turns, so turn boundaries are not workflow boundaries.
 
-**UX impact**: High for the existing stop guard; low for additional observation hooks.
+**UX impact**: None now that the guard is gone; low for additional observation hooks.
 
-**Complexity**: Existing guard is low. Hidden task automation would be high and is rejected.
+**Complexity**: None (guard deleted). Hidden task automation would be high and is rejected.
 
-**Status**: **`session_stop` continuation is done; state-reader cleanup is planned; additional automation is rejected.**
+**Status**: **`session_stop` stop-guard removed — OMP does not need the nudge and stale state caused false continuations; additional automation is rejected.**
 
 **Sources**
 
-- Current guard: `src/stop-guard.ts:5-19`.
-- Existing explicit workflow sequencing: `skills/do/SKILL.md:38-45`, `skills/do/SKILL.md:79-89`.
+- Removed guard (historical): `src/stop-guard.ts` (deleted).
 - Lifecycle event contracts: [`shared-events.ts:193-220`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/shared-events.ts#L193-L220), [`shared-events.ts:97-109`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/shared-events.ts#L97-L109), [`shared-events.ts:379-391`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/shared-events.ts#L379-L391).
 
 ---
