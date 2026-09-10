@@ -128,3 +128,47 @@ run_sync() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"incompatible with --no-vcs"* ]]
 }
+
+@test "sync false in a jj repo fetches with --remote <name>, not positionally (#55)" {
+  # Regression (#55): jj 0.44 rejects `jj git fetch <remote>` with
+  # "unexpected argument"; sync must emit `jj git fetch --remote <r>`.
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init --colocate 2>/dev/null || skip "jj git init failed"
+  git init -q --bare "$TEST_DIR/fetch-target.git"
+  git remote add origin "$TEST_DIR/fetch-target.git" 2>/dev/null || true
+  git config user.email "test@test.com"
+  git config user.name "Test"
+  echo base > file.txt
+  jj describe -m base
+  jj bookmark create main -r @
+  jj git push --remote origin --bookmark main
+
+  real_jj="$(command -v jj)"
+  mkdir -p "$TEST_DIR/bin"
+  # Tripwire shim: any positional-remote fetch (`jj git fetch <name>`) is
+  # the pre-fix argv and fails the test outright (exit 77); every other
+  # invocation delegates to the real jj so sync's remote resolution and
+  # protocol lines still run for real.
+  cat > "$TEST_DIR/bin/jj" <<'SH'
+#!/bin/sh
+if [ "$1" = "git" ] && [ "$2" = "fetch" ] && [ "$3" != "--remote" ]; then
+  echo "jj git fetch called positionally: $*" >&2
+  exit 77
+fi
+if [ "$1" = "git" ] && [ "$2" = "fetch" ]; then
+  printf '%s\n' "git fetch $3 $4" >> "$JJ_FETCH_LOG"
+fi
+exec "$REAL_JJ" "$@"
+SH
+  chmod +x "$TEST_DIR/bin/jj"
+
+  run env REAL_JJ="$real_jj" JJ_FETCH_LOG="$TEST_DIR/fetch-argv.log" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" sync false
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"vcs=jj"* ]]
+  run jq -r '.steps[0].verification' .do-results.json
+  [[ "$output" == "fetch ok; vcs=jj;"* ]]
+  run jq -r '.vcs' .do-results.json
+  [ "$output" = "jj" ]
+  run jq -r '.steps[0].status' .do-results.json
+  [ "$output" = "passed" ]
+}
