@@ -134,8 +134,6 @@ run_sync() {
   # "unexpected argument"; sync must emit `jj git fetch --remote <r>`.
   command -v jj >/dev/null || skip "jj not installed"
   jj git init --colocate 2>/dev/null || skip "jj git init failed"
-  git init -q --bare "$TEST_DIR/fetch-target.git"
-  git remote add origin "$TEST_DIR/fetch-target.git" 2>/dev/null || true
   git config user.email "test@test.com"
   git config user.name "Test"
   echo base > file.txt
@@ -167,6 +165,7 @@ SH
   [[ "$output" == *"vcs=jj"* ]]
   run jq -r '.steps[0].verification' .do-results.json
   [[ "$output" == "fetch ok; vcs=jj;"* ]]
+  [ "$(cat "$TEST_DIR/fetch-argv.log")" = "git fetch --remote origin" ]
   run jq -r '.vcs' .do-results.json
   [ "$output" = "jj" ]
   run jq -r '.steps[0].status' .do-results.json
