@@ -134,6 +134,7 @@ run_sync() {
   # "unexpected argument"; sync must emit `jj git fetch --remote <r>`.
   command -v jj >/dev/null || skip "jj not installed"
   jj git init --colocate 2>/dev/null || skip "jj git init failed"
+  test -d .jj/repo || skip "jj workspace missing after colocated init"
   git config user.email "test@test.com"
   git config user.name "Test"
   echo base > file.txt
@@ -149,11 +150,12 @@ run_sync() {
   # protocol lines still run for real.
   cat > "$TEST_DIR/bin/jj" <<'SH'
 #!/bin/sh
-if [ "$1" = "git" ] && [ "$2" = "fetch" ] && [ "$3" != "--remote" ]; then
-  echo "jj git fetch called positionally: $*" >&2
-  exit 77
-fi
 if [ "$1" = "git" ] && [ "$2" = "fetch" ]; then
+  : "${JJ_FETCH_LOG:?JJ_FETCH_LOG not set}"
+  if [ "$3" != "--remote" ]; then
+    echo "jj git fetch called with pre-fix argv: $*" >&2
+    exit 77
+  fi
   printf '%s\n' "git fetch $3 $4" >> "$JJ_FETCH_LOG"
 fi
 exec "$REAL_JJ" "$@"
