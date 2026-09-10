@@ -893,4 +893,3 @@ SH
   [ "$status" -eq 0 ]
   [ "$output" = "https://github.com/example/repo.git" ]
 }
-
