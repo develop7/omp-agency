@@ -208,7 +208,7 @@
               # integration fixtures drive (jj arms skip when absent).
               pkgs.shellcheck
               pkgs.git
-              pkgs.jj
+              pkgs.jujutsu
               (rustToolchainFor system)
               (wasmBindgenCliFor system)
             ];
