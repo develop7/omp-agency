@@ -5924,11 +5924,11 @@ var fetchValue = function(context) {
   ;
   if (context.vcs instanceof Jj) {
     return withRemote(context)(function(remote) {
-      return capturedCommand(jj)(["git", "fetch", remote])(context);
+      return capturedCommand(jj)(["git", "fetch", "--remote", remote])(context);
     });
   }
   ;
-  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 201, column 22 - line 206, column 67): " + [context.vcs.constructor.name]);
+  throw new Error("Failed pattern match at Agency.Scripts.Do.Vcs (line 201, column 22 - line 206, column 79): " + [context.vcs.constructor.name]);
 };
 var refreshDefaultBranchValue = function(context) {
   if (context.vcs instanceof Git) {

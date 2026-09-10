@@ -203,7 +203,7 @@ fetchValue context = case context.vcs of
   Git -> withRemote context \remote ->
     capturedCommand Binaries.git [ "fetch", remote ] context
   Jj -> withRemote context \remote ->
-    capturedCommand Binaries.jj [ "git", "fetch", remote ] context
+    capturedCommand Binaries.jj [ "git", "fetch", "--remote", remote ] context
 
 -- | Refresh remote HEAD only when Git has a selected remote.
 refreshDefaultBranchValue :: WorkflowContext -> Effect Outcome.OpOutcome
