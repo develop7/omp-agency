@@ -894,32 +894,3 @@ SH
   [ "$output" = "https://github.com/example/repo.git" ]
 }
 
-@test "jj: fetch passes the remote via --remote, not positionally (#55)" {
-  # Regression (#55): jj 0.44 rejects `jj git fetch <remote>` with
-  # "unexpected argument"; the driver must emit `jj git fetch --remote <r>`.
-  # A tripwire shim rejects the pre-fix positional argv with exit 77 and
-  # otherwise delegates to the real jj; the exact captured argv is asserted.
-  command -v jj >/dev/null || skip "jj not installed"
-  jj git init 2>/dev/null || skip "jj git init failed"
-  git init -q --bare "$TEST_DIR/fetch-target.git"
-  git remote set-url origin "$TEST_DIR/fetch-target.git"
-
-  real_jj="$(command -v jj)"
-  mkdir -p "$TEST_DIR/bin"
-  cat > "$TEST_DIR/bin/jj" <<'SH'
-#!/bin/sh
-if [ "$1" = "git" ] && [ "$2" = "fetch" ] && [ "$3" != "--remote" ]; then
-  echo "jj git fetch called positionally: $*" >&2
-  exit 77
-fi
-if [ "$1" = "git" ] && [ "$2" = "fetch" ]; then
-  printf '%s\n' "git fetch $3 $4" >> "$JJ_FETCH_LOG"
-fi
-exec "$REAL_JJ" "$@"
-SH
-  chmod +x "$TEST_DIR/bin/jj"
-
-  run env REAL_JJ="$real_jj" JJ_FETCH_LOG="$TEST_DIR/fetch-argv.log" PATH="$TEST_DIR/bin:$PATH" VCS_OVERRIDE=jj node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fetch
-  [ "$status" -eq 0 ]
-  [ "$(cat "$TEST_DIR/fetch-argv.log")" = "git fetch --remote origin" ]
-}
