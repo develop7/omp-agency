@@ -31,5 +31,5 @@ just that PR's changes.
 That's it — just the local branch. commit pushes it, create-pr opens the PR later.
 
 **Verify**: calling the `vcs_read` tool with `{ args: ["head-revision"] }` returns the new branch name
-(not master/main). Under jj this holds only after this node creates the bookmark — the op is empty
-while no feature bookmark is checked out.
+(not master/main). Under jj this holds only after this node creates the bookmark — before it, the
+op reports the bookmark on the working copy's parent, which may be the base branch itself.

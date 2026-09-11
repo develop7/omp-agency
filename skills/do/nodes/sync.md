@@ -44,6 +44,6 @@ When it lands, only the `forge` tool's capability table and dispatch arms change
 confirmation echoes so the protocol stays clean.)
 
 `branch=` is whatever the `vcs_read` op `head-revision` reports — under jj the bookmark on `@`,
-else the bookmark on `@-`. It is empty when no feature bookmark is checked out (the state before
-the **branch** node runs); that line stays present but carries no value, and `base=` remains the
-usable fact for downstream steps.
+else the bookmark on `@-`, which may be the **base** bookmark (e.g. `main` when it sits on the
+working copy's parent). It is empty only when neither revision carries a bookmark; that line stays
+present but carries no value, and `base=` remains the usable fact for downstream steps.
