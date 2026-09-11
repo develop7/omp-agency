@@ -159,9 +159,9 @@ just test-plugin   # adapter-level plugin tests against the real backend + ompty
 just lint          # run shellcheck on bash scripts
 just lint-skills   # lint skill markdown: no raw VCS/forge commands
 just build         # compile and bundle the PureScript core
-just ci            # full CI: tests + lint + skill prose lint + runtime package proof
-just nickel-build  # build the Nickel WASM evaluator and Node glue
-just runtime-check # stage the minimal runtime package and verify it
+just ci            # full CI: tests + lint + skill prose lint + bundle freshness
+just nickel-build  # build the Nickel WASM evaluator (dist + drv fingerprint ledger)
+just nickel-check  # verify nickel-vm/dist/ is fresh against the flake inputs
 node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite (inside nix develop)
 ```
 

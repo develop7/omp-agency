@@ -79,7 +79,7 @@ ci: test test-pure lint lint-skills runtime-check
 # staged imports, catalog consistency (when --catalog is passed), and the
 # Nickel workflow-contract smoke goldens run against the staged runtime.
 # Builds the generated artifacts first — a clean checkout ships none.
-runtime-check out='dist-package': build nickel-build
+runtime-check out='dist-package': build nickel-check
     {{ nix_shell }} bash -c 'set -euo pipefail; \
       trap "rm -rf {{ out }}" EXIT; \
       node scripts/package-runtime.mjs --out {{ out }} --verify \
@@ -90,9 +90,11 @@ runtime-check out='dist-package': build nickel-build
 # agency-api.js bundle, so they run after the drift guard).
 ci: test test-pure lint lint-skills bundle-check test-plugin
 
-# Build the Nickel WASM VM in a temporary directory and compare the fresh
-# derivation output with the checked-in runtime artifact. Regeneration remains
-# explicit: run nix build and copy the desired output into nickel-vm/dist/.
+# Regenerate the checked-in Nickel WASM runtime: build the derivation, copy
+# its dist/ files into nickel-vm/dist/, refresh the drv fingerprint ledger,
+# and commit both. The runtime artifact is not bit-reproducible across
+# hosts (rustc→wasm differs with host CPU count even at codegen-units=1),
+# so staleness is guarded by the INPUT fingerprint (see nickel-check).
 nickel-build:
     @out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
       rm -rf nickel-vm/dist; \
