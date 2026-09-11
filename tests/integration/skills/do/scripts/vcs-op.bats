@@ -197,17 +197,19 @@ SH
   node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$TEST_DIR/bookmark.out" 2>/dev/null
   jj log --revision main --no-graph --template 'commit_id ++ "\n"' > "$TEST_DIR/expected.bookmark"
   cmp "$TEST_DIR/expected.bookmark" "$TEST_DIR/bookmark.out"
+}
 
-  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op detect | grep -q jj || skip "not a jj repo"
-  git_out="$(mktemp)"
+@test "git: head-commit-sha emits exactly a 40-hex SHA plus one newline" {
+  # A git-only repo: the setup() fixture is already git (no .jj directory
+  # exists unless a jj test created one), so detect must report git.
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op detect | grep -q '^git$' || skip "not a git repo"
   mk_initial_commit
+
+  git_out="$TEST_DIR/git.out"
   node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$git_out" 2>/dev/null
   git rev-parse HEAD > "$TEST_DIR/expected.git"
-  printf '%s\n' "$(cat "$TEST_DIR/expected.git")" > "$TEST_DIR/expected.git.nl"
-  mv "$TEST_DIR/expected.git.nl" "$TEST_DIR/expected.git"
   cmp "$TEST_DIR/expected.git" "$git_out"
   [ "$(wc -c < "$git_out")" -eq 41 ]
-  rm -f "$git_out"
 }
 
 @test "jj: branch reads surface the underlying jj stderr on probe failure" {
