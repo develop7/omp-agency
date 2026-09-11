@@ -30,9 +30,15 @@ method* may be forge-specific: if `.agency/do.md` describes verification via PR 
 
 **Verify coverage of `HEAD`.** Before recording the step as passed, compare the commit SHA CI ran
 against with the `vcs_read` tool using `{ args: ["head-commit-sha"] }`. That op is the CI-target
-identity: under jj it resolves the feature bookmark's commit (bookmark on `@`, else on `@-`), never
-the mutable working-copy revision. If the SHAs differ, re-run CI against current HEAD — CI passing
-on a stale commit does not satisfy verification.
+identity: under jj it resolves the feature bookmark's commit (bookmark on `@`, else on `@-`; with
+no feature bookmark, the parent commit). **commit** runs before **ci**, so by this step the working
+copy is empty and the bookmark names the pushed change — but a bookmark sitting on `@` names the
+mutable working copy, so verify the bookmark has advanced past the committed work. If the SHAs
+differ, re-run CI against current HEAD — CI passing on a stale commit does not satisfy verification.
+
+Under `--no-vcs` there is no pushed feature revision for CI to cover — `commit` never ran, so
+`head-commit-sha` has no pushed identity to compare. Verify coverage with the local command's exit
+code and output instead of the SHA comparison.
 
 **Flaky vs real**: a failure is flaky only if it **passes on a subsequent retry**. Consistent failure =
 real bug.

@@ -160,10 +160,11 @@ SH
   [ "$output" = "$expected" ]
 }
 
-@test "jj: head-commit-sha falls back to the parent commit without a feature bookmark" {
+@test "jj: head-commit-sha falls back to the parent commit when only the base bookmark exists" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
   jj commit -m "initial" >/dev/null 2>&1
+  jj bookmark create main >/dev/null 2>&1
   jj new >/dev/null 2>&1
   expected="$(jj log --revision @- --no-graph --template commit_id)"
 
@@ -172,16 +173,28 @@ SH
   [ "$output" = "$expected" ]
 }
 
-@test "jj: head-commit-sha falls back to the described feature commit in a fresh repo" {
+@test "jj: head-commit-sha fails loudly in a fresh repository with no revision" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
+  [ "$status" -eq 1 ]
+  [[ "$output" != *0000* ]]
+}
+
+@test "jj: head-revision reports the base bookmark when it sits on the parent" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
   jj commit -m "initial" >/dev/null 2>&1
+  jj bookmark create main >/dev/null 2>&1
   jj new >/dev/null 2>&1
-  expected="$(jj log --revision @- --no-graph --template commit_id)"
 
-  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision
   [ "$status" -eq 0 ]
-  [ "$output" = "$expected" ]
+  [ "$output" = "main" ]
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op current-branch
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
 }
 
 @test "jj: head-revision falls back to the parent bookmark like current-branch" {
@@ -428,18 +441,17 @@ SH
   [[ "$output" == *"initial"* ]]
 }
 
-@test "jj: log-head identifies the parent feature commit" {
+@test "jj: log-head shows the parent commit one-liner" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
   jj commit -m "initial" >/dev/null 2>&1
   jj new >/dev/null 2>&1
   jj describe -m initial @- >/dev/null 2>&1
+  expected="$(jj log -r '@-' --no-graph --limit 1 --template 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line())')"
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-head
   [ "$status" -eq 0 ]
-  [[ "$output" == *"initial"* ]]
-  commit="$(node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha)"
-  [[ "$output" == *"${commit:0:8}"* ]]
+  [ "$output" = "$expected" ]
 }
 
 # ─── log-range ────────────────────────────────────────────────────────
