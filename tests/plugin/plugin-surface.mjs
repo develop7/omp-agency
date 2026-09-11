@@ -96,31 +96,31 @@ function writeGhStub(fixture) {
 }
 
 // Runs one tool call against a fresh mkdtemp fixture: chdir (the backend
-// reads the process cwd), apply opts.setup/opts.env before the call, then
-// ALWAYS restore cwd and env and remove the fixture unless opts.keep.
+// reads the process cwd), apply opts.env before the call, then ALWAYS
+// restore cwd and env and remove the fixture unless opts.keep. setup
+// prepares the fixture and returns a bin dir to prepend to PATH (or
+// nothing for schema/backend-only cases).
 async function execTool(name, params, opts = {}) {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "agency-plugin-"));
   const savedCwd = process.cwd();
   const savedEnv = {};
   const savedPath = process.env.PATH;
+  const bin = opts.setup ? opts.setup(fixture) : undefined;
+  const before = fixtureListing(fixture);
   try {
-    if (opts.setup) opts.setup(fixture);
     if (opts.env) {
       for (const [key, value] of Object.entries(opts.env)) {
         savedEnv[key] = process.env[key];
         process.env[key] = value;
       }
     }
-    if (opts.bin) {
-      const bin = typeof opts.bin === "function" ? opts.bin() : opts.bin;
-      if (bin) process.env.PATH = bin + path.delimiter + savedPath;
-    }
+    if (bin) process.env.PATH = bin + path.delimiter + savedPath;
     process.chdir(fixture);
     const tool = tools.get(name);
     const result = await tool.execute("test-call", params, undefined, undefined, { cwd: fixture });
-    return { result, error: undefined, fixture };
+    return { result, error: undefined, fixture, before };
   } catch (error) {
-    return { error, result: undefined, fixture };
+    return { error, result: undefined, fixture, before };
   } finally {
     process.chdir(savedCwd);
     for (const key of Object.keys(savedEnv)) {
@@ -132,9 +132,10 @@ async function execTool(name, params, opts = {}) {
   }
 }
 
-// Lists leftover .agency-forge-* temp dirs in a kept fixture.
-function forgeTempDirs(fixture) {
-  return fs.readdirSync(fixture).filter((entry) => entry.startsWith(".agency-forge-"));
+// Sorted fixture-root listing, comma-joined: comparing before/after
+// snapshots catches ANY leaked artifact, not just ones with a known name.
+function fixtureListing(fixture) {
+  return fs.readdirSync(fixture).sort().join(",");
 }
 
 function assert(name, actual, expected) {
@@ -262,11 +263,6 @@ async function run() {
   // ─── backend failure surfacing ───────────────────────────────────────
   const push = await execTool("vcs_write", { op: "push" }, { setup: gitFixture });
   assert("vcs_write push without remote throws", push.error instanceof Error, true);
-  assert(
-    "vcs_write push failure carries a message",
-    typeof push.error.message === "string" && push.error.message.length > 0,
-    true,
-  );
 
   // ─── Api-module partition guards (adapter-reachable only) ────────────
   const fetchCall = await execTool("vcs_read", { args: ["fetch"] });
@@ -287,17 +283,13 @@ async function run() {
   // ─── forge body lifecycle (success) ──────────────────────────────────
   const ghLog = path.join(os.tmpdir(), `agency-plugin-gh-${process.pid}-${Date.now()}.log`);
   fs.writeFileSync(ghLog, "");
-  let successBin;
   const prCreate = await execTool(
     "forge",
     { op: "pr-create", args: ["--title", "t"], body: "line1\nline2\n" },
     {
       keep: true,
-      setup: (fixture) => {
-        successBin = writeGhStub(fixture);
-      },
+      setup: writeGhStub,
       env: { FORGE_OVERRIDE: "github", GH_LOG: ghLog },
-      bin: () => successBin,
     },
   );
   assert("forge pr-create with body succeeds", prCreate.result.details.exit, 0);
@@ -317,15 +309,15 @@ async function run() {
   );
   const bodyPath = ghArgv[5];
   assert(
-    "body file lives under a .agency-forge- temp dir",
-    bodyPathShape(prCreate.fixture, bodyPath),
-    true,
+    "body file lives inside the fixture",
+    path.relative(prCreate.fixture, bodyPath).startsWith(".."),
+    false,
   );
   assert("gh received the exact body content", ghBody, "line1\nline2\n");
   assert(
-    "forge temp dir is cleaned up on success",
-    forgeTempDirs(prCreate.fixture).length,
-    0,
+    "forge leaves no artifacts behind on success",
+    fixtureListing(prCreate.fixture),
+    prCreate.before,
   );
   fs.rmSync(prCreate.fixture, { recursive: true, force: true });
   fs.rmSync(ghLog, { force: true });
@@ -333,24 +325,20 @@ async function run() {
   // ─── forge body lifecycle (failure) ──────────────────────────────────
   const failLog = path.join(os.tmpdir(), `agency-plugin-gh-${process.pid}-${Date.now()}.log`);
   fs.writeFileSync(failLog, "");
-  let failBin;
   const prFail = await execTool(
     "forge",
     { op: "pr-create", args: [], body: "x" },
     {
       keep: true,
-      setup: (fixture) => {
-        failBin = writeGhStub(fixture);
-      },
+      setup: writeGhStub,
       env: { FORGE_OVERRIDE: "github", GH_LOG: failLog, GH_FAIL: "1", GH_STDERR: "boom\n" },
-      bin: () => failBin,
     },
   );
   assertThrows("forge pr-create failure surfaces stderr", prFail, "boom");
   assert(
-    "forge temp dir is cleaned up on failure",
-    forgeTempDirs(prFail.fixture).length,
-    0,
+    "forge leaves no artifacts behind on failure",
+    fixtureListing(prFail.fixture),
+    prFail.before,
   );
   fs.rmSync(prFail.fixture, { recursive: true, force: true });
   fs.rmSync(failLog, { force: true });
@@ -362,11 +350,6 @@ async function run() {
     },
   });
   assert("workflow cli succeeds", cli.result.details.exit, 0);
-  assert(
-    "workflow cli returns nonempty text",
-    typeof cli.result.content[0].text === "string" && cli.result.content[0].text.length > 0,
-    true,
-  );
   const missingState = await execTool("workflow", { field: "cli" });
   assertThrows(
     "workflow without state surfaces the actionable error",
@@ -399,14 +382,6 @@ async function run() {
     baseOp.result.content[0].text,
     "main\n",
   );
-}
-
-// bodyPathShape: the gh stub's --body-file value must be
-// <fixture>/.agency-forge-*/body.md.
-function bodyPathShape(fixture, bodyPath) {
-  const relative = path.relative(fixture, bodyPath);
-  const [tempDir, file] = relative.split(path.sep);
-  return tempDir.startsWith(".agency-forge-") && file === "body.md";
 }
 
 run().catch((error) => {

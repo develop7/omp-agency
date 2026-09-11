@@ -23,21 +23,23 @@ test-integration: build nickel-build
 test-pure:
     {{ nix_shell }} bash -c 'cd pure && spago test -m Test.Main'
 
-# Build the adapter-level plugin test bundles into .test-build/ (never
-# committed): the OMP extension adapter and the real omptype zod shim.
-# The external specifiers ../pure/dist/agency-api.js and
+# Bundle the OMP extension adapter and the real omptype zod shim directly
+# from their TypeScript sources into .test-build/ (never committed). The
+# external specifiers ../pure/dist/agency-api.js and
 # ../nickel-vm/scripts/workflow-runtime.mjs resolve relative to the output,
-# so it must stay exactly one directory below the repo root.
+# so it must stay exactly one directory below the repo root; the post-build
+# greps fail loudly if a flag change ever inlines them.
 build-plugin-test:
     {{ nix_shell }} bash -c 'set -euo pipefail; \
       omptype="$(nix build --accept-flake-config --print-out-paths --no-link {{ repo }}#omptype)"; \
       mkdir -p .test-build; \
-      esbuild tests/plugin/omptype-entry.mjs --bundle --platform=node --format=esm \
-        --alias:@oh-my-pi/omptype/zod="$omptype"/src/zod.ts \
+      esbuild "$omptype"/src/zod.ts --bundle --platform=node --format=esm \
         --outfile=.test-build/omptype-zod.mjs; \
-      esbuild tests/plugin/build-entry.mjs --bundle --platform=node --format=esm \
+      esbuild src/agency-tools.ts --bundle --platform=node --format=esm \
         --external:../pure/dist/agency-api.js --external:../nickel-vm/scripts/workflow-runtime.mjs \
-        --outfile=.test-build/adapter.mjs'
+        --outfile=.test-build/adapter.mjs; \
+      grep -qF "../pure/dist/agency-api.js" .test-build/adapter.mjs; \
+      grep -qF "../nickel-vm/scripts/workflow-runtime.mjs" .test-build/adapter.mjs'
 
 # Run the adapter-level plugin tests (src/agency-tools.ts against the real
 # agency-api.js backend and the real omptype zod shim).
@@ -83,8 +85,10 @@ runtime-check out='dist-package': build nickel-build
       node scripts/package-runtime.mjs --out {{ out }} --verify \
       && node nickel-vm/scripts/smoke.mjs'
 
-# Full CI: bats + PureScript tests + plugin surface + lint + bundle freshness
-ci: test test-pure test-plugin lint lint-skills bundle-check
+# Full CI: bats + PureScript tests + lint + skill prose lint + bundle
+# freshness, then the plugin surface tests (they consume the committed
+# agency-api.js bundle, so they run after the drift guard).
+ci: test test-pure lint lint-skills bundle-check test-plugin
 
 # Build the Nickel WASM VM in a temporary directory and compare the fresh
 # derivation output with the checked-in runtime artifact. Regeneration remains
