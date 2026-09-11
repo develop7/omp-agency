@@ -12,6 +12,9 @@ result-*
 target/
 nickel-vm/target/
 
+# Plugin test build artifacts (just build-plugin-test)
+.test-build/
+
 # Agency
 # Generated runtime artifacts (build outputs, never merge inputs)
 pure/dist/

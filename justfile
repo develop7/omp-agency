@@ -23,6 +23,27 @@ test-integration: build nickel-build
 test-pure:
     {{ nix_shell }} bash -c 'cd pure && spago test -m Test.Main'
 
+# Build the adapter-level plugin test bundles into .test-build/ (never
+# committed): the OMP extension adapter and the real omptype zod shim.
+# The external specifiers ../pure/dist/agency-api.js and
+# ../nickel-vm/scripts/workflow-runtime.mjs resolve relative to the output,
+# so it must stay exactly one directory below the repo root.
+build-plugin-test:
+    {{ nix_shell }} bash -c 'set -euo pipefail; \
+      omptype="$(nix build --accept-flake-config --print-out-paths --no-link {{ repo }}#omptype)"; \
+      mkdir -p .test-build; \
+      esbuild tests/plugin/omptype-entry.mjs --bundle --platform=node --format=esm \
+        --alias:@oh-my-pi/omptype/zod="$omptype"/src/zod.ts \
+        --outfile=.test-build/omptype-zod.mjs; \
+      esbuild tests/plugin/build-entry.mjs --bundle --platform=node --format=esm \
+        --external:../pure/dist/agency-api.js --external:../nickel-vm/scripts/workflow-runtime.mjs \
+        --outfile=.test-build/adapter.mjs'
+
+# Run the adapter-level plugin tests (src/agency-tools.ts against the real
+# agency-api.js backend and the real omptype zod shim).
+test-plugin: build-plugin-test
+    {{ nix_shell }} node tests/plugin/plugin-surface.mjs
+
 # Run shellcheck on all bash scripts
 # SC2148/SC1113/SC2096: scripts are intentionally shebang-less (run via `bash script`)
 lint:
@@ -62,8 +83,12 @@ runtime-check out='dist-package': build nickel-build
       node scripts/package-runtime.mjs --out {{ out }} --verify \
       && node nickel-vm/scripts/smoke.mjs'
 
-# Build the Nickel WASM VM with the pinned toolchain and install it into
-# nickel-vm/dist/ (the generated runtime artifact; no longer checked in).
+# Full CI: bats + PureScript tests + plugin surface + lint + bundle freshness
+ci: test test-pure test-plugin lint lint-skills bundle-check
+
+# Build the Nickel WASM VM in a temporary directory and compare the fresh
+# derivation output with the checked-in runtime artifact. Regeneration remains
+# explicit: run nix build and copy the desired output into nickel-vm/dist/.
 nickel-build:
     @out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
       rm -rf nickel-vm/dist; \

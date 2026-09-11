@@ -155,6 +155,7 @@ workflow evaluation is provided by `nickel-vm` WASM:
 ```bash
 just test          # build, then run bats tests (unit + integration)
 just test-pure     # run the PureScript core unit tests
+just test-plugin   # adapter-level plugin tests against the real backend + omptype zod
 just lint          # run shellcheck on bash scripts
 just lint-skills   # lint skill markdown: no raw VCS/forge commands
 just build         # compile and bundle the PureScript core

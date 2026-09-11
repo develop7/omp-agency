@@ -179,3 +179,10 @@ jobs:
         with:
           path: /tmp/pages-site
       - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+  test-plugin:
+    name: Plugin surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nixbuild/nix-quick-install-action@v31
+      - run: nix develop --accept-flake-config -c just test-plugin

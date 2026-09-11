@@ -66,6 +66,30 @@
           dontFixup = true;
         };
 
+      # The OMP omptype package (raw TypeScript sources) pinned from the
+      # npm registry. tests/plugin bundles src/zod.ts with esbuild to get
+      # the same `z` shim OMP injects as `pi.zod`, so the adapter-level
+      # plugin tests exercise real schema semantics without node_modules.
+      omptypeFor =
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        pkgs.stdenvNoCC.mkDerivation {
+          pname = "omptype";
+          version = "18.1.16";
+          src = pkgs.fetchzip {
+            url = "https://registry.npmjs.org/@oh-my-pi/omptype/-/omptype-18.1.16.tgz";
+            hash = "sha256-YsfBGUNdp+6zT9QHexqeq7R8fO5k933LmTQSEQ0n0OY=";
+            stripRoot = true;
+          };
+          phases = [ "installPhase" ];
+          installPhase = ''
+            cp -R "$src/." "$out"
+          '';
+          dontFixup = true;
+        };
+
       # Pinned Rust toolchain with the wasm32-unknown-unknown std for
       # nickel-vm. Host rustup/cargo/rustc are not needed: the nix build
       # is the only producer of the WASM artifact.
@@ -161,7 +185,6 @@
               rustPlatform.cargoSetupHook
               (wasmBindgenCliFor system)
             ];
-            inherit cargoDeps;
             postPatch = ''
               cat >> Cargo.toml <<EOF
               [patch.crates-io]
@@ -183,6 +206,11 @@
               test -f "$out/dist/nickel_vm.js"
             '';
           };
+
+          # The pinned omptype package (raw TS), exposed so recipes can
+          # resolve the alias target with `nix build .#omptype` without
+          # scanning the nix store.
+          omptype = omptypeFor system;
         }
       );
 
