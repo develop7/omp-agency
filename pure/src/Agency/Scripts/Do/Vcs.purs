@@ -479,9 +479,9 @@ logRange context paths = case context.base of
 -- | The commit CI will run against, post-commit: the feature bookmark's
 -- | commit — the bookmark on @, else the bookmark on @- (the just-described
 -- | change), per jjFeatureBookmark. With no feature bookmark at either
--- | revision, the fallback is @-'s commit — the just-described change even
--- | in a fresh repository. Fails loudly when no real revision is
--- | resolvable: jj's null root commit (all zeros) is not an identity.
+-- | revision, the fallback is @-'s commit. Fails loudly when no real
+-- | revision is resolvable: jj's null root commit (all zeros) is not an
+-- | identity, so a fresh repository has no CI target.
 headCommitShaJj :: WorkflowContext -> Effect Outcome.OpOutcome
 headCommitShaJj context = do
   found <- jjFeatureBookmark
@@ -491,7 +491,7 @@ headCommitShaJj context = do
     Right Nothing -> do
       parent <- jjCommitId "@-"
       case parent of
-        Just sha -> capturedCommand Binaries.jj [ "log", "--revision", sha, "--no-graph", "--template", "commit_id" ] context
+        Just sha -> pure (Outcome.withStdout (sha <> "\n"))
         Nothing -> pure (failureLine "vcs-op: no resolvable CI-target revision (fresh repository with only the null root commit)")
 
 -- | commit_id of a revision, Nothing when the query fails or the revision
