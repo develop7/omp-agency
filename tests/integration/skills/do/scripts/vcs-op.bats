@@ -2,6 +2,7 @@
 # Integration tests for vcs-op — the semantic VCS dispatcher.
 # Uses real git repos (temp) as fixtures. jj arms are skipped when jj isn't
 # available or can't be set up in the temp dir.
+bats_require_minimum_version 1.5.0
 
 setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
@@ -180,6 +181,43 @@ SH
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
   [ "$status" -eq 1 ]
   [[ "$output" != *0000* ]]
+}
+
+@test "jj: head-commit-sha emits exactly a 40-hex SHA plus one newline on both paths" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$TEST_DIR/fallback.out" 2>/dev/null
+  jj log --revision @- --no-graph --template 'commit_id ++ "\n"' > "$TEST_DIR/expected.fallback"
+  cmp "$TEST_DIR/expected.fallback" "$TEST_DIR/fallback.out"
+
+  jj bookmark create main >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$TEST_DIR/bookmark.out" 2>/dev/null
+  jj log --revision main --no-graph --template 'commit_id ++ "\n"' > "$TEST_DIR/expected.bookmark"
+  cmp "$TEST_DIR/expected.bookmark" "$TEST_DIR/bookmark.out"
+
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op detect | grep -q jj || skip "not a jj repo"
+  git_out="$(mktemp)"
+  mk_initial_commit
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$git_out" 2>/dev/null
+  git rev-parse HEAD > "$TEST_DIR/expected.git"
+  printf '%s\n' "$(cat "$TEST_DIR/expected.git")" > "$TEST_DIR/expected.git.nl"
+  mv "$TEST_DIR/expected.git.nl" "$TEST_DIR/expected.git"
+  cmp "$TEST_DIR/expected.git" "$git_out"
+  [ "$(wc -c < "$git_out")" -eq 41 ]
+  rm -f "$git_out"
+}
+
+@test "jj: branch reads surface the underlying jj stderr on probe failure" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  rm -rf .jj/repo/index
+
+  run --separate-stderr node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op current-branch
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"The repository appears broken"* ]]
 }
 
 @test "jj: head-revision reports the base bookmark when it sits on the parent" {

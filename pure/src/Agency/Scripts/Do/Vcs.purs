@@ -344,9 +344,16 @@ jjBranchValue :: Effect VcsValue
 jjBranchValue = do
   found <- jjFeatureBookmark
   case found of
-    Left _ -> pure { code: 1, value: "", stdout: "", stderr: "vcs-op: unable to inspect jj bookmarks\n" }
+    Left outcome -> pure (outcomeValue outcome)
     Right Nothing -> pure { code: 0, value: "", stdout: "", stderr: "" }
     Right (Just name) -> pure { code: 0, value: name, stdout: name <> "\n", stderr: "" }
+
+-- | Degraded VcsValue from a failed jj bookmark inspection: keeps the
+-- | process status and the underlying stderr so the caller can diagnose it.
+outcomeValue :: Outcome.OpOutcome -> VcsValue
+outcomeValue outcome = case outcome.output of
+  Outcome.Captured o -> { code: outcome.exit, value: "", stdout: o.stdout, stderr: o.stderr }
+  Outcome.Passthrough -> { code: outcome.exit, value: "", stdout: "", stderr: "vcs-op: unable to inspect jj bookmarks\n" }
 
 -- | Compare the current revision to a resolved default semantically rather
 -- | than treating differently named local aliases as feature branches.
@@ -487,7 +494,7 @@ headCommitShaJj context = do
   found <- jjFeatureBookmark
   case found of
     Left outcome -> pure outcome
-    Right (Just name) -> capturedCommand Binaries.jj [ "log", "--revision", name, "--no-graph", "--template", "commit_id" ] context
+    Right (Just name) -> capturedCommand Binaries.jj [ "log", "--revision", name, "--no-graph", "--template", "commit_id ++ \"\\n\"" ] context
     Right Nothing -> do
       parent <- jjCommitId "@-"
       case parent of
