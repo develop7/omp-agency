@@ -16,7 +16,10 @@ and the `OpOutcome` output seam.
   fields are typed; every unknown field is retained as JSON in `extras` and is
   emitted again on save.
 - `Vcs` implements the git and jj semantic operation strategies and context
-  fallback rules.
+  fallback rules. `head-revision`/`current-branch` read the checked-out
+  branch or bookmark (empty when none is checked out); `head-commit-sha` is
+  the CI-target identity — under jj, the feature bookmark's commit, never the
+  mutable working-copy revision.
 - `Forge` classifies remotes and owns forge capability checks and `gh`
   dispatch.
 - `Ops` defines the command algebras, parsers, runners, sync orchestration,
