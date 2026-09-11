@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CidrRootsConfiguration">
+    <excludeRoots>
+      <file path="$PROJECT_DIR$/.codegraph" />
+      <file path="$PROJECT_DIR$/pure/output" />
+    </excludeRoots>
+  </component>
+  <component name="GithubDefaultAccount">
+    <option name="defaultAccountId" value="3737bf83-0372-4a4e-894f-e1cfaaf5f16f" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="GHC 9.14.1" project-jdk-type="HaskellSdk">
+    <output url="file://$PROJECT_DIR$/out" />
+  </component>
+</project>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="HaskellSettingsState">
+    <option name="ghcPath" value="$USER_HOME$/.ghcup/ghc/9.14.1/bin/ghc" />
+    <option name="hlsPath" value="$USER_HOME$/.ghcup/bin/haskell-language-server-wrapper" />
+    <option name="stackPath" value="$USER_HOME$/.ghcup/bin/stack" />
+    <option name="cabalPath" value="$USER_HOME$/.ghcup/bin/cabal" />
+  </component>
+</project>
