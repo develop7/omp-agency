@@ -201,8 +201,11 @@ SH
 
 @test "git: head-commit-sha emits exactly a 40-hex SHA plus one newline" {
   # A git-only repo: the setup() fixture is already git (no .jj directory
-  # exists unless a jj test created one), so detect must report git.
-  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op detect | grep -q '^git$' || skip "not a git repo"
+  # exists unless a jj test created one), so detection must report git —
+  # a detection regression fails here, it never silently skips.
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op detect
+  [ "$status" -eq 0 ]
+  [ "$output" = "git" ]
   mk_initial_commit
 
   git_out="$TEST_DIR/git.out"
