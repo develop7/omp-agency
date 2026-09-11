@@ -105,9 +105,10 @@ async function execTool(name, params, opts = {}) {
   const savedCwd = process.cwd();
   const savedEnv = {};
   const savedPath = process.env.PATH;
-  const bin = opts.setup ? opts.setup(fixture) : undefined;
-  const before = fixtureListing(fixture);
+  let before;
   try {
+    const bin = opts.setup ? opts.setup(fixture) : undefined;
+    before = fixtureListing(fixture);
     if (opts.env) {
       for (const [key, value] of Object.entries(opts.env)) {
         savedEnv[key] = process.env[key];
@@ -145,7 +146,6 @@ function assert(name, actual, expected) {
     console.error(`${name} failed`);
     console.error(`Expected: ${expected}`);
     console.error(`Actual:   ${actual}`);
-    process.exitCode = 1;
     throw new Error(`plugin assertion failed: ${name}`);
   }
 }
@@ -292,35 +292,38 @@ async function run() {
       env: { FORGE_OVERRIDE: "github", GH_LOG: ghLog },
     },
   );
-  assert("forge pr-create with body succeeds", prCreate.result.details.exit, 0);
-  const logged = fs.readFileSync(ghLog, "utf8");
-  const newlineAt = logged.indexOf("\n");
-  const ghArgv = JSON.parse(logged.slice(0, newlineAt));
-  const ghBody = logged.slice(newlineAt + 1);
-  assert(
-    "gh receives pr create with the body file flag",
-    JSON.stringify(ghArgv.slice(0, 5)),
-    JSON.stringify(["pr", "create", "--title", "t", "--body-file"]),
-  );
-  assert(
-    "gh receives exactly the expected argv",
-    ghArgv.length,
-    6,
-  );
-  const bodyPath = ghArgv[5];
-  assert(
-    "body file lives inside the fixture",
-    path.relative(prCreate.fixture, bodyPath).startsWith(".."),
-    false,
-  );
-  assert("gh received the exact body content", ghBody, "line1\nline2\n");
-  assert(
-    "forge leaves no artifacts behind on success",
-    fixtureListing(prCreate.fixture),
-    prCreate.before,
-  );
-  fs.rmSync(prCreate.fixture, { recursive: true, force: true });
-  fs.rmSync(ghLog, { force: true });
+  try {
+    assert("forge pr-create with body succeeds", prCreate.result.details.exit, 0);
+    const logged = fs.readFileSync(ghLog, "utf8");
+    const newlineAt = logged.indexOf("\n");
+    const ghArgv = JSON.parse(logged.slice(0, newlineAt));
+    const ghBody = logged.slice(newlineAt + 1);
+    assert(
+      "gh receives pr create with the body file flag",
+      JSON.stringify(ghArgv.slice(0, 5)),
+      JSON.stringify(["pr", "create", "--title", "t", "--body-file"]),
+    );
+    assert(
+      "gh receives exactly the expected argv",
+      ghArgv.length,
+      6,
+    );
+    const bodyPath = ghArgv[5];
+    assert(
+      "body file lives inside the fixture",
+      path.relative(prCreate.fixture, bodyPath).startsWith(".."),
+      false,
+    );
+    assert("gh received the exact body content", ghBody, "line1\nline2\n");
+    assert(
+      "forge leaves no artifacts behind on success",
+      fixtureListing(prCreate.fixture),
+      prCreate.before,
+    );
+  } finally {
+    fs.rmSync(prCreate.fixture, { recursive: true, force: true });
+    fs.rmSync(ghLog, { force: true });
+  }
 
   // ─── forge body lifecycle (failure) ──────────────────────────────────
   const failLog = path.join(os.tmpdir(), `agency-plugin-gh-${process.pid}-${Date.now()}.log`);
@@ -334,14 +337,17 @@ async function run() {
       env: { FORGE_OVERRIDE: "github", GH_LOG: failLog, GH_FAIL: "1", GH_STDERR: "boom\n" },
     },
   );
-  assertThrows("forge pr-create failure surfaces stderr", prFail, "boom");
-  assert(
-    "forge leaves no artifacts behind on failure",
-    fixtureListing(prFail.fixture),
-    prFail.before,
-  );
-  fs.rmSync(prFail.fixture, { recursive: true, force: true });
-  fs.rmSync(failLog, { force: true });
+  try {
+    assertThrows("forge pr-create failure surfaces stderr", prFail, "boom");
+    assert(
+      "forge leaves no artifacts behind on failure",
+      fixtureListing(prFail.fixture),
+      prFail.before,
+    );
+  } finally {
+    fs.rmSync(prFail.fixture, { recursive: true, force: true });
+    fs.rmSync(failLog, { force: true });
+  }
 
   // ─── workflow tool ───────────────────────────────────────────────────
   const cli = await execTool("workflow", { field: "cli" }, {
@@ -385,6 +391,6 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+  console.error(error?.stack ?? error);
   process.exitCode = 1;
 });
