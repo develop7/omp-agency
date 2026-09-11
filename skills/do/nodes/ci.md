@@ -32,7 +32,7 @@ method* may be forge-specific: if `.agency/do.md` describes verification via PR 
 ## Structured facts (mandatory on `end`)
 
 Local command success and remote PR-check status are **separate facts**. On `end`, the verification
-string must be (whitespace-separated, any order):
+string must be (single-space-separated, any order; a duplicated key is rejected):
 
 ```
 local=<passed|failed|not-run> remote=<passed|failed|pending|none|unavailable> head=<sha>
@@ -46,7 +46,9 @@ local=<passed|failed|not-run> remote=<passed|failed|pending|none|unavailable> he
   - `none` — the PR reports no checks;
   - `unavailable` — PR checks cannot be consulted (`!supportsPrChecks` or no PR).
 - `head` — the commit SHA the `remote` facts were observed against (`vcs_read` with
-  `{ args: ["head-commit-sha"] }`), not merely the local CI commit.
+  `{ args: ["head-commit-sha"] }`), not merely the local CI commit. The one empty-`head` form —
+  `local=not-run remote=unavailable head=` — is accepted only for a `skipped` step (no command
+  configured and no revision to attribute); a recorded pass or fail always carries a SHA.
 
 **A successful local command never implies a remote check.** `local=passed remote=none` is an honest
 record of a local-only run, not a CI pass on the provider.

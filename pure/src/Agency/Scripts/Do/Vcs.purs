@@ -10,6 +10,7 @@ module Agency.Scripts.Do.Vcs
   , refreshDefaultBranchValue
   , remoteUrlValue
   , headRevisionValue
+  , headShaCommand
   , defaultBranchValue
   , currentBranchValue
   , currentAtDefault
@@ -174,10 +175,9 @@ runVcsOp context operation = case operation of
   Fetch -> fetchValue context
   RemoteUrl -> renderValue <$> remoteUrlResult context
   HeadRevision -> renderValue <$> headRevisionValue context
-  HeadCommitSha -> case context.vcs of
-    Git -> capturedCommand Binaries.git [ "rev-parse", "HEAD" ] context
-    Jj -> capturedCommand Binaries.jj [ "log", "--revision", "@", "--no-graph", "--template", "commit_id" ] context
-    Unknown -> pure noVcsOutcome
+  HeadCommitSha ->
+    let { command, args } = headShaCommand context.vcs
+    in capturedCommand command args context
   DefaultBranch -> renderValue <$> defaultBranchValue context
   CurrentBranch -> renderValue <$> currentBranchValue context
   Base -> resolveBase context
@@ -285,6 +285,15 @@ headRevisionValue context = case context.vcs of
     bookmark <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", "@", "--template", "name ++ \"\\n\"" ]
     pure (valueResult bookmark (if bookmark.code == 0 then firstLine bookmark.stdout else ""))
   Unknown -> pure { code: 1, value: "", stdout: "", stderr: "vcs-op: no VCS detected\n" }
+
+-- | The head-sha subprocess command, shared by the HeadCommitSha operation and
+-- | any consumer that needs the current revision identity (issue #60: the ci
+-- | skip path records the same sha the pr-check observation is attributed to).
+headShaCommand :: VcsKind -> { command :: String, args :: Array String }
+headShaCommand kind = case kind of
+  Git -> { command: Binaries.git, args: [ "rev-parse", "HEAD" ] }
+  Jj -> { command: Binaries.jj, args: [ "log", "--revision", "@", "--no-graph", "--template", "commit_id" ] }
+  Unknown -> { command: "", args: [] }
 
 -- | Resolve a real default ref; never manufacture a conventional name.
 defaultBranchValue :: WorkflowContext -> Effect VcsValue

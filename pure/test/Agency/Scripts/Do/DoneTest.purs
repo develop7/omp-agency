@@ -64,34 +64,48 @@ run = do
     Left error -> assert "inverted timestamps are rejected before recording" (contains (Pattern "precedes") error)
     Right _ -> assert "inverted timestamps are rejected before recording" false
   let goodCi = "local=passed remote=none head=abc123"
-  case Results.ciVerification "ci" goodCi of
+  case Results.ciVerification "ci" "passed" goodCi of
     Right _ -> assert "ci accepts structured facts" true
     Left error -> do
       Console.error ("FAIL: ci accepts structured facts: " <> error)
       Sys.exit 1
-  case Results.ciVerification "ci" "local=passed remote=none" of
+  case Results.ciVerification "ci" "passed" "local=passed remote=none" of
     Left error -> assert "ci without head is rejected" (contains (Pattern "head=") error)
     Right _ -> assert "ci without head is rejected" false
-  case Results.ciVerification "ci" "remote=none head=abc123" of
+  case Results.ciVerification "ci" "passed" "remote=none head=abc123" of
     Left error -> assert "ci without local is rejected" (contains (Pattern "local=") error)
     Right _ -> assert "ci without local is rejected" false
-  case Results.ciVerification "ci" "local=green remote=none head=abc123" of
+  case Results.ciVerification "ci" "passed" "local=green remote=none head=abc123" of
     Left error -> assert "ci invalid local value is rejected" (contains (Pattern "'local'") error)
     Right _ -> assert "ci invalid local value is rejected" false
-  case Results.ciVerification "ci" "local=passed remote=maybe head=abc123" of
+  case Results.ciVerification "ci" "passed" "local=passed remote=maybe head=abc123" of
     Left error -> assert "ci invalid remote value is rejected" (contains (Pattern "'remote'") error)
     Right _ -> assert "ci invalid remote value is rejected" false
-  case Results.ciVerification "ci" "CI passed" of
+  case Results.ciVerification "ci" "passed" "CI passed" of
     Left error -> assert "ci prose-only verification is rejected" (contains (Pattern "structured facts") error)
     Right _ -> assert "ci prose-only verification is rejected" false
-  case Results.ciVerification "research" "current" of
+  case Results.ciVerification "research" "passed" "current" of
     Right _ -> assert "non-ci steps keep free-form verification" true
     Left _ -> assert "non-ci steps keep free-form verification" false
-  case Results.ciVerification "ci" "remote=passed head=abc123 local=not-run" of
+  case Results.ciVerification "ci" "passed" "remote=passed head=abc123 local=not-run" of
     Right _ -> assert "ci accepts facts in any order" true
     Left error -> do
       Console.error ("FAIL: ci accepts facts in any order: " <> error)
       Sys.exit 1
+  case Results.ciVerification "ci" "skipped" "local=not-run remote=unavailable head=" of
+    Right _ -> assert "ci skip semantics accept an empty head" true
+    Left error -> do
+      Console.error ("FAIL: ci skip semantics accept an empty head: " <> error)
+      Sys.exit 1
+  case Results.ciVerification "ci" "passed" "local=not-run remote=unavailable head=" of
+    Left error -> assert "empty head on a passed record is rejected" (contains (Pattern "'head'") error)
+    Right _ -> assert "empty head on a passed record is rejected" false
+  case Results.ciVerification "ci" "skipped" "local=not-run remote=none head=" of
+    Left error -> assert "empty head outside skip semantics is rejected" (contains (Pattern "'head'") error)
+    Right _ -> assert "empty head outside skip semantics is rejected" false
+  case Results.ciVerification "ci" "passed" "local=passed remote=none head=abc123 local=failed" of
+    Left error -> assert "ci duplicate keys are rejected" (contains (Pattern "duplicate") error)
+    Right _ -> assert "ci duplicate keys are rejected" false
   pendingRendered <- DoneSummary.render (state { pendingStep = Just { name: "ci", startedAt: "2024-01-01T00:00:20Z" } }) 20
   assert "pending step has an in-progress row" (contains (Pattern "| ci | ⋯ |") pendingRendered)
   assert "facts name the pending step" (contains (Pattern "pendingStep=ci") pendingRendered)

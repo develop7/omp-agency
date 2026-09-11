@@ -26,9 +26,10 @@ import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.Vcs as Vcs
 import Data.Argonaut.Core (Json, fromBoolean, fromString)
 import Data.Argonaut.Parser (jsonParser)
-import Data.Array as Array
 import Data.Either (Either(..))
-import Data.String (Pattern(..), drop, indexOf, split, take)
+import Data.Array (cons) as Array
+import Data.Array as Array
+import Data.String (Pattern(..), drop, indexOf, split, take, trim)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -50,7 +51,7 @@ runStepStart context name = withLoadedState context \state -> case state.pending
 runStepEnd :: WorkflowContext -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStepEnd context status verification reason = withLoadedState context \state -> case state.pendingStep of
   Nothing -> pure (failText "do-results: no pendingStep — call step-start first")
-  Just pending -> case ciVerification pending.name verification of
+  Just pending -> case ciVerification pending.name status verification of
     Left error -> pure (failText error)
     Right _ -> do
       completed <- Sys.nowIso
@@ -72,37 +73,52 @@ runStepEnd context status verification reason = withLoadedState context \state -
 -- | be consulted, e.g. unsupported forge or no PR); `head` is the commit SHA
 -- | the remote checks were observed against. A successful local command never
 -- | implies a remote check; the two facts travel separately.
-ciVerification :: String -> String -> Either String Unit
-ciVerification name verification
+-- |
+-- | The one empty-`head` exception is skipped-semantics —
+-- | `local=not-run remote=unavailable` — emitted when the step is skipped and
+-- | no VCS revision exists to attribute; it is accepted only for a `skipped`
+-- | status. A recorded pass or fail with an empty head is exactly the
+-- | ambiguity issue #60 is about, so it stays rejected.
+ciVerification :: String -> String -> String -> Either String Unit
+ciVerification name status verification
   | name /= "ci" = Right unit
   | otherwise = do
       fields <- parseFields verification
-      _ <- enumField "local" [ "passed", "failed", "not-run" ] fields
-      _ <- enumField "remote" [ "passed", "failed", "pending", "none", "unavailable" ] fields
-      headField fields
+      local <- enumField "local" [ "passed", "failed", "not-run" ] fields
+      remote <- enumField "remote" [ "passed", "failed", "pending", "none", "unavailable" ] fields
+      headField local remote fields
   where
   parseFields value =
     let fields = Array.mapMaybe splitField (split (Pattern " ") value)
     in if Array.null fields
       then Left missingSpec
-      else Right fields
+      else case duplicateKey fields of
+        Just key -> Left ("do-results: ci verification has duplicate '" <> key <> "=' — " <> specText)
+        Nothing -> Right fields
   splitField value = case indexOf (Pattern "=") value of
     Just index | index > 0 -> Just (Tuple (take index value) (drop (index + 1) value))
     _ -> Nothing
+  duplicateKey fields = case Array.findMap (\(Tuple k _) -> if seenDuplicate fields k then Just k else Nothing) fields of
+    Just key -> Just key
+    Nothing -> Nothing
+  seenDuplicate fields key = (Array.length (Array.filter (\(Tuple k _) -> k == key) fields)) > 1
   enumField key allowed fields = case Array.find (\(Tuple k _) -> k == key) fields of
     Nothing -> Left ("do-results: ci verification is missing '" <> key <> "=' — " <> specText)
-    Just (Tuple _ value) | Array.elem value allowed -> Right unit
+    Just (Tuple _ value) | Array.elem value allowed -> Right value
     Just (Tuple _ value) -> Left ("do-results: ci verification has invalid '" <> key <> "' value '" <> value <> "' — " <> specText)
-  headField fields = case Array.find (\(Tuple k _) -> k == "head") fields of
+  headField local remote fields = case Array.find (\(Tuple k _) -> k == "head") fields of
     Just (Tuple _ sha) | sha /= "" -> Right unit
+    Just (Tuple _ "") | status == "skipped" && skippedSemantics -> Right unit
     Just (Tuple _ value) -> Left ("do-results: ci verification has invalid 'head' value '" <> value <> "' — " <> specText)
     Nothing -> Left ("do-results: ci verification is missing 'head=' — " <> specText)
+    where
+    skippedSemantics = local == "not-run" && remote == "unavailable"
   specText = "expected `local=<passed|failed|not-run> remote=<passed|failed|pending|none|unavailable> head=<sha>`"
   missingSpec = "do-results: ci requires structured facts in the verification string — " <> specText
 
 runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStep context name status verification startedAt completedAt reason = withLoadedState context \state ->
-  case ciVerification name verification of
+  case ciVerification name status verification of
     Left error -> pure (failText error)
     Right _ -> do
       actualStart <- resolveNow startedAt
@@ -168,17 +184,19 @@ runDriverSkip context step reason = do
     pure (Outcome.append started ended)
 
 -- | A skipped ci step still records the structured facts: the local command
--- | was not run and no PR check can be consulted for the current head.
+-- | was not run and no PR check can be consulted for the current head. The
+-- | head SHA is best-effort: when the VCS query fails (or no VCS exists) the
+-- | record keeps the documented empty-`head` skip form so the skip still
+-- | round-trips; the gate accepts an empty head only for these not-run/
+-- | unavailable facts, so this failure is never confusable with a recorded
+-- | pass or fail.
 ciSkipVerification :: WorkflowContext -> String -> Effect (Maybe String)
 ciSkipVerification context step
   | step /= "ci" = pure Nothing
-  | Vcs.vcsName context.vcs == "unknown" = pure (Just "local=not-run remote=unavailable head=")
   | otherwise = do
-      shaResult <- case context.vcs of
-        Vcs.Git -> Sys.exec Binaries.git [ "rev-parse", "HEAD" ]
-        Vcs.Jj -> Sys.exec Binaries.jj [ "log", "--revision", "@", "--no-graph", "--template", "commit_id" ]
-        Vcs.Unknown -> pure { code: 1, stdout: "", stderr: "" }
-      let sha = if shaResult.code == 0 then shaResult.stdout else ""
+      let { command, args } = Vcs.headShaCommand context.vcs
+      shaResult <- if command == "" then pure { code: 1, stdout: "", stderr: "" } else Sys.exec command args
+      let sha = if shaResult.code == 0 then trim shaResult.stdout else ""
       pure (Just ("local=not-run remote=unavailable head=" <> sha))
 
 validInterval :: String -> String -> Effect (Either String Unit)
