@@ -161,6 +161,7 @@
               rustPlatform.cargoSetupHook
               (wasmBindgenCliFor system)
             ];
+            inherit cargoDeps;
             postPatch = ''
               cat >> Cargo.toml <<EOF
               [patch.crates-io]
@@ -217,6 +218,10 @@
               pkgs.nickel
               pkgs.nodejs
               pkgs.just
+              # Gate tools driven by the justfile recipes: shellcheck backs
+              # `just lint`; git and jj are the VCS binaries the bats
+              # integration fixtures drive (jj arms skip when absent).
+              pkgs.shellcheck
               pkgs.git
               pkgs.jujutsu
               (rustToolchainFor system)
