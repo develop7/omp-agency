@@ -9,12 +9,14 @@ module Agency.Scripts.Do.Results
   , validInterval
   , loadState
   , jsonValueFor
+  , ciVerification
   , putCapabilities
   ) where
 
 import Prelude
 
 import Agency.Scripts.Do.Args as Args
+import Agency.Scripts.Do.Binaries as Binaries
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Context as Context
 import Agency.Scripts.Do.Forge as Forge
@@ -26,7 +28,9 @@ import Data.Argonaut.Core (Json, fromBoolean, fromString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.String (Pattern(..), drop, indexOf, split, take)
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 
 runInit :: WorkflowContext -> Effect Outcome.OpOutcome
@@ -46,32 +50,74 @@ runStepStart context name = withLoadedState context \state -> case state.pending
 runStepEnd :: WorkflowContext -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStepEnd context status verification reason = withLoadedState context \state -> case state.pendingStep of
   Nothing -> pure (failText "do-results: no pendingStep — call step-start first")
-  Just pending -> do
-    completed <- Sys.nowIso
-    timing <- validInterval pending.startedAt completed
-    let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
-    case timing >>= \_ -> State.appendStep step state of
-      Left error -> pure (failText error)
-      Right appended -> do
-        let updated = terminalize pending.name status (State.finishPending appended)
-        State.writeState (Context.statePath context) updated
-        pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
-
-runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
-runStep context name status verification startedAt completedAt reason = withLoadedState context \state -> do
-  actualStart <- resolveNow startedAt
-  actualEnd <- resolveNow completedAt
-  timing <- validInterval actualStart actualEnd
-  case timing of
+  Just pending -> case ciVerification pending.name verification of
     Left error -> pure (failText error)
     Right _ -> do
-      let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
-      case State.appendStep step state of
+      completed <- Sys.nowIso
+      timing <- validInterval pending.startedAt completed
+      let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
+      case timing >>= \_ -> State.appendStep step state of
         Left error -> pure (failText error)
         Right appended -> do
-          let updated = terminalize name status appended
+          let updated = terminalize pending.name status (State.finishPending appended)
           State.writeState (Context.statePath context) updated
-          pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
+          pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
+
+-- | The ci step records local and remote CI coverage as separate structured
+-- | facts (issue #60). A ci step-end verification string must carry
+-- | `local=<passed|failed|not-run>`, `remote=<passed|failed|pending|none|
+-- | unavailable>`, and `head=<sha>` — whitespace-separated, any order. `local`
+-- | is the local CI command's outcome; `remote` is the forge PR-check outcome
+-- | (`none` when the PR reports no checks, `unavailable` when PR checks cannot
+-- | be consulted, e.g. unsupported forge or no PR); `head` is the commit SHA
+-- | the remote checks were observed against. A successful local command never
+-- | implies a remote check; the two facts travel separately.
+ciVerification :: String -> String -> Either String Unit
+ciVerification name verification
+  | name /= "ci" = Right unit
+  | otherwise = do
+      fields <- parseFields verification
+      _ <- enumField "local" [ "passed", "failed", "not-run" ] fields
+      _ <- enumField "remote" [ "passed", "failed", "pending", "none", "unavailable" ] fields
+      headField fields
+  where
+  parseFields value =
+    let fields = Array.mapMaybe splitField (split (Pattern " ") value)
+    in if Array.null fields
+      then Left missingSpec
+      else Right fields
+  splitField value = case indexOf (Pattern "=") value of
+    Just index | index > 0 -> Just (Tuple (take index value) (drop (index + 1) value))
+    _ -> Nothing
+  enumField key allowed fields = case Array.find (\(Tuple k _) -> k == key) fields of
+    Nothing -> Left ("do-results: ci verification is missing '" <> key <> "=' — " <> specText)
+    Just (Tuple _ value) | Array.elem value allowed -> Right unit
+    Just (Tuple _ value) -> Left ("do-results: ci verification has invalid '" <> key <> "' value '" <> value <> "' — " <> specText)
+  headField fields = case Array.find (\(Tuple k _) -> k == "head") fields of
+    Just (Tuple _ sha) | sha /= "" -> Right unit
+    Just (Tuple _ value) -> Left ("do-results: ci verification has invalid 'head' value '" <> value <> "' — " <> specText)
+    Nothing -> Left ("do-results: ci verification is missing 'head=' — " <> specText)
+  specText = "expected `local=<passed|failed|not-run> remote=<passed|failed|pending|none|unavailable> head=<sha>`"
+  missingSpec = "do-results: ci requires structured facts in the verification string — " <> specText
+
+runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
+runStep context name status verification startedAt completedAt reason = withLoadedState context \state ->
+  case ciVerification name verification of
+    Left error -> pure (failText error)
+    Right _ -> do
+      actualStart <- resolveNow startedAt
+      actualEnd <- resolveNow completedAt
+      timing <- validInterval actualStart actualEnd
+      case timing of
+        Left error -> pure (failText error)
+        Right _ -> do
+          let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
+          case State.appendStep step state of
+            Left error -> pure (failText error)
+            Right appended -> do
+              let updated = terminalize name status appended
+              State.writeState (Context.statePath context) updated
+              pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
 
 runSet :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runSet context field value = withLoadedState context \state -> do
@@ -115,8 +161,25 @@ runDriverSkip context step reason = do
   started <- runStepStart context step
   if started.exit /= 0 then pure started
   else do
-    ended <- runStepEnd context "skipped" "" (Args.nonEmpty reason)
+    facts <- ciSkipVerification context step
+    ended <- case facts of
+      Just structured -> runStepEnd context "skipped" structured (Args.nonEmpty reason)
+      Nothing -> runStepEnd context "skipped" "" (Args.nonEmpty reason)
     pure (Outcome.append started ended)
+
+-- | A skipped ci step still records the structured facts: the local command
+-- | was not run and no PR check can be consulted for the current head.
+ciSkipVerification :: WorkflowContext -> String -> Effect (Maybe String)
+ciSkipVerification context step
+  | step /= "ci" = pure Nothing
+  | Vcs.vcsName context.vcs == "unknown" = pure (Just "local=not-run remote=unavailable head=")
+  | otherwise = do
+      shaResult <- case context.vcs of
+        Vcs.Git -> Sys.exec Binaries.git [ "rev-parse", "HEAD" ]
+        Vcs.Jj -> Sys.exec Binaries.jj [ "log", "--revision", "@", "--no-graph", "--template", "commit_id" ]
+        Vcs.Unknown -> pure { code: 1, stdout: "", stderr: "" }
+      let sha = if shaResult.code == 0 then shaResult.stdout else ""
+      pure (Just ("local=not-run remote=unavailable head=" <> sha))
 
 validInterval :: String -> String -> Effect (Either String Unit)
 validInterval startedAt completedAt = do

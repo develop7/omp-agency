@@ -23,7 +23,7 @@ The autonomous loop is only as good as the feedback signal it gets. If the agent
 
 ### State, within and across PRs
 
-**Within a PR**, `/do` writes per-step lifecycle, status, and timing to `.do-results.json` at the repo root.
+**Within a PR**, `/do` writes per-step lifecycle, status, and timing to `.do-results.json` at the repo root. The `ci` step additionally records local and remote coverage as separate structured facts — `local=<passed|failed|not-run>`, `remote=<passed|failed|pending|none|unavailable>` (the forge PR-check outcome; `none` when the PR reports no checks, `unavailable` when checks cannot be consulted), and `head=<sha>` — so a passing local command is never mistaken for provider-confirmed PR status. An optional `require_remote` policy (in the ci step's `pattern_config`) leaves CI unpassed when remote coverage is required but absent.
 
 **Across PRs**, there is no built-in memory, by design. Scope each PR small enough to land end-to-end in a day or two; branches that linger longer are a smell. When a piece of work genuinely doesn't fit in one PR, have `/talk` produce a GitHub issue with explicit phases, then run `/do` against each phase as its own PR — the issue is the cross-PR memory. See [juspay/kolu#514](https://github.com/juspay/kolu/issues/514) for the shape.
 
