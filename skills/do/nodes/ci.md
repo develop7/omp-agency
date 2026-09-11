@@ -29,8 +29,10 @@ method* may be forge-specific: if `.agency/do.md` describes verification via PR 
 `supportsPrChecks` is false (read from state), fall back to exit code + command output.
 
 **Verify coverage of `HEAD`.** Before recording the step as passed, compare the commit SHA CI ran
-against with the `vcs_read` tool using `{ args: ["head-commit-sha"] }`. If they differ, re-run CI
-against current HEAD — CI passing on a stale commit does not satisfy verification.
+against with the `vcs_read` tool using `{ args: ["head-commit-sha"] }`. That op is the CI-target
+identity: under jj it resolves the feature bookmark's commit (bookmark on `@`, else on `@-`), never
+the mutable working-copy revision. If the SHAs differ, re-run CI against current HEAD — CI passing
+on a stale commit does not satisfy verification.
 
 **Flaky vs real**: a failure is flaky only if it **passes on a subsequent retry**. Consistent failure =
 real bug.

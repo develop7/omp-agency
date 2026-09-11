@@ -124,7 +124,7 @@ export default function (pi: ExtensionAPI) {
     name: "vcs_read",
     label: "VCS Read",
     description:
-      "Read-only VCS operations. Use args exactly as the semantic vcs-op CLI: detect, remote-url, head-revision, head-commit-sha, default-branch, current-branch, base, dirty, diff-range, diff-names, diff-stat, new-files, log-range, or log-head, followed by any operation arguments such as paths. Fetching belongs to agency_driver sync because it updates remote-tracking refs.",
+      "Read-only VCS operations. Use args exactly as the semantic vcs-op CLI: detect, remote-url, head-revision, head-commit-sha, default-branch, current-branch, base, dirty, diff-range, diff-names, diff-stat, new-files, log-range, or log-head, followed by any operation arguments such as paths. head-revision and current-branch return the checked-out branch/bookmark name, or an empty value when no branch is checked out. head-commit-sha returns the commit CI will run against: git's HEAD commit, or under jj the feature bookmark's commit (bookmark on @, else on @-; with no feature bookmark, @-'s commit, then @'s in a fresh repository). Fetching belongs to agency_driver sync because it updates remote-tracking refs.",
     parameters: z.object({ args: z.array(z.string()) }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       return executeApi("vcs_read", params.args);

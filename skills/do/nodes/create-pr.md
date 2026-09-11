@@ -24,6 +24,10 @@ Check whether a PR already exists for this branch by calling the `forge` tool wi
 1. Create a draft PR by calling the `forge` tool with
    `{ op: "pr-create", args: ["--draft", "--head", "<current branch>", "--base", "<base>", "--title", "..."], body: "<body>" }`.
 
+   `<current branch>` must be a real branch/bookmark the forge can target — under jj, the feature
+   bookmark from the **branch** node. If `head-revision` reports empty, the bookmark is missing:
+   create it before opening the PR.
+
    **MANDATORY**: read the `forge-pr` skill via `read skill://forge-pr` **before** writing the PR
    title/body. Pass the body through the tool's `body` field so backticks and `$` survive unescaped —
    the tool writes a temporary body file and passes it to `gh` verbatim.

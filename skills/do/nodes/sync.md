@@ -42,3 +42,8 @@ When it lands, only the `forge` tool's capability table and dispatch arms change
 **Verify**: the `agency_driver` `sync` operation exited 0 and printed all five lines — `vcs=`, `forge=`,
 `branch=`, `defaultBranch=`, `base=` — on stdout. (Sync silences the underlying state-operation
 confirmation echoes so the protocol stays clean.)
+
+`branch=` is whatever the `vcs_read` op `head-revision` reports — under jj the bookmark on `@`,
+else the bookmark on `@-`. It is empty when no feature bookmark is checked out (the state before
+the **branch** node runs); that line stays present but carries no value, and `base=` remains the
+usable fact for downstream steps.

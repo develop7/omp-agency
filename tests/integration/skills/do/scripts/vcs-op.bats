@@ -147,14 +147,56 @@ SH
   [ "$output" = "$sha" ]
 }
 
-@test "jj: head-commit-sha identifies the current working revision" {
+@test "jj: head-commit-sha identifies the feature bookmark commit" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
-  expected="$(jj log --revision @ --no-graph --template commit_id)"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj bookmark create feature >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  expected="$(jj log --revision feature --no-graph --template commit_id)"
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
   [ "$status" -eq 0 ]
   [ "$output" = "$expected" ]
+}
+
+@test "jj: head-commit-sha falls back to the parent commit without a feature bookmark" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  expected="$(jj log --revision @- --no-graph --template commit_id)"
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+}
+
+@test "jj: head-commit-sha falls back to the described feature commit in a fresh repo" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  expected="$(jj log --revision @- --no-graph --template commit_id)"
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+}
+
+@test "jj: head-revision falls back to the parent bookmark like current-branch" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj bookmark create feature >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision
+  [ "$status" -eq 0 ]
+  [ "$output" = "feature" ]
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op current-branch
+  [ "$status" -eq 0 ]
+  [ "$output" = "feature" ]
 }
 
 @test "jj: branch reads are empty rather than opaque IDs without a bookmark" {
@@ -384,6 +426,20 @@ SH
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-head
   [ "$status" -eq 0 ]
   [[ "$output" == *"initial"* ]]
+}
+
+@test "jj: log-head identifies the parent feature commit" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  jj describe -m initial @- >/dev/null 2>&1
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-head
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"initial"* ]]
+  commit="$(node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha)"
+  [[ "$output" == *"${commit:0:8}"* ]]
 }
 
 # ─── log-range ────────────────────────────────────────────────────────

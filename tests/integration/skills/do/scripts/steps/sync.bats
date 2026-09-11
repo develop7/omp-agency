@@ -173,3 +173,38 @@ SH
   run jq -r '.steps[0].status' .do-results.json
   [ "$output" = "passed" ]
 }
+
+@test "sync in a jj repo publishes the branch fact head-revision reports" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init --colocate 2>/dev/null || skip "jj git init failed"
+  test -d .jj/repo || skip "jj workspace missing after colocated init"
+  git init -q --bare "$TEST_DIR/jj-fake.git"
+  git remote set-url origin "$TEST_DIR/jj-fake.git"
+  git config user.email "test@test.com"
+  git config user.name "Test"
+  echo base > file.txt
+  jj describe -m base >/dev/null 2>&1
+  jj bookmark create main -r @ >/dev/null 2>&1
+  jj git push --remote origin --bookmark main >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  jj bookmark forget main >/dev/null 2>&1
+
+  revision="$(node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision)"
+  run node "$REPO_ROOT/pure/dist/agency-do.js" sync false
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"branch=$revision"$'\n'* ]]
+}
+
+@test "sync in a jj repo publishes the feature bookmark as the branch fact" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init --colocate 2>/dev/null || skip "jj git init failed"
+  test -d .jj/repo || skip "jj workspace missing after colocated init"
+  git config user.email "test@test.com"
+  git config user.name "Test"
+  jj describe -m base
+  jj bookmark create feature -r @ >/dev/null 2>&1
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" sync false
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"branch=feature"* ]]
+}
