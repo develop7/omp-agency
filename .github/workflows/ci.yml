@@ -20,13 +20,9 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      # Determinate Nix installer (v3 tracks the latest v3.x release): fast
-      # multi-user install with a pinned, deterministic nix.conf.
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      # Caches Nix builds in the GitHub Actions cache — no additional service
-      # or secrets; must run after Nix is installed.
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Install Determinate Nix and wire the Magic Nix Cache (repo-local
+      # GitHub Actions cache — no additional service, no secrets).
+      - uses: ./.github/actions/setup-nix
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
       # `just test` builds the generated CLI/API bundles and the Nickel WASM
@@ -37,27 +33,21 @@ jobs:
     name: Shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - uses: ./.github/actions/setup-nix
       - run: nix develop --accept-flake-config -c just lint
 
   lint-skills:
     name: Skill prose
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - uses: ./.github/actions/setup-nix
       - run: nix develop --accept-flake-config -c just lint-skills
 
   runtime-check:
     name: Runtime package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - uses: ./.github/actions/setup-nix
       # Prove the generated runtime package: stage the minimal closure from the
       # fresh build and verify manifest paths, staged imports, and Nickel
       # workflow evaluation without a checked-in dist tree.
@@ -85,8 +75,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      - uses: ./.github/actions/setup-nix
       - name: Build generated runtime artifacts
         run: nix develop --accept-flake-config -c just build nickel-build
       - name: Stage runtime package
