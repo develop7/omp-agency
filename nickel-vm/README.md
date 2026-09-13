@@ -30,9 +30,21 @@ host. Enter `nix develop` before running the smoke test directly to use the exac
 and wasm-bindgen the artifact was built with.
 
 The generated files in `dist/` are build outputs, not source — `just
-nickel-build` installs a fresh build there and the tree is gitignored.
-`Cargo.lock` pins the dependency graph, including `wasm-bindgen = 0.2.127`,
-which must match the `wasm-bindgen-cli` used by the Nix development shell.
+nickel-build` installs a fresh build there and the tree is gitignored,
+with one exception: `.drv-fingerprint` — the flake's `nickelVmWasm`
+derivation path — is the committed staleness ledger for the artifact.
+The wasm build is not bit-reproducible across hosts (rustc→wasm output
+differs with host CPU count even at `codegen-units=1`), so the drift
+gate (`just nickel-check`, run by `just bundle-check`) compares the
+derivation fingerprint instead of output bytes: any change to the crate
+sources, the patch, or the pinned toolchain changes the drv hash and
+fails the gate. `Cargo.lock` pins the dependency graph, including
+`wasm-bindgen = 0.2.127`, which must match the `wasm-bindgen-cli` used
+by the Nix development shell.
+
+To regenerate after source changes: `just nickel-build` installs the
+fresh `dist/` files and refreshes the fingerprint ledger itself — commit
+both.
 
 ```bash
 just nickel-build
