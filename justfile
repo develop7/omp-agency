@@ -74,10 +74,12 @@ build: workflow-vocabulary
         && spago bundle --module Agency.Scripts.Do.Api \
             --outfile dist/agency-api.js --force --platform node --bundle-type=module'
 
-# Full CI: bats + PureScript tests + lint + skill prose lint + the drift
-# guards, then the plugin surface tests (they consume the freshly built
-# agency-api.js bundle, so they run after the drift guard).
-ci: test test-pure lint lint-skills drift-check test-plugin
+# Full CI, gate-first: the drift guards run before anything spends build
+# minutes (the vocabulary --check must see pristine committed consumers).
+# Then bats + PureScript tests + lint + skill prose lint + the runtime
+# package proof, and the plugin surface tests last (they consume the
+# freshly built agency-api.js bundle).
+ci: drift-check test test-pure lint lint-skills runtime-check test-plugin
 
 # Reject generated vocabulary consumers that no longer match the manifest.
 workflow-vocabulary-check:

@@ -27,8 +27,10 @@ jobs:
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
       # `just test` builds the generated CLI/API bundles and the Nickel WASM
-      # first — a clean source checkout ships no dist artifacts.
-      - run: nix develop --accept-flake-config -c just test
+      # first — a clean source checkout ships no dist artifacts. `test-pure`
+      # runs the PureScript core unit tests, matching the local `just ci`
+      # aggregate (the local mirror of this workflow).
+      - run: nix develop --accept-flake-config -c just test test-pure
 
   lint:
     name: Shellcheck
@@ -57,6 +59,18 @@ jobs:
       # workflow evaluation without a checked-in dist tree.
       - run: nix develop --accept-flake-config -c just runtime-check /tmp/runtime-package
 
+  drift-check:
+    name: Drift guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-nix
+      # Prove the committed surface is fresh: the vocabulary consumers must
+      # regenerate as a no-op against the manifest, and the Nickel WASM
+      # ledger must match the flake inputs. Gate-first — cheap staleness
+      # failures before any build minutes are spent.
+      - run: nix develop --accept-flake-config -c just drift-check
+
   test-plugin:
     name: Plugin surface
     runs-on: ubuntu-latest
@@ -75,7 +89,7 @@ jobs:
   publish:
     name: Publish runtime
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, lint, lint-skills, runtime-check, test-plugin]
+    needs: [drift-check, test, lint, lint-skills, runtime-check, test-plugin]
     runs-on: ubuntu-latest
     permissions:
       contents: write
