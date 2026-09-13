@@ -179,6 +179,7 @@ function indexHtml({ repo, ref, sha, version }, repoName, pagesCatalogUrl) {
       Near-autonomous workflow for coding agents on
       <a href="https://github.com/can1357/oh-my-pi">OMP (Oh My Pi)</a> — talk, do, hickey, lowy,
       code-police, fact-check, elegance, ralph, forge-pr.
+    </p>
     <h2>Install</h2>
     <pre>${installCommand}
 ${installFlag}</pre>
@@ -312,7 +313,11 @@ async function verifyCatalog(outDir, catalog) {
   if (typeof entry.version !== "string" || entry.version.length === 0) problems.push("entry version missing");
   if (entry.version !== catalog.version) problems.push("entry version mismatch");
   if (staged.plugins[0].source && typeof staged.plugins[0].source === "string") problems.push("relative source in distribution catalog");
-  const pages = JSON.parse(await readFile(join(outDir, "marketplace", "marketplace.json"), "utf8"));
+  // The Pages copy must be byte-identical to the distribution catalog, not
+  // merely a same-shaped re-parse — a stale or truncated copy fails here.
+  const pagesJson = await readFile(join(outDir, "marketplace", "marketplace.json"), "utf8");
+  const stagedJson = await readFile(join(outDir, ".omp-plugin", "marketplace.json"), "utf8");
+  if (pagesJson !== stagedJson) problems.push("pages catalog differs from distribution catalog");
   const html = await readFile(join(outDir, "marketplace", "index.html"), "utf8");
   if (!html.includes('href="./marketplace.json"')) problems.push("index.html missing ./marketplace.json link");
   if (!html.includes("omp plugin marketplace add https://")) {
@@ -354,15 +359,20 @@ async function main() {
 }
 
 async function remoteRepo(repoRoot) {
+  let config;
   try {
-    const config = await readFile(join(repoRoot, ".git", "config"), "utf8");
-    const match = config.match(/url\s*=\s*.*github\.com[:/](.+?)(?:\.git)?\s*$/m);
-    return match ? match[1] : null;
-  } catch {
-    // Missing/unreadable .git/config is expected outside a git checkout;
-    // main() turns the null into a loud failure, so swallowing here is safe.
-    return null;
+    config = await readFile(join(repoRoot, ".git", "config"), "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      // No .git/config — e.g. jj-only workspace. main() turns the null into
+      // a loud failure; permission/I/O errors rethrow so they are not
+      // mistaken for "not a repo".
+      return null;
+    }
+    throw error;
   }
+  const match = config.match(/url\s*=\s*.*github\.com[:/](.+?)(?:\.git)?\s*$/m);
+  return match ? match[1] : null;
 }
 
 main().catch((error) => {

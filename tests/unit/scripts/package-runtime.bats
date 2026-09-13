@@ -94,9 +94,11 @@ teardown() {
   cmp -s "$OUT/package/.omp-plugin/marketplace.json" "$OUT/package/marketplace/marketplace.json"
 }
 
-@test "catalog rejects a source that is not a typed github object" {
+@test "catalog rejects a sha that is not a git object id" {
   run node "$PACKAGE" --out "$OUT/package" \
     --catalog develop7/omp-agency dist-test nothex v9.9.9-test
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"invalid catalog sha"* ]]
 }
 
 @test "staged tree excludes tests, test sources, and build-only payload" {
