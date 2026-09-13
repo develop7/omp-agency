@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "agency",
   "owner": {
-    "name": "srid"
+    "name": "develop7"
   },
   "metadata": {
     "description": "Near-autonomous workflow for coding agents — talk, do, and quality gates",
@@ -14,8 +14,8 @@
       "description": "Near-autonomous workflow: talk (design/exploration), do (implement → review → CI → ship), and structural quality gates (hickey, lowy, code-police).",
       "source": "./",
       "category": "development",
-      "homepage": "https://github.com/srid/agency",
-      "repository": "https://github.com/srid/agency",
+      "homepage": "https://github.com/develop7/omp-agency",
+      "repository": "https://github.com/develop7/omp-agency",
       "license": "MIT"
     }
   ]

@@ -4,9 +4,14 @@ Agency is an [OMP (Oh My Pi)](https://github.com/can1357/oh-my-pi) marketplace p
 
 ## Install
 
+Add the published Pages marketplace catalog (a direct `.json` URL that OMP
+fetches as a catalog) and install from it. The catalog pins the plugin source
+to an immutable `dist-<source-sha>` tag and exact distribution commit, so
+installs never clone `main`:
+
 ```bash
-omp plugin marketplace add srid/agency
-omp plugin install agency@agency
+omp plugin marketplace add https://develop7.github.io/omp-agency/marketplace.json
+omp plugin install agency@omp-agency
 ```
 
 This installs:
@@ -20,12 +25,18 @@ For local development:
 omp plugin link ./path/to/agency
 ```
 
+> **Build first.** A source checkout ships no generated runtime artifacts.
+> Run `just build nickel-build` inside the checkout before linking — without
+> the built `pure/dist/agency-api.js` and `nickel-vm/dist/` glue the extension
+> cannot load.
+
 For PureScript and Nickel WASM development, the repository root provides recipes that self-route
 through the pinned Nix toolchain: run `just test` or `just ci` directly from a bare host, and inside
-`nix develop` they run without re-entering.
+`nix develop` they run without re-entering. Bundle-level recipes build the generated artifacts
+first, so a clean checkout works out of the box.
 The system `nickel` package is retained only as an
-editor/debugging nicety; workflow runtime evaluation uses the checked-in `nickel-vm`
-WebAssembly artifact.
+editor/debugging nicety; workflow runtime evaluation uses the `nickel-vm`
+WebAssembly build produced by `just nickel-build`.
 
 ## Configure model tiers
 

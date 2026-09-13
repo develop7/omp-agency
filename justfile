@@ -4,16 +4,19 @@ repo := justfile_directory()
 # dev shell (`nix develop`), so recipes stay recursion-safe there.
 nix_shell := if env('IN_NIX_SHELL', '') != '' { '' } else { 'nix develop ' + repo + ' --accept-flake-config -c' }
 
-# Run all bats tests (unit + integration)
-test:
+# Run all bats tests (unit + integration). Bundle-level suites invoke the
+# generated CLI/API artifacts, so build them first — source checkouts ship no
+# dist files.
+test: build nickel-build
     {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/
 
-# Run unit tests only (black-box, no VCS fixtures)
-test-unit:
+# Run unit tests only (black-box, no VCS fixtures). Builds first: some suites
+# invoke the generated CLI artifact a clean checkout does not ship.
+test-unit: build nickel-build
     {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/unit/
 
-# Run integration tests (real git fixtures)
-test-integration:
+# Run integration tests (real git fixtures). Builds first for the same reason.
+test-integration: build nickel-build
     {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/integration/
 
 # Run the PureScript core unit tests
@@ -49,39 +52,21 @@ build: workflow-vocabulary
         && spago bundle --module Agency.Scripts.Do.Api \
             --outfile dist/agency-api.js --force --platform node --bundle-type=module'
 
-# Verify the checked-in bundle matches the sources (drift guard for the
-# distributed artifact — the bundle IS the distributable, so it must
-# never go stale silently)
-bundle-check: workflow-vocabulary-check nickel-build
+# Full CI: bats + PureScript tests + lint + skill prose lint + runtime proof
+ci: test test-pure lint lint-skills runtime-check
+
+# Stage the minimal runtime package and verify it end-to-end: manifest paths,
+# staged imports, Nickel workflow evaluation, and (when --catalog is passed)
+# catalog consistency. Builds the generated artifacts first — a clean checkout
+# ships none. CI calls this with --out; local use defaults to dist/.
+runtime-check out='dist-package': build nickel-build
     {{ nix_shell }} bash -c 'set -euo pipefail; \
-      trap "rm -f pure/dist/agency-do.check.js pure/dist/agency-api.check.js" EXIT; \
-      (cd pure && spago bundle --module Agency.Scripts.Do.Cli \
-        --outfile dist/agency-do.check.js --force --platform node) && \
-      (cd pure && spago bundle --module Agency.Scripts.Do.Api \
-        --outfile dist/agency-api.check.js --force --platform node --bundle-type=module) && \
-      cmp pure/dist/agency-do.check.js pure/dist/agency-do.js \
-        || { echo "bundle drift: pure/dist/agency-do.js is stale — run just build and commit it"; exit 1; }; \
-      cmp pure/dist/agency-api.check.js pure/dist/agency-api.js \
-        || { echo "bundle drift: pure/dist/agency-api.js is stale — run just build and commit it"; exit 1; }'
-    {{ nix_shell }} node nickel-vm/scripts/smoke.mjs
+      trap "rm -rf {{ out }}" EXIT; \
+      node scripts/package-runtime.mjs --out {{ out }} --verify'
 
-# Full CI: bats + PureScript tests + lint + skill prose lint + bundle freshness
-ci: test test-pure lint lint-skills bundle-check
-
-# Build the Nickel WASM VM in a temporary directory and compare the fresh
-# derivation output with the checked-in runtime artifact. Regeneration remains
-# explicit: run nix build and copy the desired output into nickel-vm/dist/.
+# Build the Nickel WASM VM with the pinned toolchain and install it into
+# nickel-vm/dist/ (the generated runtime artifact; no longer checked in).
 nickel-build:
-    @tmp=$(mktemp --directory); trap 'rm -rf "$tmp"' EXIT; \
-      out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
-      cp -fr "$out/dist/." "$tmp/"; \
-      just nickel-check "$tmp"
-
-# Compare a fresh pinned Nickel WASM build with the checked-in runtime files.
-nickel-check fresh:
-    @for file in nickel_vm_bg.wasm nickel_vm_bg.wasm.d.ts nickel_vm.d.ts nickel_vm.js; do \
-      if ! cmp -- "{{ fresh }}/$file" "nickel-vm/dist/$file"; then \
-        echo "Nickel WASM drift: nickel-vm/dist/$file is stale — regenerate it explicitly and commit it"; \
-        exit 1; \
-      fi; \
-    done
+    @out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
+      mkdir -p nickel-vm/dist; \
+      cp -f "$out/dist/." nickel-vm/dist/

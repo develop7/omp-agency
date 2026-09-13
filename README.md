@@ -153,31 +153,53 @@ PATH directly. Nickel remains available as an editor/debugging nicety; runtime
 workflow evaluation is provided by `nickel-vm` WASM:
 
 ```bash
-just test          # run bats tests (unit + integration)
+just test          # build, then run bats tests (unit + integration)
 just test-pure     # run the PureScript core unit tests
 just lint          # run shellcheck on bash scripts
 just lint-skills   # lint skill markdown: no raw VCS/forge commands
 just build         # compile and bundle the PureScript core
-just ci            # full CI: tests + lint + skill prose lint + bundle freshness
+just ci            # full CI: tests + lint + skill prose lint + runtime package proof
 just nickel-build  # build the Nickel WASM evaluator and Node glue
+just runtime-check # stage the minimal runtime package and verify it
 node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite (inside nix develop)
 ```
 
 One-off CLI invocations outside the dev shell should pin the interpreter too:
 `nix develop --command node pure/dist/agency-do.js …`.
 
+### Generated runtime artifacts
+
+The PureScript bundles (`pure/dist/*.js`) and the Nickel WASM glue
+(`nickel-vm/dist/*`) are **build outputs, not source**: a clean checkout ships
+none of them, and they are never committed. Every bundle-level recipe (`test`,
+`test-unit`, `test-integration`, `runtime-check`, `ci`) therefore builds them
+first. Source checkouts that link the plugin directly
+(`omp plugin link ./path/to/agency`) must run `just build nickel-build` first —
+a linked checkout without built artifacts cannot load the extension.
+
+CI builds and verifies the artifacts on every PR, and on pushes to `main`
+publishes the installable runtime: it stages the minimal runtime package
+(`scripts/package-runtime.mjs`), commits it to an orphan distribution commit,
+tags it immutably as `dist-<source-sha>`, and deploys a marketplace site to
+GitHub Pages. The generated catalog points the plugin source at that tag and
+exact distribution commit, so installs never clone `main`:
+
+```bash
+omp plugin marketplace add https://<owner>.github.io/<repo>/marketplace.json
+omp plugin install agency@<repo>
+```
+
 All test and build tools (bats, shellcheck, purs, spago, git, jj) come from the
 pinned Nix dev shell via the recipes above — nothing to install. The `/do`
 operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and
 `agency_driver`) is implemented in PureScript under `pure/`. The CLI bundle,
-`pure/dist/agency-do.js`, remains the black-box test entrypoint; the OMP
-adapter lazily loads `pure/dist/agency-api.js`. See `pure/README.md` for the
-module map and these recipes:
+`pure/dist/agency-do.js`, is the black-box test entrypoint and is built by
+`just build`; the OMP adapter lazily loads `pure/dist/agency-api.js`. See
+`pure/README.md` for the module map and these recipes:
 
 ```bash
 just test-pure    # PureScript unit tests
 just build        # compile and bundle the PureScript core (CLI + tool API)
-just bundle-check # verify the checked-in bundles match the sources
 ```
 
 Consumers only need `node`; development requires nothing beyond Nix.
