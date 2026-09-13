@@ -124,12 +124,19 @@ async function stage(repoRoot, outDir) {
 
 // ── Catalog + Pages site ─────────────────────────────────────────────────────
 
+/** Split "owner/name" once; every catalog consumer reads the same derivation. */
+function repoParts(repoName) {
+  const [owner, name] = repoName.split("/");
+  if (!owner || !name) fail(`cannot derive owner/name from repo "${repoName}"`);
+  return { owner, name };
+}
+
 function catalogObject({ repo, ref, sha, version }, repoName) {
-  const catalogName = repoName.split("/")[1];
+  const { owner, name } = repoParts(repoName);
   return {
     $schema: "https://anthropic.com/claude-code/marketplace.schema.json",
-    name: catalogName,
-    owner: { name: repoName.split("/")[0] },
+    name,
+    owner: { name: owner },
     metadata: {
       description: "Near-autonomous workflow for coding agents — talk, do, and quality gates",
       version,
@@ -149,7 +156,7 @@ function catalogObject({ repo, ref, sha, version }, repoName) {
 }
 
 function indexHtml({ repo, ref, sha, version }, repoName, pagesCatalogUrl) {
-  const marketplaceName = repoName.split("/")[1];
+  const { name: marketplaceName } = repoParts(repoName);
   // OMP fetches HTTP(S) .json URLs directly as marketplace catalogs, so the
   // add command must point at the published catalog, not the git repo (a
   // owner/repo shorthand would clone main and bypass the distribution tag).
@@ -198,7 +205,8 @@ async function generateCatalog(outDir, catalog, repoName) {
   const marketplaceDir = join(outDir, "marketplace");
   await mkdir(marketplaceDir, { recursive: true });
   await writeFile(join(marketplaceDir, "marketplace.json"), catalogJson);
-  const pagesCatalogUrl = `https://${repoName.split("/")[0]}.github.io/${repoName.split("/")[1]}/marketplace.json`;
+  const { owner, name } = repoParts(repoName);
+  const pagesCatalogUrl = `https://${owner}.github.io/${name}/marketplace.json`;
   await writeFile(join(marketplaceDir, "index.html"), indexHtml(catalog, repoName, pagesCatalogUrl));
 }
 
@@ -326,7 +334,8 @@ async function main() {
   } else if (!(await exists(outDir))) {
     fail(`--no-stage requires an existing staged tree at ${outDir}`);
   }
-  const repoName = (await remoteRepo(repoRoot)) ?? "srid/agency";
+  const repoName = await remoteRepo(repoRoot);
+  if (!repoName) fail(`cannot determine GitHub repo identity from ${repoRoot}/.git/config`);
   if (argv.catalog) {
     await generateCatalog(outDir, argv.catalog, repoName);
   }
