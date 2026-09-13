@@ -42,30 +42,15 @@ function gitFixture(fixture) {
   run(["commit", "-q", "-m", "initial"]);
 }
 
-// Executable gh stub: appends JSON.stringify(argv) (+ the --body-file
-// content, so the test can assert it before the adapter deletes the temp
-// dir) to GH_LOG. Exits 1 with GH_STDERR when GH_FAIL is set.
-const GH_STUB = [
-  "#!/usr/bin/env node",
-  'const fs = require("node:fs");',
-  "const args = process.argv.slice(2);",
-  'fs.appendFileSync(process.env.GH_LOG, JSON.stringify(args) + "\\n");',
-  'const i = args.indexOf("--body-file");',
-  "if (i !== -1) {",
-  '  fs.appendFileSync(process.env.GH_LOG, fs.readFileSync(args[i + 1], "utf8"));',
-  "}",
-  "if (process.env.GH_FAIL) {",
-  '  process.stderr.write(process.env.GH_STDERR || "boom\\n");',
-  "  process.exit(1);",
-  "}",
-  "",
-].join("\n");
+// Executable gh stub lives in tests/plugin/gh-stub.mjs; writeGhStub copies
+// it into the fixture's bin/ so execTool's PATH prepend makes the adapter
+// call it instead of the real gh.
 
 function writeGhStub(fixture) {
   const bin = path.join(fixture, "bin");
   fs.mkdirSync(bin);
   const gh = path.join(bin, "gh");
-  fs.writeFileSync(gh, GH_STUB);
+  fs.copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "gh-stub.mjs"), gh);
   fs.chmodSync(gh, 0o755);
   return bin;
 }
