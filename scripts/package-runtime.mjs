@@ -359,6 +359,8 @@ async function remoteRepo(repoRoot) {
     const match = config.match(/url\s*=\s*.*github\.com[:/](.+?)(?:\.git)?\s*$/m);
     return match ? match[1] : null;
   } catch {
+    // Missing/unreadable .git/config is expected outside a git checkout;
+    // main() turns the null into a loud failure, so swallowing here is safe.
     return null;
   }
 }
