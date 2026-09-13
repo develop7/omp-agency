@@ -16,19 +16,6 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const buildDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".test-build");
-const repoRoot = path.resolve(buildDir, "..");
-
-for (const file of ["adapter.mjs", "omptype-zod.mjs"]) {
-  if (!fs.existsSync(path.join(buildDir, file))) {
-    console.error(`.test-build/${file} is missing — run \`just build-plugin-test\` first`);
-    process.exit(1);
-  }
-}
-if (!fs.existsSync(path.join(repoRoot, "pure", "dist", "agency-api.js"))) {
-  console.error("pure/dist/agency-api.js is missing — run `just build` first");
-  process.exit(1);
-}
-
 const [{ default: adapter }, { z }] = await Promise.all([
   import(path.join(buildDir, "adapter.mjs")),
   import(path.join(buildDir, "omptype-zod.mjs")),
