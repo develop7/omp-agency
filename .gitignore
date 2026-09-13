@@ -13,4 +13,7 @@ target/
 nickel-vm/target/
 
 # Agency
+# Generated runtime artifacts (build outputs, never merge inputs)
+pure/dist/
+nickel-vm/dist/
 .do-results.json

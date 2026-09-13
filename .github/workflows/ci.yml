@@ -2,9 +2,18 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
+
+# PR CI is read-only by default; jobs that need more declare their own
+# permissions explicitly below.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -15,6 +24,8 @@ jobs:
       - uses: nixbuild/nix-quick-install-action@v31
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
+      # `just test` builds the generated CLI/API bundles and the Nickel WASM
+      # first — a clean source checkout ships no dist artifacts.
       - run: nix develop --accept-flake-config -c just test
 
   lint:
@@ -33,10 +44,118 @@ jobs:
       - uses: nixbuild/nix-quick-install-action@v31
       - run: nix develop --accept-flake-config -c just lint-skills
 
-  build:
-    name: Bundle check
+  runtime-check:
+    name: Runtime package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: nixbuild/nix-quick-install-action@v31
-      - run: nix develop --accept-flake-config -c just bundle-check
+      # Prove the generated runtime package: stage the minimal closure from the
+      # fresh build and verify manifest paths, staged imports, and Nickel
+      # workflow evaluation without a checked-in dist tree.
+      - run: nix develop --accept-flake-config -c just runtime-check /tmp/runtime-package
+
+  # Publication runs only on pushes to main, with write access, serialized so
+  # two merges cannot race tag creation or a Pages deploy.
+  publish:
+    name: Publish runtime
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, lint, lint-skills, runtime-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    # Serialize publication: two merges to main must not race tag creation or
+    # a Pages deploy. In-flight runs finish first.
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    env:
+      DIST_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: nixbuild/nix-quick-install-action@v31
+      - name: Build generated runtime artifacts
+        run: nix develop --accept-flake-config -c just build nickel-build
+      - name: Stage runtime package
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          echo "tag=dist-${source_sha}" >> "$GITHUB_ENV"
+          nix develop --accept-flake-config -c node scripts/package-runtime.mjs \
+            --out /tmp/runtime-package --verify
+      - name: Create orphan distribution commit
+        # An orphan commit whose tree is exactly the staged runtime package —
+        # no source, no build scripts, no Pages-only marketplace/ staging dir.
+        # Built with a temporary index against the checkout's own object
+        # database so the commit is immediately taggable and pushable.
+        id: dist
+        run: |
+          export GIT_INDEX_FILE="$(mktemp -u)"
+          git read-tree --empty
+          GIT_WORK_TREE=/tmp/runtime-package git add -A
+          tree="$(git write-tree)"
+          dist_commit="$(git commit-tree "$tree" -m "dist: runtime package for ${DIST_SHA}")"
+          rm -f "$GIT_INDEX_FILE"
+          echo "sha=${dist_commit}" >> "$GITHUB_OUTPUT"
+        env:
+          DIST_SHA: ${{ github.sha }}
+      - name: Create or adopt distribution tag
+        id: tag
+        # Idempotent: if the remote tag already exists (rerun of the same
+        # source commit), adopt its exact commit and never recreate or repoint
+        # it. Only a missing tag is created — never a force update.
+        run: |
+          remote_sha="$(git ls-remote origin "refs/tags/${DIST_TAG}" | cut -f1 || true)"
+          if [ -n "$remote_sha" ]; then
+            echo "dist_commit=${remote_sha}" >> "$GITHUB_OUTPUT"
+            echo "distribution tag ${DIST_TAG} already exists at ${remote_sha} — adopting it"
+            exit 0
+          fi
+          git tag "${DIST_TAG}" "${DIST_COMMIT}"
+          git push origin "refs/tags/${DIST_TAG}"
+          pushed_sha="$(git ls-remote origin "refs/tags/${DIST_TAG}" | cut -f1)"
+          if [ "${pushed_sha}" != "${DIST_COMMIT}" ]; then
+            echo "remote tag ${DIST_TAG} is ${pushed_sha:-missing}, expected ${DIST_COMMIT}" >&2
+            exit 1
+          fi
+          echo "dist_commit=${DIST_COMMIT}" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIST_TAG: ${{ env.tag }}
+          DIST_COMMIT: ${{ steps.dist.outputs.sha }}
+      - name: Verify distribution tag is reachable
+        run: |
+          remote_sha="$(git ls-remote origin "refs/tags/${DIST_TAG}" | cut -f1)"
+          if [ "${remote_sha}" != "${DIST_COMMIT}" ]; then
+            echo "tag ${DIST_TAG} remote ${remote_sha:-missing} != intended ${DIST_COMMIT}" >&2
+            exit 1
+          fi
+          echo "distribution tag ${DIST_TAG} → ${remote_sha} (verified)"
+        env:
+          DIST_TAG: ${{ env.tag }}
+          DIST_COMMIT: ${{ steps.tag.outputs.dist_commit }}
+      - name: Generate distribution catalog and Pages site
+        # Runs after the distribution commit exists so the catalog's sha is
+        # the real orphan dist commit, and after the tag is reachable on the
+        # remote so Pages never advertises a missing ref.
+        run: |
+          version="${DIST_TAG}"
+          nix develop --accept-flake-config -c node scripts/package-runtime.mjs \
+            --out /tmp/catalog-package \
+            --catalog "${DIST_REPO}" "${DIST_TAG}" "${DIST_COMMIT}" "${version}" \
+            --verify
+        env:
+          DIST_TAG: ${{ env.tag }}
+          DIST_COMMIT: ${{ steps.tag.outputs.dist_commit }}
+      - name: Collect Pages site
+        run: |
+          mkdir -p /tmp/pages-site
+          cp -a /tmp/catalog-package/marketplace/. /tmp/pages-site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/pages-site
+      - uses: actions/deploy-pages@v4
