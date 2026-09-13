@@ -99,6 +99,25 @@ teardown() {
     --catalog develop7/omp-agency dist-test nothex v9.9.9-test
 }
 
+@test "staged tree excludes tests, test sources, and build-only payload" {
+  run node "$PACKAGE" --out "$OUT/package"
+  [ "$status" -eq 0 ]
+  [ ! -d "$OUT/package/tests" ]
+  [ ! -f "$OUT/package/tests/unit/scripts/package-runtime.bats" ]
+  [ ! -d "$OUT/package/pure/test" ]
+  [ ! -f "$OUT/package/pure/test/Main.purs" ]
+  [ ! -f "$OUT/package/nickel-vm/scripts/smoke.mjs" ]
+  [ ! -f "$OUT/package/nickel-vm/scripts/cli-bridge.mjs" ]
+  [ ! -d "$OUT/package/nickel-vm/src" ]
+  [ ! -f "$OUT/package/nickel-vm/Cargo.toml" ]
+  [ ! -f "$OUT/package/nickel-vm/Cargo.lock" ]
+  [ ! -f "$OUT/package/package.json.bak" ]
+  [ ! -d "$OUT/package/.github" ]
+  [ ! -d "$OUT/package/scripts" ]
+  [ ! -f "$OUT/package/.gitignore" ]
+  [ ! -f "$OUT/package/.omp-plugin/marketplace.json" ]
+}
+
 @test "catalog rejects a version with path-traversal dots" {
   run node "$PACKAGE" --out "$OUT/package" \
     --catalog develop7/omp-agency dist-test 1234567890abcdef1234567890abcdef12345678 "v1..2"
