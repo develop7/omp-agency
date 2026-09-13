@@ -42,8 +42,11 @@ build-plugin-test:
       grep -qF "../nickel-vm/scripts/workflow-runtime.mjs" .test-build/adapter.mjs'
 
 # Run the adapter-level plugin tests (src/agency-tools.ts against the real
-# agency-api.js backend and the real omptype zod shim).
-test-plugin: build-plugin-test
+# agency-api.js backend and the real omptype zod shim). Self-sufficient: the
+# deps build every artifact the adapter loads — the PureScript API bundle,
+# the Nickel WASM glue, and the adapter+omptype bundles — so the recipe
+# works on a clean runner without prior state.
+test-plugin: build nickel-build build-plugin-test
     {{ nix_shell }} node tests/plugin/plugin-surface.mjs
 
 # Run shellcheck on all bash scripts
