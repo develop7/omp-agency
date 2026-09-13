@@ -172,10 +172,6 @@
             doCheck = false;
             buildPhase = ''
               runHook preBuild
-              # Single codegen unit: the default 16 makes the wasm output
-              # nondeterministic across hosts (parallel codegen scheduling),
-              # which breaks the nickel-build drift gate.
-              export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
               cargo build --release --target wasm32-unknown-unknown --offline
               runHook postBuild
             '';
