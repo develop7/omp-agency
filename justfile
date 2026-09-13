@@ -71,9 +71,18 @@ build: workflow-vocabulary
         && spago bundle --module Agency.Scripts.Do.Api \
             --outfile dist/agency-api.js --force --platform node --bundle-type=module'
 
-# Full CI: bats + PureScript tests + lint + skill prose lint + runtime package
-# proof (the proof includes the Nickel workflow-contract smoke goldens)
-ci: test test-pure lint lint-skills runtime-check
+# Full CI: bats + PureScript tests + lint + skill prose lint + the drift
+# guards, then the plugin surface tests (they consume the freshly built
+# agency-api.js bundle, so they run after the drift guard).
+ci: test test-pure lint lint-skills bundle-check test-plugin
+
+# Drift guard for the distributable surface: regenerating the vocabulary
+# consumers must be a no-op against the manifest, and the flake's
+# nickelVmWasm derivation must still match the committed ledger. The
+# PureScript bundles themselves are no longer committed (main builds them
+# fresh for every consumer), so there is nothing to byte-compare.
+bundle-check: nickel-check
+    {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs --check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
 # staged imports, catalog consistency (when --catalog is passed), and the
@@ -85,11 +94,6 @@ runtime-check out='dist-package': build nickel-check
       node scripts/package-runtime.mjs --out {{ out }} --verify \
       && node nickel-vm/scripts/smoke.mjs'
 
-# Full CI: bats + PureScript tests + lint + skill prose lint + bundle
-# freshness, then the plugin surface tests (they consume the committed
-# agency-api.js bundle, so they run after the drift guard).
-ci: test test-pure lint lint-skills bundle-check test-plugin
-
 # Regenerate the checked-in Nickel WASM runtime: build the derivation, copy
 # its dist/ files into nickel-vm/dist/, refresh the drv fingerprint ledger,
 # and commit both. The runtime artifact is not bit-reproducible across
@@ -99,4 +103,20 @@ nickel-build:
     @out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
       rm -rf nickel-vm/dist; \
       mkdir -p nickel-vm/dist; \
-      cp -fr "$out/dist/." nickel-vm/dist/
+      cp -fr "$out/dist/." nickel-vm/dist/; \
+      nix eval --accept-flake-config --raw {{ repo }}#nickelVmWasm.drvPath \
+        | { read -r drv; printf "%s\n" "$drv" > nickel-vm/dist/.drv-fingerprint; }
+
+# Compare the flake's nickelVmWasm input fingerprint against the committed
+# ledger. Byte-comparing build outputs is unattainable cross-host; the drv
+# hash captures exactly the inputs (sources + pinned toolchain) that the
+# committed dist/ files must have been built from. Regenerate = `just
+# nickel-build`, then copy the four dist files and the fresh drvPath into
+# nickel-vm/dist/ and commit.
+nickel-check:
+    {{ nix_shell }} bash -c 'set -euo pipefail; \
+      tmp="$(mktemp)"; trap "rm -f \"$tmp\"" EXIT; \
+      expected="$(nix eval --accept-flake-config --raw {{ repo }}#nickelVmWasm.drvPath)"; \
+      printf "%s\n" "$expected" > "$tmp"; \
+      cmp -- "$tmp" nickel-vm/dist/.drv-fingerprint \
+        || { echo "Nickel WASM drift: sources changed since nickel-vm/dist/ was regenerated — run just nickel-build and commit the refreshed dist/ + .drv-fingerprint"; exit 1; }'

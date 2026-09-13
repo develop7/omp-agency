@@ -159,7 +159,8 @@ just test-plugin   # adapter-level plugin tests against the real backend + ompty
 just lint          # run shellcheck on bash scripts
 just lint-skills   # lint skill markdown: no raw VCS/forge commands
 just build         # compile and bundle the PureScript core
-just ci            # full CI: tests + lint + skill prose lint + bundle freshness
+just ci            # full CI: tests + lint + skill prose lint + drift guards, then plugin surface tests
+just bundle-check  # drift guards: vocabulary regeneration is a no-op, Nickel drv fingerprint matches
 just nickel-build  # build the Nickel WASM evaluator (dist + drv fingerprint ledger)
 just nickel-check  # verify nickel-vm/dist/ is fresh against the flake inputs
 node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite (inside nix develop)
@@ -177,6 +178,10 @@ none of them, and they are never committed. Every bundle-level recipe (`test`,
 first. Source checkouts that link the plugin directly
 (`omp plugin link ./path/to/agency`) must run `just build nickel-build` first —
 a linked checkout without built artifacts cannot load the extension.
+
+The lone exception is `nickel-vm/dist/.drv-fingerprint` — the committed
+staleness ledger for the WASM runtime, checked by `just nickel-check`
+(see `nickel-vm/README.md`).
 
 CI builds and verifies the artifacts on every PR, and on pushes to `main`
 publishes the installable runtime: it stages the minimal runtime package

@@ -57,19 +57,28 @@ jobs:
       # workflow evaluation without a checked-in dist tree.
       - run: nix develop --accept-flake-config -c just runtime-check /tmp/runtime-package
 
+  test-plugin:
+    name: Plugin surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-nix
+      # The devShell provides `just`; IN_NIX_SHELL inside makes the recipes'
+      # own nix routing a no-op. `just test-plugin` builds the adapter and
+      # the omptype zod shim first — a clean checkout ships no .test-build/.
+      - run: nix develop --accept-flake-config -c just test-plugin
+
   # Publication runs only on pushes to main, with write access, serialized so
   # two merges cannot race tag creation or a Pages deploy.
   publish:
     name: Publish runtime
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, lint, lint-skills, runtime-check]
+    needs: [test, lint, lint-skills, runtime-check, test-plugin]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pages: write
       id-token: write
-    # Serialize publication: two merges to main must not race tag creation or
-    # a Pages deploy. In-flight runs finish first.
     concurrency:
       group: publish
       cancel-in-progress: false
@@ -179,10 +188,3 @@ jobs:
         with:
           path: /tmp/pages-site
       - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
-  test-plugin:
-    name: Plugin surface
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: nixbuild/nix-quick-install-action@v31
-      - run: nix develop --accept-flake-config -c just test-plugin
