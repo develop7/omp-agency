@@ -39,10 +39,6 @@ lint-skills:
 workflow-vocabulary:
     {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs
 
-# Reject generated vocabulary consumers that no longer match the manifest.
-workflow-vocabulary-check:
-    {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs --check
-
 # Build the PureScript core and bundle the CLI and tool API entrypoints.
 # The pinned spago/purs/esbuild come from the dev shell.
 build: workflow-vocabulary
@@ -52,17 +48,19 @@ build: workflow-vocabulary
         && spago bundle --module Agency.Scripts.Do.Api \
             --outfile dist/agency-api.js --force --platform node --bundle-type=module'
 
-# Full CI: bats + PureScript tests + lint + skill prose lint + runtime proof
+# Full CI: bats + PureScript tests + lint + skill prose lint + runtime package
+# proof (the proof includes the Nickel workflow-contract smoke goldens)
 ci: test test-pure lint lint-skills runtime-check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
-# staged imports, Nickel workflow evaluation, and (when --catalog is passed)
-# catalog consistency. Builds the generated artifacts first — a clean checkout
-# ships none. CI calls this with --out; local use defaults to dist/.
+# staged imports, catalog consistency (when --catalog is passed), and the
+# Nickel workflow-contract smoke goldens run against the staged runtime.
+# Builds the generated artifacts first — a clean checkout ships none.
 runtime-check out='dist-package': build nickel-build
     {{ nix_shell }} bash -c 'set -euo pipefail; \
       trap "rm -rf {{ out }}" EXIT; \
-      node scripts/package-runtime.mjs --out {{ out }} --verify'
+      node scripts/package-runtime.mjs --out {{ out }} --verify \
+      && node nickel-vm/scripts/smoke.mjs'
 
 # Build the Nickel WASM VM with the pinned toolchain and install it into
 # nickel-vm/dist/ (the generated runtime artifact; no longer checked in).
