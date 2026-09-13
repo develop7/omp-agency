@@ -94,12 +94,10 @@ async function exists(path) {
   }
 }
 
-/** Rewrite the staged package.json manifest for the plugin runtime. */
+/** Copy the source package.json verbatim; verifyManifest then proves the
+ * source's own omp.extensions declaration against the staged tree. */
 async function stageManifest(repoRoot, outDir) {
-  const manifest = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8"));
-  manifest.omp = { extensions: ["./src/agency-tools.ts"] };
-  manifest.private = undefined;
-  await writeFile(join(outDir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await cp(join(repoRoot, "package.json"), join(outDir, "package.json"));
 }
 
 async function stage(repoRoot, outDir) {
