@@ -22,7 +22,7 @@ jobs:
     steps:
       # Install Determinate Nix and wire the Magic Nix Cache (repo-local
       # GitHub Actions cache — no additional service, no secrets).
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: ./.github/actions/setup-nix
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
@@ -34,7 +34,7 @@ jobs:
     name: Shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: ./.github/actions/setup-nix
       - run: nix develop --accept-flake-config -c just lint
 
@@ -42,7 +42,7 @@ jobs:
     name: Skill prose
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: ./.github/actions/setup-nix
       - run: nix develop --accept-flake-config -c just lint-skills
 
@@ -50,7 +50,7 @@ jobs:
     name: Runtime package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: ./.github/actions/setup-nix
       # Prove the generated runtime package: stage the minimal closure from the
       # fresh build and verify manifest paths, staged imports, and Nickel
@@ -76,7 +76,7 @@ jobs:
     env:
       DIST_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-nix
@@ -174,8 +174,8 @@ jobs:
         run: |
           mkdir -p /tmp/pages-site
           cp -a /tmp/catalog-package/marketplace/. /tmp/pages-site/
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: /tmp/pages-site
-      - uses: actions/deploy-pages@v5
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

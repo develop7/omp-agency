@@ -10,12 +10,12 @@ runs:
     # releases (nix version bumps) land in CI without a repo edit; bump the
     # tag deliberately to control that rate of change. The install is
     # otherwise pinned by the action's own nix.conf.
-    - uses: DeterminateSystems/determinate-nix-action@v3
+    - uses: DeterminateSystems/determinate-nix-action@021c8a1bd3570eb21f5c20a054812b0c4d9ca614 # v3
     # The cache must be configured after Nix is installed. Repo-local cache
     # only (GitHub Actions cache; not FlakeHub Cache): use-gha-cache is
     # explicit and FlakeHub is explicitly disabled — under Determinate Nix
     # its default is opportunistic and would try to register with FlakeHub.
-    - uses: DeterminateSystems/magic-nix-cache-action@v15
+    - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
       with:
         use-gha-cache: enabled
         use-flakehub: disabled
