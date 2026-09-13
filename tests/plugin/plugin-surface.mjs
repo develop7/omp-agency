@@ -10,6 +10,8 @@
 //
 // Run via `just test-plugin`. Structure follows nickel-vm/scripts/smoke.mjs.
 import fs from "node:fs";
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -28,7 +30,6 @@ const pi = {
   registerTool: (tool) => tools.set(tool.name, tool),
 };
 adapter(pi);
-
 
 // Minimal git fixture: init, identity, one commit on master.
 function gitFixture(fixture) {
@@ -113,258 +114,142 @@ function fixtureListing(fixture) {
   return fs.readdirSync(fixture).sort().join(",");
 }
 
-function assert(name, actual, expected) {
-  if (actual === expected) {
-    console.log(`${name} passed`);
-  } else {
-    console.error(`${name} failed`);
-    console.error(`Expected: ${expected}`);
-    console.error(`Actual:   ${actual}`);
-    throw new Error(`plugin assertion failed: ${name}`);
-  }
+
+test("registration", async () => {
+assert.equal([...tools.keys()].sort().join(","), "agency_driver,forge,vcs_read,vcs_write,workflow", "registers exactly the five agency tools");
+assert.equal(["vcs_read", "vcs_write", "forge", "workflow", "agency_driver"]
+    .map((name) => tools.get(name).label)
+    .join(","), "VCS Read,VCS Write,Forge,Workflow,Agency Driver", "tools carry labels");
+assert.equal([...tools.values()].every((tool) => typeof tool.parameters?.safeParse === "function"), true, "every tool exposes a safeParse schema");
+});
+
+test("vcs_write schema", async () => {
+const vcsWrite = tools.get("vcs_write").parameters;
+assert.equal(vcsWrite.safeParse({ op: "commit", message: "m", files: [] }).success, false, "vcs_write rejects commit with empty files");
+assert.equal(vcsWrite.safeParse({ op: "commit", message: "m", files: ["a"], ref: "x" }).success, false, "vcs_write rejects commit with a stray ref");
+assert.equal(vcsWrite.safeParse({ op: "commit", message: "m" }).success, false, "vcs_write rejects commit without files");
+assert.equal(vcsWrite.safeParse({ op: "branch", name: "n", files: ["x"] }).success, false, "vcs_write rejects branch with files");
+assert.equal(vcsWrite.safeParse({ op: "commit", message: "m", files: ["a"] }).success, true, "vcs_write accepts commit with message and files");
+});
+
+test("forge schema", async () => {
+const forge = tools.get("forge").parameters;
+assert.equal(forge.safeParse({ op: "pr-view", args: [], body: "x" }).success, false, "forge rejects body on pr-view");
+assert.equal(forge.safeParse({ op: "pr-create", args: [], body: "x" }).success, true, "forge accepts body on pr-create");
+});
+
+test("agency_driver schema", async () => {
+const agencyDriver = tools.get("agency_driver").parameters;
+assert.equal(agencyDriver.safeParse({ op: "nonsense", args: [] }).success, false, "agency_driver rejects an unknown op");
+assert.equal(agencyDriver.safeParse({ op: "sync", args: [] }).success, true, "agency_driver accepts sync");
+});
+
+test("workflow schema", async () => {
+const workflow = tools.get("workflow").parameters;
+assert.equal(workflow.safeParse({ field: "cli", from: "default" }).success, false, "workflow rejects from on cli");
+assert.equal(workflow.safeParse({ field: "cli_seed", from: "not-a-step" }).success, false, "workflow rejects an undeclared entry point");
+assert.equal(workflow.safeParse({ field: "cli_seed", from: "default" }).success, true, "workflow accepts cli_seed from default");
+});
+
+test("adapter ↔ backend wiring (one round-trip through agency-api.js)", async () => {
+const detect = await execTool("vcs_read", { args: ["detect"] }, { setup: gitFixture });
+assert.equal(detect.result.content[0].text, "git\n", "vcs_read detect reaches the backend in a git fixture");
+});
+
+test("backend failure surfacing", async () => {
+const push = await execTool("vcs_write", { op: "push" }, { setup: gitFixture });
+assert.equal(push.error instanceof Error, true, "vcs_write push without remote throws");
+});
+
+test("Api-module partition guards (adapter-reachable only)", async () => {
+const fetchCall = await execTool("vcs_read", { args: ["fetch"] });
+assert.ok(fetchCall.error instanceof Error, "vcs_read fetch is rejected throws");
+assert.match(fetchCall.error.message, /vcs_read: fetch updates remote-tracking refs/, "vcs_read fetch is rejected names the failure");
+const branchRead = await execTool("vcs_read", { args: ["branch", "x"] });
+assert.ok(branchRead.error instanceof Error, "vcs_read branch is rejected as mutating throws");
+assert.match(branchRead.error.message, /vcs_read: mutating operation rejected/, "vcs_read branch is rejected as mutating names the failure");
+// The mirrored vcs_write guard ("read-only operation rejected") is NOT
+// adapter-reachable: the tool schema rejects read ops before execute.
+});
+
+test("forge body lifecycle (success)", async () => {
+const ghLog = path.join(os.tmpdir(), `agency-plugin-gh-${process.pid}-${Date.now()}.log`);
+fs.writeFileSync(ghLog, "");
+const prCreate = await execTool(
+  "forge",
+  { op: "pr-create", args: ["--title", "t"], body: "line1\nline2\n" },
+  {
+    keep: true,
+    setup: writeGhStub,
+    env: { FORGE_OVERRIDE: "github", GH_LOG: ghLog },
+  },
+);
+try {
+  assert.equal(prCreate.result.details.exit, 0, "forge pr-create with body succeeds");
+  const logged = fs.readFileSync(ghLog, "utf8");
+  const newlineAt = logged.indexOf("\n");
+  const ghArgv = JSON.parse(logged.slice(0, newlineAt));
+  const ghBody = logged.slice(newlineAt + 1);
+  assert.equal(JSON.stringify(ghArgv.slice(0, 5)), JSON.stringify(["pr", "create", "--title", "t", "--body-file"]), "gh receives pr create with the body file flag");
+  assert.equal(ghArgv.length, 6, "gh receives exactly the expected argv");
+  const bodyPath = ghArgv[5];
+  assert.equal(path.relative(prCreate.fixture, bodyPath).startsWith(".."), false, "body file lives inside the fixture");
+  assert.equal(ghBody, "line1\nline2\n", "gh received the exact body content");
+  assert.equal(fixtureListing(prCreate.fixture), prCreate.before, "forge leaves no artifacts behind on success");
+} finally {
+  fs.rmSync(prCreate.fixture, { recursive: true, force: true });
+  fs.rmSync(ghLog, { force: true });
 }
+});
 
-// Asserts the call threw an Error whose message contains the substring.
-function assertThrows(name, outcome, substring) {
-  assert(`${name} throws`, outcome.error instanceof Error, true);
-  assert(
-    `${name} names the failure`,
-    outcome.error.message.includes(substring),
-    true,
-  );
+test("forge body lifecycle (failure)", async () => {
+const failLog = path.join(os.tmpdir(), `agency-plugin-gh-${process.pid}-${Date.now()}.log`);
+fs.writeFileSync(failLog, "");
+const prFail = await execTool(
+  "forge",
+  { op: "pr-create", args: [], body: "x" },
+  {
+    keep: true,
+    setup: writeGhStub,
+    env: { FORGE_OVERRIDE: "github", GH_LOG: failLog, GH_FAIL: "1", GH_STDERR: "boom\n" },
+  },
+);
+try {
+  assert.ok(prFail.error instanceof Error, "forge pr-create failure surfaces stderr throws");
+assert.match(prFail.error.message, /boom/, "forge pr-create failure surfaces stderr names the failure");
+  assert.equal(fixtureListing(prFail.fixture), prFail.before, "forge leaves no artifacts behind on failure");
+} finally {
+  fs.rmSync(prFail.fixture, { recursive: true, force: true });
+  fs.rmSync(failLog, { force: true });
 }
+});
 
-async function run() {
-  // ─── registration ────────────────────────────────────────────────────
-  assert(
-    "registers exactly the five agency tools",
-    [...tools.keys()].sort().join(","),
-    "agency_driver,forge,vcs_read,vcs_write,workflow",
-  );
-  assert(
-    "tools carry labels",
-    ["vcs_read", "vcs_write", "forge", "workflow", "agency_driver"]
-      .map((name) => tools.get(name).label)
-      .join(","),
-    "VCS Read,VCS Write,Forge,Workflow,Agency Driver",
-  );
-  assert(
-    "every tool exposes a safeParse schema",
-    [...tools.values()].every((tool) => typeof tool.parameters?.safeParse === "function"),
-    true,
-  );
+test("workflow tool", async () => {
+const cli = await execTool("workflow", { field: "cli" }, {
+  setup: (fixture) => {
+    fs.writeFileSync(path.join(fixture, ".do-results.json"), JSON.stringify(TEST_STATE));
+  },
+});
+assert.equal(cli.result.details.exit, 0, "workflow cli succeeds");
+const missingState = await execTool("workflow", { field: "cli" });
+assert.ok(missingState.error instanceof Error, "workflow without state surfaces the actionable error throws");
+assert.match(missingState.error.message, /run do-driver init first/, "workflow without state surfaces the actionable error names the failure");
+});
 
-  // ─── vcs_write schema ────────────────────────────────────────────────
-  const vcsWrite = tools.get("vcs_write").parameters;
-  assert(
-    "vcs_write rejects commit with empty files",
-    vcsWrite.safeParse({ op: "commit", message: "m", files: [] }).success,
-    false,
-  );
-  assert(
-    "vcs_write rejects commit with a stray ref",
-    vcsWrite.safeParse({ op: "commit", message: "m", files: ["a"], ref: "x" }).success,
-    false,
-  );
-  assert(
-    "vcs_write rejects commit without files",
-    vcsWrite.safeParse({ op: "commit", message: "m" }).success,
-    false,
-  );
-  assert(
-    "vcs_write rejects branch with files",
-    vcsWrite.safeParse({ op: "branch", name: "n", files: ["x"] }).success,
-    false,
-  );
-  assert(
-    "vcs_write accepts commit with message and files",
-    vcsWrite.safeParse({ op: "commit", message: "m", files: ["a"] }).success,
-    true,
-  );
+test("agency_driver op concat proof", async () => {
+const syncOp = await execTool("agency_driver", { op: "sync", args: [] });
+assert.ok(syncOp.error instanceof Error, "agency_driver prepends sync to operands throws");
+assert.match(syncOp.error.message, /noVcs is required/, "agency_driver prepends sync to operands names the failure");
+const startOp = await execTool("agency_driver", { op: "start", args: [] });
+assert.ok(startOp.error instanceof Error, "agency_driver prepends start to operands throws");
+assert.match(startOp.error.message, /step required/, "agency_driver prepends start to operands names the failure");
+});
 
-  // ─── forge schema ────────────────────────────────────────────────────
-  const forge = tools.get("forge").parameters;
-  assert(
-    "forge rejects body on pr-view",
-    forge.safeParse({ op: "pr-view", args: [], body: "x" }).success,
-    false,
-  );
-  assert(
-    "forge accepts body on pr-create",
-    forge.safeParse({ op: "pr-create", args: [], body: "x" }).success,
-    true,
-  );
-
-  // ─── agency_driver schema ────────────────────────────────────────────
-  const agencyDriver = tools.get("agency_driver").parameters;
-  assert(
-    "agency_driver rejects an unknown op",
-    agencyDriver.safeParse({ op: "nonsense", args: [] }).success,
-    false,
-  );
-  assert(
-    "agency_driver accepts sync",
-    agencyDriver.safeParse({ op: "sync", args: [] }).success,
-    true,
-  );
-
-  // ─── workflow schema ─────────────────────────────────────────────────
-  const workflow = tools.get("workflow").parameters;
-  assert(
-    "workflow rejects from on cli",
-    workflow.safeParse({ field: "cli", from: "default" }).success,
-    false,
-  );
-  assert(
-    "workflow rejects an undeclared entry point",
-    workflow.safeParse({ field: "cli_seed", from: "not-a-step" }).success,
-    false,
-  );
-  assert(
-    "workflow accepts cli_seed from default",
-    workflow.safeParse({ field: "cli_seed", from: "default" }).success,
-    true,
-  );
-
-  // ─── adapter ↔ backend wiring (one round-trip through agency-api.js) ─
-  const detect = await execTool("vcs_read", { args: ["detect"] }, { setup: gitFixture });
-  assert(
-    "vcs_read detect reaches the backend in a git fixture",
-    detect.result.content[0].text,
-    "git\n",
-  );
-
-  // ─── backend failure surfacing ───────────────────────────────────────
-  const push = await execTool("vcs_write", { op: "push" }, { setup: gitFixture });
-  assert("vcs_write push without remote throws", push.error instanceof Error, true);
-
-  // ─── Api-module partition guards (adapter-reachable only) ────────────
-  const fetchCall = await execTool("vcs_read", { args: ["fetch"] });
-  assertThrows(
-    "vcs_read fetch is rejected",
-    fetchCall,
-    "vcs_read: fetch updates remote-tracking refs",
-  );
-  const branchRead = await execTool("vcs_read", { args: ["branch", "x"] });
-  assertThrows(
-    "vcs_read branch is rejected as mutating",
-    branchRead,
-    "vcs_read: mutating operation rejected",
-  );
-  // The mirrored vcs_write guard ("read-only operation rejected") is NOT
-  // adapter-reachable: the tool schema rejects read ops before execute.
-
-  // ─── forge body lifecycle (success) ──────────────────────────────────
-  const ghLog = path.join(os.tmpdir(), `agency-plugin-gh-${process.pid}-${Date.now()}.log`);
-  fs.writeFileSync(ghLog, "");
-  const prCreate = await execTool(
-    "forge",
-    { op: "pr-create", args: ["--title", "t"], body: "line1\nline2\n" },
-    {
-      keep: true,
-      setup: writeGhStub,
-      env: { FORGE_OVERRIDE: "github", GH_LOG: ghLog },
-    },
-  );
-  try {
-    assert("forge pr-create with body succeeds", prCreate.result.details.exit, 0);
-    const logged = fs.readFileSync(ghLog, "utf8");
-    const newlineAt = logged.indexOf("\n");
-    const ghArgv = JSON.parse(logged.slice(0, newlineAt));
-    const ghBody = logged.slice(newlineAt + 1);
-    assert(
-      "gh receives pr create with the body file flag",
-      JSON.stringify(ghArgv.slice(0, 5)),
-      JSON.stringify(["pr", "create", "--title", "t", "--body-file"]),
-    );
-    assert(
-      "gh receives exactly the expected argv",
-      ghArgv.length,
-      6,
-    );
-    const bodyPath = ghArgv[5];
-    assert(
-      "body file lives inside the fixture",
-      path.relative(prCreate.fixture, bodyPath).startsWith(".."),
-      false,
-    );
-    assert("gh received the exact body content", ghBody, "line1\nline2\n");
-    assert(
-      "forge leaves no artifacts behind on success",
-      fixtureListing(prCreate.fixture),
-      prCreate.before,
-    );
-  } finally {
-    fs.rmSync(prCreate.fixture, { recursive: true, force: true });
-    fs.rmSync(ghLog, { force: true });
-  }
-
-  // ─── forge body lifecycle (failure) ──────────────────────────────────
-  const failLog = path.join(os.tmpdir(), `agency-plugin-gh-${process.pid}-${Date.now()}.log`);
-  fs.writeFileSync(failLog, "");
-  const prFail = await execTool(
-    "forge",
-    { op: "pr-create", args: [], body: "x" },
-    {
-      keep: true,
-      setup: writeGhStub,
-      env: { FORGE_OVERRIDE: "github", GH_LOG: failLog, GH_FAIL: "1", GH_STDERR: "boom\n" },
-    },
-  );
-  try {
-    assertThrows("forge pr-create failure surfaces stderr", prFail, "boom");
-    assert(
-      "forge leaves no artifacts behind on failure",
-      fixtureListing(prFail.fixture),
-      prFail.before,
-    );
-  } finally {
-    fs.rmSync(prFail.fixture, { recursive: true, force: true });
-    fs.rmSync(failLog, { force: true });
-  }
-
-  // ─── workflow tool ───────────────────────────────────────────────────
-  const cli = await execTool("workflow", { field: "cli" }, {
-    setup: (fixture) => {
-      fs.writeFileSync(path.join(fixture, ".do-results.json"), JSON.stringify(TEST_STATE));
-    },
-  });
-  assert("workflow cli succeeds", cli.result.details.exit, 0);
-  const missingState = await execTool("workflow", { field: "cli" });
-  assertThrows(
-    "workflow without state surfaces the actionable error",
-    missingState,
-    "run do-driver init first",
-  );
-
-  // ─── agency_driver op concat proof ───────────────────────────────────
-  const syncOp = await execTool("agency_driver", { op: "sync", args: [] });
-  assertThrows(
-    "agency_driver prepends sync to operands",
-    syncOp,
-    "noVcs is required",
-  );
-  const startOp = await execTool("agency_driver", { op: "start", args: [] });
-  assertThrows(
-    "agency_driver prepends start to operands",
-    startOp,
-    "step required",
-  );
-
-  // ─── vcs_read base (state read through the adapter) ──────────────────
-  const baseOp = await execTool("vcs_read", { args: ["base"] }, {
-    setup: (fixture) => {
-      fs.writeFileSync(path.join(fixture, ".do-results.json"), JSON.stringify({ base: "main" }));
-    },
-  });
-  assert(
-    "vcs_read base reads persisted state",
-    baseOp.result.content[0].text,
-    "main\n",
-  );
-}
-
-run().catch((error) => {
-  console.error(error?.stack ?? error);
-  process.exitCode = 1;
+test("vcs_read base (state read through the adapter)", async () => {
+const baseOp = await execTool("vcs_read", { args: ["base"] }, {
+  setup: (fixture) => {
+    fs.writeFileSync(path.join(fixture, ".do-results.json"), JSON.stringify({ base: "main" }));
+  },
+});
+assert.equal(baseOp.result.content[0].text, "main\n", "vcs_read base reads persisted state");
 });
