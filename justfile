@@ -77,15 +77,17 @@ build: workflow-vocabulary
 # Full CI: bats + PureScript tests + lint + skill prose lint + the drift
 # guards, then the plugin surface tests (they consume the freshly built
 # agency-api.js bundle, so they run after the drift guard).
-ci: test test-pure lint lint-skills bundle-check test-plugin
+ci: test test-pure lint lint-skills drift-check test-plugin
 
-# Drift guard for the distributable surface: regenerating the vocabulary
-# consumers must be a no-op against the manifest, and the flake's
-# nickelVmWasm derivation must still match the committed ledger. The
-# PureScript bundles themselves are no longer committed (main builds them
-# fresh for every consumer), so there is nothing to byte-compare.
-bundle-check: nickel-check
+# Reject generated vocabulary consumers that no longer match the manifest.
+workflow-vocabulary-check:
     {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs --check
+
+# Aggregate drift guard: the vocabulary consumers and the committed Nickel
+# ledger are each independently runnable, this is the pair in one command.
+# The PureScript bundles themselves are no longer committed (main builds
+# them fresh for every consumer), so there is nothing to byte-compare.
+drift-check: workflow-vocabulary-check nickel-check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
 # staged imports, catalog consistency (when --catalog is passed), and the

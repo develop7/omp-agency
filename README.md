@@ -160,7 +160,7 @@ just lint          # run shellcheck on bash scripts
 just lint-skills   # lint skill markdown: no raw VCS/forge commands
 just build         # compile and bundle the PureScript core
 just ci            # full CI: tests + lint + skill prose lint + drift guards, then plugin surface tests
-just bundle-check  # drift guards: vocabulary regeneration is a no-op, Nickel drv fingerprint matches
+just drift-check   # drift guards: vocabulary regeneration is a no-op, Nickel drv fingerprint matches
 just nickel-build  # build the Nickel WASM evaluator (dist + drv fingerprint ledger)
 just nickel-check  # verify nickel-vm/dist/ is fresh against the flake inputs
 node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite (inside nix develop)
