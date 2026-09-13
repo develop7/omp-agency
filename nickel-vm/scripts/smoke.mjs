@@ -92,7 +92,8 @@ async function run() {
     assert('cli_seed "followup"', res3.stdout, GOLDENS.cli_seed_followup);
 
     const invalidSeed = await workflowResult('cli_seed', TEST_STATE, "\u0000\n\"\\雪");
-    assert('cli_seed rejects an unknown nonempty entry point', invalidSeed.exit !== 0, true);
+    assert('cli_seed rejects an unknown nonempty entry point',
+        invalidSeed.exit !== 0 && /record\/get/.test(invalidSeed.stderr), true);
 
     for (const status of ["failed", "completed"]) {
         const terminal = await workflowResult('cli', { ...TEST_STATE, status });

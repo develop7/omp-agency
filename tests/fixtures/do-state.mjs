@@ -14,5 +14,5 @@ export const TEST_STATE = {
   supportsPrComment: true,
   supportsIssueView: true,
   supportsPrChecks: true,
-  task: "test"
+  task: "test",
 };
