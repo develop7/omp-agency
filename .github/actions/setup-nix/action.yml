@@ -6,8 +6,10 @@ description: >-
 runs:
   using: composite
   steps:
-    # Determinate Nix installer (v3 tracks the latest v3.x release): fast
-    # multi-user install with a pinned, deterministic nix.conf.
+    # Determinate Nix installer. @v3 is a moving major tag: upstream patch
+    # releases (nix version bumps) land in CI without a repo edit; bump the
+    # tag deliberately to control that rate of change. The install is
+    # otherwise pinned by the action's own nix.conf.
     - uses: DeterminateSystems/determinate-nix-action@v3
     # The cache must be configured after Nix is installed. Repo-local cache
     # only (GitHub Actions cache; not FlakeHub Cache).
