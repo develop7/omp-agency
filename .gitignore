@@ -18,5 +18,6 @@ nickel-vm/target/
 # Agency
 # Generated runtime artifacts (build outputs, never merge inputs)
 pure/dist/
-nickel-vm/dist/
+nickel-vm/dist/*
+!nickel-vm/dist/.drv-fingerprint
 .do-results.json

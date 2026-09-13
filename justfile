@@ -94,25 +94,27 @@ drift-check: workflow-vocabulary-check nickel-check
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
 # staged imports, catalog consistency (when --catalog is passed), and the
 # Nickel workflow-contract smoke goldens run against the staged runtime.
-# Builds the generated artifacts first — a clean checkout ships none.
-runtime-check out='dist-package': build nickel-check
-    {{ nix_shell }} bash -c 'set -euo pipefail; \
-      trap "rm -rf {{ out }}" EXIT; \
-      node scripts/package-runtime.mjs --out {{ out }} --verify \
+# Builds the generated artifacts first — a clean checkout ships none — then
+# re-checks the ledger against the freshly evaluated drv, so a stale dist/
+# cannot pass verification even when it exists on disk.
+runtime-check out='dist-package': build nickel-build nickel-check
+    {{ nix_shell }} env out={{ quote(out) }} bash -c 'set -euo pipefail; \
+      trap "rm -rf \"$out\"" EXIT; \
+      node scripts/package-runtime.mjs --out "$out" --verify \
       && node nickel-vm/scripts/smoke.mjs'
 
 # Regenerate the checked-in Nickel WASM runtime: build the derivation, copy
 # its dist/ files into nickel-vm/dist/, refresh the drv fingerprint ledger,
-# and commit both. The runtime artifact is not bit-reproducible across
-# hosts (rustc→wasm differs with host CPU count even at codegen-units=1),
-# so staleness is guarded by the INPUT fingerprint (see nickel-check).
+# and commit both. The rustc→wasm build is not bit-reproducible across
+# hosts, so staleness is guarded by the INPUT fingerprint (see nickel-check).
 nickel-build:
-    @out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
+    {{ nix_shell }} bash -c 'set -euo pipefail; \
+      out="$(nix build --accept-flake-config --print-out-paths --no-link {{ repo }}#nickelVmWasm)"; \
       rm -rf nickel-vm/dist; \
       mkdir -p nickel-vm/dist; \
       cp -fr "$out/dist/." nickel-vm/dist/; \
       nix eval --accept-flake-config --raw {{ repo }}#nickelVmWasm.drvPath \
-        | { read -r drv; printf "%s\n" "$drv" > nickel-vm/dist/.drv-fingerprint; }
+        > nickel-vm/dist/.drv-fingerprint'
 
 # Compare the flake's nickelVmWasm input fingerprint against the committed
 # ledger. Byte-comparing build outputs is unattainable cross-host; the drv
@@ -122,5 +124,7 @@ nickel-build:
 nickel-check:
     {{ nix_shell }} bash -c 'set -euo pipefail; \
       expected="$(nix eval --accept-flake-config --raw {{ repo }}#nickelVmWasm.drvPath)"; \
+      test -f nickel-vm/dist/.drv-fingerprint \
+        || { echo "nickel-vm/dist/.drv-fingerprint is missing — it must be committed (git add -f) after just nickel-build"; exit 1; }; \
       test "$(cat nickel-vm/dist/.drv-fingerprint)" = "$expected" \
         || { echo "Nickel WASM drift: sources changed since nickel-vm/dist/ was regenerated — run just nickel-build and commit the refreshed dist/ + .drv-fingerprint"; exit 1; }'

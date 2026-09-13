@@ -67,8 +67,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
       # Prove the committed surface is fresh: the vocabulary consumers must
       # regenerate as a no-op against the manifest, and the Nickel WASM
-      # ledger must match the flake inputs. Gate-first — cheap staleness
-      # failures before any build minutes are spent.
+      # ledger must match the flake inputs. Runs as its own job so a
+      # staleness failure is legible without waiting on the build jobs.
       - run: nix develop --accept-flake-config -c just drift-check
 
   test-plugin:

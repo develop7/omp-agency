@@ -173,10 +173,11 @@ One-off CLI invocations outside the dev shell should pin the interpreter too:
 
 The PureScript bundles (`pure/dist/*.js`) and the Nickel WASM glue
 (`nickel-vm/dist/*`) are **build outputs, not source**: a clean checkout ships
-none of them, and they are never committed. Every bundle-level recipe (`test`,
-`test-unit`, `test-integration`, `runtime-check`, `ci`) therefore builds them
-first. Source checkouts that link the plugin directly
-(`omp plugin link ./path/to/agency`) must run `just build nickel-build` first —
+none of them, and they are never committed. Every recipe that consumes
+`nickel-vm/dist/` (`test`, `test-unit`, `test-integration`, `runtime-check`,
+`test-plugin`) depends on `nickel-build` first. Source checkouts that link the
+plugin directly (`omp plugin link ./path/to/agency`) must run
+`just build nickel-build` first —
 a linked checkout without built artifacts cannot load the extension.
 
 The lone exception is `nickel-vm/dist/.drv-fingerprint` — the committed

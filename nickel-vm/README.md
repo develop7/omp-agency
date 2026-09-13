@@ -34,8 +34,8 @@ nickel-build` installs a fresh build there and the tree is gitignored,
 with one exception: `.drv-fingerprint` — the flake's `nickelVmWasm`
 derivation path — is the committed staleness ledger for the artifact.
 The wasm build is not bit-reproducible across hosts (rustc→wasm output
-differs with host CPU count even at `codegen-units=1`), so the drift
-gate (`just nickel-check`, run by `just drift-check`) compares the
+differs with host CPU count), so the drift gate
+(`just nickel-check`, run by `just drift-check`) compares the
 derivation fingerprint instead of output bytes: any change to the crate
 sources, the patch, or the pinned toolchain changes the drv hash and
 fails the gate. `Cargo.lock` pins the dependency graph, including
