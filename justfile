@@ -66,5 +66,6 @@ runtime-check out='dist-package': build nickel-build
 # nickel-vm/dist/ (the generated runtime artifact; no longer checked in).
 nickel-build:
     @out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
+      rm -rf nickel-vm/dist; \
       mkdir -p nickel-vm/dist; \
-      cp -f "$out/dist/." nickel-vm/dist/
+      cp -fr "$out/dist/." nickel-vm/dist/
