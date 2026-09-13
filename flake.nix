@@ -113,8 +113,8 @@
     in
     {
       # nickel-vm compiled to wasm32-unknown-unknown with wasm-bindgen
-      # Node.js glue, ready to be copied into nickel-vm/dist/ (the
-      # checked-in runtime plugin artifact).
+      # Node.js glue, installed into nickel-vm/dist/ by `just nickel-build`
+      # (a generated runtime artifact; build output, not committed).
       packages = forAllSystems (
         system:
         let

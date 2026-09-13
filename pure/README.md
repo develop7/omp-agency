@@ -37,7 +37,7 @@ Sync policy is represented by two explicit VCS operations:
 
 ## Build, bundle, and test
 
-From this directory, the root justfile recipes `just build`, `just bundle-check`, and
+From this directory, the root justfile recipes `just build` and
 `just test-pure` self-route through `nix develop`, so they work from a bare host. After
 entering `nix develop`, run the equivalent commands by hand:
 
@@ -60,6 +60,6 @@ node pure/dist/agency-do.js do-results init
 
 The OMP custom-tool contract is the second ES module bundle. `src/agency-tools.ts`
 lazily imports `pure/dist/agency-api.js`, sends `{ tool, args, captureOutput: true }`,
-and turns the returned output into the model-visible tool result. The API bundle
-is checked alongside the CLI bundle by `just bundle-check`.
+and turns the returned output into the model-visible tool result. `just build`
+regenerates both bundles; they are build outputs and are not committed.
 
