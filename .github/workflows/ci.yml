@@ -21,7 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: nixbuild/nix-quick-install-action@v31
+      # Caches Nix builds in the GitHub Actions cache — no additional service
+      # or secrets; must run after Nix is installed.
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
       # `just test` builds the generated CLI/API bundles and the Nickel WASM
@@ -33,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: nixbuild/nix-quick-install-action@v31
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
       - run: nix develop --accept-flake-config -c just lint
 
   lint-skills:
@@ -41,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: nixbuild/nix-quick-install-action@v31
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
       - run: nix develop --accept-flake-config -c just lint-skills
 
   runtime-check:
@@ -49,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: nixbuild/nix-quick-install-action@v31
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
       # Prove the generated runtime package: stage the minimal closure from the
       # fresh build and verify manifest paths, staged imports, and Nickel
       # workflow evaluation without a checked-in dist tree.
@@ -77,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: nixbuild/nix-quick-install-action@v31
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
       - name: Build generated runtime artifacts
         run: nix develop --accept-flake-config -c just build nickel-build
       - name: Stage runtime package
