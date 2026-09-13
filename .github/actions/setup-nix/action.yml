@@ -1,0 +1,14 @@
+name: Set up Nix
+description: >-
+  Installs Determinate Nix and enables the Magic Nix Cache — Nix builds are
+  cached in the GitHub Actions cache, with no additional service and no
+  secrets.
+runs:
+  using: composite
+  steps:
+    # Determinate Nix installer (v3 tracks the latest v3.x release): fast
+    # multi-user install with a pinned, deterministic nix.conf.
+    - uses: DeterminateSystems/determinate-nix-action@v3
+    # The cache must be configured after Nix is installed. Repo-local cache
+    # only (GitHub Actions cache; not FlakeHub Cache).
+    - uses: DeterminateSystems/magic-nix-cache-action@v15
