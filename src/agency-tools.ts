@@ -29,9 +29,17 @@ const forgeBodyOperations = ["pr-create", "pr-edit", "pr-comment"];
 let apiPromise: Promise<AgencyApi> | undefined;
 
 async function loadApi(): Promise<AgencyApi> {
-  apiPromise ??= import("../pure/dist/agency-api.js") as unknown as Promise<AgencyApi>;
+  // A cached rejected import would poison every later tool call for the
+  // session (the documented omp plugin link flow can race this first call
+  // while `just build` has not run yet), so reset on failure and retry.
+  apiPromise ??= import("../pure/dist/agency-api.js").catch((error: unknown) => {
+    apiPromise = undefined;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`agency: cannot load the tool API bundle (${detail}); run 'just build' and retry`);
+  }) as unknown as Promise<AgencyApi>;
   return apiPromise;
 }
+
 async function executeWorkflow(
   params: { field: "cli" } | { field: "cli_seed"; from: string },
   ctx: ToolContext,
