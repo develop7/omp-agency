@@ -12,5 +12,10 @@ runs:
     # otherwise pinned by the action's own nix.conf.
     - uses: DeterminateSystems/determinate-nix-action@v3
     # The cache must be configured after Nix is installed. Repo-local cache
-    # only (GitHub Actions cache; not FlakeHub Cache).
+    # only (GitHub Actions cache; not FlakeHub Cache): use-gha-cache is
+    # explicit and FlakeHub is explicitly disabled — under Determinate Nix
+    # its default is opportunistic and would try to register with FlakeHub.
     - uses: DeterminateSystems/magic-nix-cache-action@v15
+      with:
+        use-gha-cache: enabled
+        use-flakehub: disabled
