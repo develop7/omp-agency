@@ -118,12 +118,9 @@ nickel-build:
 # ledger. Byte-comparing build outputs is unattainable cross-host; the drv
 # hash captures exactly the inputs (sources + pinned toolchain) that the
 # committed dist/ files must have been built from. Regenerate = `just
-# nickel-build`, then copy the four dist files and the fresh drvPath into
-# nickel-vm/dist/ and commit.
+# nickel-build`; commit nickel-vm/dist/.
 nickel-check:
     {{ nix_shell }} bash -c 'set -euo pipefail; \
-      tmp="$(mktemp)"; trap "rm -f \"$tmp\"" EXIT; \
       expected="$(nix eval --accept-flake-config --raw {{ repo }}#nickelVmWasm.drvPath)"; \
-      printf "%s\n" "$expected" > "$tmp"; \
-      cmp -- "$tmp" nickel-vm/dist/.drv-fingerprint \
+      test "$(cat nickel-vm/dist/.drv-fingerprint)" = "$expected" \
         || { echo "Nickel WASM drift: sources changed since nickel-vm/dist/ was regenerated — run just nickel-build and commit the refreshed dist/ + .drv-fingerprint"; exit 1; }'
