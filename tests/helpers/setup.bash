@@ -15,10 +15,31 @@ repo_script() {
 setup_test_dir() {
   TEST_DIR="$(mktemp -d)"
   cd "$TEST_DIR" || return 1
+  # CI runners have no jj user identity, so jj fails with "Won't push
+  # commit ... no author and/or committer" in every test that commits.
+  # JJ_CONFIG replaces the user-level config entirely (repo configs still
+  # load), keeping the identity hermetic per test run with no pollution of
+  # the runner's real config. Harmless in the jj-absent skip arms.
+  # The config file lives OUTSIDE TEST_DIR: some suites assert on a clean
+  # git worktree, where an untracked file inside the fixture would read
+  # as dirty.
+  local jj_home
+  jj_home="$(mktemp -d)"
+  cat > "$jj_home/jjconfig.toml" <<'TOML'
+[user]
+name = "Bats Fixture"
+email = "bats-fixture@example.com"
+TOML
+  export JJ_CONFIG="$jj_home/jjconfig.toml"
 }
 
 teardown_test_dir() {
   if [ -n "${TEST_DIR:-}" ]; then
     rm -rf "$TEST_DIR"
   fi
+  if [ -n "${JJ_CONFIG:-}" ]; then
+    rm -rf "$(dirname "$JJ_CONFIG")"
+    unset JJ_CONFIG
+  fi
+
 }
