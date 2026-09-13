@@ -93,7 +93,12 @@ jobs:
         # database so the commit is immediately taggable and pushable.
         id: dist
         run: |
+          set -euo pipefail
           export GIT_INDEX_FILE="$(mktemp -u)"
+          export GIT_AUTHOR_NAME="github-actions[bot]"
+          export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_COMMITTER_NAME="github-actions[bot]"
+          export GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
           git read-tree --empty
           GIT_WORK_TREE=/tmp/runtime-package git add -A
           tree="$(git write-tree)"
@@ -108,15 +113,24 @@ jobs:
         # source commit), adopt its exact commit and never recreate or repoint
         # it. Only a missing tag is created — never a force update.
         run: |
-          remote_sha="$(git ls-remote origin "refs/tags/${DIST_TAG}" | cut -f1 || true)"
-          if [ -n "$remote_sha" ]; then
+          set -euo pipefail
+          # --exit-code makes ls-remote exit 2 when the tag is absent, so a
+          # transport/auth failure (any other exit code) fails the step
+          # instead of being misread as "tag absent".
+          if remote_sha="$(git ls-remote --exit-code origin "refs/tags/${DIST_TAG}" | cut -f1)"; then
             echo "dist_commit=${remote_sha}" >> "$GITHUB_OUTPUT"
             echo "distribution tag ${DIST_TAG} already exists at ${remote_sha} — adopting it"
             exit 0
+          else
+            ls_remote_status=$?
+            if [ "${ls_remote_status}" -ne 2 ]; then
+              echo "ls-remote failed with status ${ls_remote_status} — not treating as tag absence" >&2
+              exit "${ls_remote_status}"
+            fi
           fi
           git tag "${DIST_TAG}" "${DIST_COMMIT}"
           git push origin "refs/tags/${DIST_TAG}"
-          pushed_sha="$(git ls-remote origin "refs/tags/${DIST_TAG}" | cut -f1)"
+          pushed_sha="$(git ls-remote --exit-code origin "refs/tags/${DIST_TAG}" | cut -f1)"
           if [ "${pushed_sha}" != "${DIST_COMMIT}" ]; then
             echo "remote tag ${DIST_TAG} is ${pushed_sha:-missing}, expected ${DIST_COMMIT}" >&2
             exit 1
@@ -128,7 +142,11 @@ jobs:
           DIST_COMMIT: ${{ steps.dist.outputs.sha }}
       - name: Verify distribution tag is reachable
         run: |
-          remote_sha="$(git ls-remote origin "refs/tags/${DIST_TAG}" | cut -f1)"
+          set -euo pipefail
+          # --exit-code: a transport failure must not be read as "tag absent";
+          # only exit 2 (no matching refs) is tolerated here, and the exact-SHA
+          # comparison below catches the absent case.
+          remote_sha="$(git ls-remote --exit-code origin "refs/tags/${DIST_TAG}" | cut -f1)"
           if [ "${remote_sha}" != "${DIST_COMMIT}" ]; then
             echo "tag ${DIST_TAG} remote ${remote_sha:-missing} != intended ${DIST_COMMIT}" >&2
             exit 1
