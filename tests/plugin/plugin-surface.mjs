@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { TEST_STATE } from "../fixtures/do-state.mjs";
 
 const buildDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".test-build");
 const [{ default: adapter }, { z }] = await Promise.all([
@@ -28,20 +29,6 @@ const pi = {
 };
 adapter(pi);
 
-const TEST_STATE = {
-  active: "working",
-  status: "running",
-  steps: [],
-  noVcs: false,
-  minimal: false,
-  review: false,
-  forge: "github",
-  supportsPrCreate: true,
-  supportsPrComment: true,
-  supportsIssueView: true,
-  supportsPrChecks: true,
-  task: "test"
-};
 
 // Minimal git fixture: init, identity, one commit on master.
 function gitFixture(fixture) {

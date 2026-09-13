@@ -2,22 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { evaluateWorkflow } from './workflow-runtime.mjs';
-
-
-const TEST_STATE = {
-    active: "working",
-    status: "running",
-    steps: [],
-    noVcs: false,
-    minimal: false,
-    review: false,
-    forge: "github",
-    supportsPrCreate: true,
-    supportsPrComment: true,
-    supportsIssueView: true,
-    supportsPrChecks: true,
-    task: "test"
-};
+import { TEST_STATE } from '../../tests/fixtures/do-state.mjs';
 
 function stateSource(state) {
     return JSON.stringify(state);
