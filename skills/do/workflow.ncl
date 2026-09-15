@@ -226,6 +226,7 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
         loop_artifacts = 'commit-per-fix,
         coverage_check = false,
         rerun_on_new_commit = true,
+        require_remote = false,
       },
       next = "evidence",
       skip_when | not_exported = fun state => false,
