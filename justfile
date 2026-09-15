@@ -23,6 +23,32 @@ test-integration: build nickel-build
 test-pure:
     {{ nix_shell }} bash -c 'cd pure && spago test -m Test.Main'
 
+# Bundle the OMP extension adapter and the real omptype zod shim directly
+# from their TypeScript sources into .test-build/ (never committed). The
+# external specifiers ../pure/dist/agency-api.js and
+# ../nickel-vm/scripts/workflow-runtime.mjs resolve relative to the output,
+# so it must stay exactly one directory below the repo root; the post-build
+# greps fail loudly if a flag change ever inlines them.
+build-plugin-test:
+    {{ nix_shell }} bash -c 'set -euo pipefail; \
+      omptype="$(nix build --accept-flake-config --print-out-paths --no-link {{ repo }}#omptype)"; \
+      mkdir -p .test-build; \
+      esbuild "$omptype"/src/zod.ts --bundle --platform=node --format=esm \
+        --outfile=.test-build/omptype-zod.mjs; \
+      esbuild src/agency-tools.ts --bundle --platform=node --format=esm \
+        --external:../pure/dist/agency-api.js --external:../nickel-vm/scripts/workflow-runtime.mjs \
+        --outfile=.test-build/adapter.mjs; \
+      grep -qF "../pure/dist/agency-api.js" .test-build/adapter.mjs; \
+      grep -qF "../nickel-vm/scripts/workflow-runtime.mjs" .test-build/adapter.mjs'
+
+# Run the adapter-level plugin tests (src/agency-tools.ts against the real
+# agency-api.js backend and the real omptype zod shim). Self-sufficient: the
+# deps build every artifact the adapter loads — the PureScript API bundle,
+# the Nickel WASM glue, and the adapter+omptype bundles — so the recipe
+# works on a clean runner without prior state.
+test-plugin: build nickel-build build-plugin-test
+    {{ nix_shell }} node tests/plugin/plugin-surface.mjs
+
 # Run shellcheck on all bash scripts
 # SC2148/SC1113/SC2096: scripts are intentionally shebang-less (run via `bash script`)
 lint:
@@ -48,24 +74,57 @@ build: workflow-vocabulary
         && spago bundle --module Agency.Scripts.Do.Api \
             --outfile dist/agency-api.js --force --platform node --bundle-type=module'
 
-# Full CI: bats + PureScript tests + lint + skill prose lint + runtime package
-# proof (the proof includes the Nickel workflow-contract smoke goldens)
-ci: test test-pure lint lint-skills runtime-check
+# Full CI, gate-first: the drift guards run before anything spends build
+# minutes (the vocabulary --check must see pristine committed consumers).
+# Then bats + PureScript tests + lint + skill prose lint + the runtime
+# package proof, and the plugin surface tests last (they consume the
+# freshly built agency-api.js bundle).
+ci: drift-check test test-pure lint lint-skills runtime-check test-plugin
+
+# Reject generated vocabulary consumers that no longer match the manifest.
+workflow-vocabulary-check:
+    {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs --check
+
+# Aggregate drift guard: the vocabulary consumers and the committed Nickel
+# ledger are each independently runnable, this is the pair in one command.
+# The PureScript bundles themselves are no longer committed (main builds
+# them fresh for every consumer), so there is nothing to byte-compare.
+drift-check: workflow-vocabulary-check nickel-check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
 # staged imports, catalog consistency (when --catalog is passed), and the
 # Nickel workflow-contract smoke goldens run against the staged runtime.
-# Builds the generated artifacts first — a clean checkout ships none.
-runtime-check out='dist-package': build nickel-build
-    {{ nix_shell }} bash -c 'set -euo pipefail; \
-      trap "rm -rf {{ out }}" EXIT; \
-      node scripts/package-runtime.mjs --out {{ out }} --verify \
+# Builds the generated artifacts first — a clean checkout ships none — then
+# re-checks the ledger against the freshly evaluated drv, so a stale dist/
+# cannot pass verification even when it exists on disk.
+runtime-check out='dist-package': build nickel-build nickel-check
+    {{ nix_shell }} env out={{ quote(out) }} bash -c 'set -euo pipefail; \
+      trap "rm -rf \"$out\"" EXIT; \
+      node scripts/package-runtime.mjs --out "$out" --verify \
       && node nickel-vm/scripts/smoke.mjs'
 
-# Build the Nickel WASM VM with the pinned toolchain and install it into
-# nickel-vm/dist/ (the generated runtime artifact; no longer checked in).
+# Regenerate the checked-in Nickel WASM runtime: build the derivation, copy
+# its dist/ files into nickel-vm/dist/, refresh the drv fingerprint ledger,
+# and commit both. The rustc→wasm build is not bit-reproducible across
+# hosts, so staleness is guarded by the INPUT fingerprint (see nickel-check).
 nickel-build:
-    @out=$(nix build {{ repo }}#nickelVmWasm --print-out-paths --no-link); \
+    {{ nix_shell }} bash -c 'set -euo pipefail; \
+      out="$(nix build --accept-flake-config --print-out-paths --no-link {{ repo }}#nickelVmWasm)"; \
       rm -rf nickel-vm/dist; \
       mkdir -p nickel-vm/dist; \
-      cp -fr "$out/dist/." nickel-vm/dist/
+      cp -fr "$out/dist/." nickel-vm/dist/; \
+      nix eval --accept-flake-config --raw {{ repo }}#nickelVmWasm.drvPath \
+        > nickel-vm/dist/.drv-fingerprint'
+
+# Compare the flake's nickelVmWasm input fingerprint against the committed
+# ledger. Byte-comparing build outputs is unattainable cross-host; the drv
+# hash captures exactly the inputs (sources + pinned toolchain) that the
+# committed dist/ files must have been built from. Regenerate = `just
+# nickel-build`; commit nickel-vm/dist/.
+nickel-check:
+    {{ nix_shell }} bash -c 'set -euo pipefail; \
+      expected="$(nix eval --accept-flake-config --raw {{ repo }}#nickelVmWasm.drvPath)"; \
+      test -f nickel-vm/dist/.drv-fingerprint \
+        || { echo "nickel-vm/dist/.drv-fingerprint is missing — it must be committed (git add -f) after just nickel-build"; exit 1; }; \
+      test "$(cat nickel-vm/dist/.drv-fingerprint)" = "$expected" \
+        || { echo "Nickel WASM drift: sources changed since nickel-vm/dist/ was regenerated — run just nickel-build and commit the refreshed dist/ + .drv-fingerprint"; exit 1; }'
