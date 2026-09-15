@@ -173,3 +173,24 @@ SH
   run jq -r '.steps[0].status' .do-results.json
   [ "$output" = "passed" ]
 }
+
+@test "sync in a jj repo publishes the literal feature bookmark as the branch fact" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init --colocate 2>/dev/null || skip "jj git init failed"
+  test -d .jj/repo || skip "jj workspace missing after colocated init"
+  git init -q --bare "$TEST_DIR/jj-fake.git"
+  git remote set-url origin "$TEST_DIR/jj-fake.git"
+  git config user.email "test@test.com"
+  git config user.name "Test"
+  echo base > file.txt
+  jj describe -m base >/dev/null 2>&1
+  jj bookmark create known-feature -r @ >/dev/null 2>&1
+  jj git push --remote origin --bookmark known-feature >/dev/null 2>&1
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" sync false
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"branch=known-feature"* ]]
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision
+  [ "$status" -eq 0 ]
+  [ "$output" = "known-feature" ]
+}

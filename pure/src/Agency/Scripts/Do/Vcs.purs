@@ -32,7 +32,7 @@ import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Int (fromString)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.String (Pattern(..), contains, joinWith, split, trim)
+import Data.String (Pattern(..), Replacement(..), contains, joinWith, replaceAll, split, trim)
 import Data.String.CodeUnits (drop, length)
 import Data.Traversable (traverse)
 import Effect (Effect)
@@ -176,7 +176,7 @@ runVcsOp context operation = case operation of
   HeadRevision -> renderValue <$> headRevisionValue context
   HeadCommitSha -> case context.vcs of
     Git -> capturedCommand Binaries.git [ "rev-parse", "HEAD" ] context
-    Jj -> capturedCommand Binaries.jj [ "log", "--revision", "@", "--no-graph", "--template", "commit_id" ] context
+    Jj -> headCommitShaJj context
     Unknown -> pure noVcsOutcome
   DefaultBranch -> renderValue <$> defaultBranchValue context
   CurrentBranch -> renderValue <$> currentBranchValue context
@@ -276,14 +276,15 @@ remoteUrlResult context = do
       Right remote -> { code: 0, value: remote.url, stdout: remote.url <> "\n", stderr: "" }
 
 -- | Query the current revision while retaining a failed subprocess status.
+-- | Under jj the bookmark on @ is the head; with no bookmark there, the
+-- | bookmark on @- (the just-described feature change) is the feature
+-- | branch, matching currentBranchValue's --stack semantics.
 headRevisionValue :: WorkflowContext -> Effect VcsValue
 headRevisionValue context = case context.vcs of
   Git -> do
     result <- Sys.exec Binaries.git [ "rev-parse", "--abbrev-ref", "HEAD" ]
     pure (valueResult result (trim result.stdout))
-  Jj -> do
-    bookmark <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", "@", "--template", "name ++ \"\\n\"" ]
-    pure (valueResult bookmark (if bookmark.code == 0 then firstLine bookmark.stdout else ""))
+  Jj -> jjBranchValue
   Unknown -> pure { code: 1, value: "", stdout: "", stderr: "vcs-op: no VCS detected\n" }
 
 -- | Resolve a real default ref; never manufacture a conventional name.
@@ -321,17 +322,38 @@ currentBranchValue context = case context.vcs of
   Git -> do
     result <- Sys.exec Binaries.git [ "rev-parse", "--abbrev-ref", "HEAD" ]
     pure (valueResult result (trim result.stdout))
-  Jj -> do
-    at <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", "@", "--template", "name ++ \"\\n\"" ]
-    let atName = firstLine at.stdout
-    if at.code /= 0 then pure (valueResult at "")
-    else if atName /= "" then pure (valueResult at atName)
-    else do
-      parent <- Sys.exec Binaries.jj [ "bookmark", "list", "--revision", "@-", "--template", "name ++ \"\\n\"" ]
-      pure (valueResult parent (firstLine parent.stdout))
+  Jj -> jjBranchValue
   -- Unknown is a valid empty query result for --stack: there is no branch
   -- to stack onto, and the caller emits its existing guidance.
   Unknown -> pure { code: 0, value: "", stdout: "", stderr: "" }
+
+-- | The jj feature-bookmark rule, owned once: the bookmark on @, else the
+-- | bookmark on @- (which may be the base branch). Nothing means neither
+-- | revision carries a bookmark — callers decide what that implies for
+-- | their contract (branch reads report empty; commit refuses; head-commit
+-- | -sha falls back to the parent commit; push refuses a broad push).
+jjFeatureBookmark :: Effect (Either Outcome.OpOutcome (Maybe String))
+jjFeatureBookmark = do
+  at <- bookmarkAt "@"
+  case at of
+    Right (Just _) -> pure at
+    Right Nothing -> bookmarkAt "@-"
+    Left outcome -> pure (Left outcome)
+
+jjBranchValue :: Effect VcsValue
+jjBranchValue = do
+  found <- jjFeatureBookmark
+  case found of
+    Left outcome -> pure (outcomeValue outcome)
+    Right Nothing -> pure { code: 0, value: "", stdout: "", stderr: "" }
+    Right (Just name) -> pure { code: 0, value: name, stdout: name <> "\n", stderr: "" }
+
+-- | Degraded VcsValue from a failed jj bookmark inspection: keeps the
+-- | process status and the underlying stderr so the caller can diagnose it.
+outcomeValue :: Outcome.OpOutcome -> VcsValue
+outcomeValue outcome = case outcome.output of
+  Outcome.Captured o -> { code: outcome.exit, value: "", stdout: o.stdout, stderr: o.stderr }
+  Outcome.Passthrough -> { code: outcome.exit, value: "", stdout: "", stderr: "vcs-op: unable to inspect jj bookmarks\n" }
 
 -- | Compare the current revision to a resolved default semantically rather
 -- | than treating differently named local aliases as feature branches.
@@ -461,6 +483,37 @@ logRange context paths = case context.base of
             passthroughCommand context Binaries.jj ([ "log", "--revision", base <> ".." <> target, "--no-graph", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"", "--" ] <> paths)
     Unknown -> pure noVcsOutcome
 
+-- | The commit CI will run against, post-commit: the feature bookmark's
+-- | commit — the bookmark on @, else the bookmark on @- (the just-described
+-- | change), per jjFeatureBookmark. With no feature bookmark at either
+-- | revision, the fallback is @-'s commit. Fails loudly when no real
+-- | revision is resolvable: jj's null root commit (all zeros) is not an
+-- | identity, so a fresh repository has no CI target.
+headCommitShaJj :: WorkflowContext -> Effect Outcome.OpOutcome
+headCommitShaJj context = do
+  found <- jjFeatureBookmark
+  case found of
+    Left outcome -> pure outcome
+    Right (Just name) -> capturedCommand Binaries.jj [ "log", "--revision", name, "--no-graph", "--template", "commit_id ++ \"\\n\"" ] context
+    Right Nothing -> do
+      parent <- jjCommitId "@-"
+      case parent of
+        Just sha -> pure (Outcome.withStdout (sha <> "\n"))
+        Nothing -> pure (failureLine "vcs-op: no resolvable CI-target revision (fresh repository with only the null root commit)")
+
+-- | commit_id of a revision, Nothing when the query fails or the revision
+-- | is jj's null root commit (all zeros), which names no real change.
+jjCommitId :: String -> Effect (Maybe String)
+jjCommitId revision = do
+  result <- Sys.exec Binaries.jj [ "log", "--revision", revision, "--no-graph", "--template", "commit_id" ]
+  pure if result.code /= 0 then Nothing else Args.nonEmpty (trim result.stdout) >>= nullShaGuard
+
+nullShaGuard :: String -> Maybe String
+nullShaGuard sha = if isNullSha sha then Nothing else Just sha
+
+isNullSha :: String -> Boolean
+isNullSha sha = length sha == 40 && replaceAll (Pattern "0") (Replacement "") sha == ""
+
 logHead :: WorkflowContext -> Effect Outcome.OpOutcome
 logHead context = case context.vcs of
   Git -> passthroughCommand context Binaries.git [ "log", "--max-count=1", "--oneline" ]
@@ -561,10 +614,8 @@ featureBookmark :: WorkflowContext -> Effect (Either Outcome.OpOutcome String)
 featureBookmark context = case context.base of
   Nothing -> pure (Left (failureLine "vcs-op commit: jj requires a resolved base to protect the trunk bookmark"))
   Just base -> do
-    found <- bookmarkAt "@"
-    case found of
-      Right Nothing -> protect base <$> bookmarkAt "@-"
-      _ -> pure (protect base found)
+    found <- jjFeatureBookmark
+    pure (protect base found)
   where
   protect base found = case found of
     Left outcome -> Left outcome

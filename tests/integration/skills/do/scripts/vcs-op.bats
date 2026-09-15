@@ -2,6 +2,7 @@
 # Integration tests for vcs-op — the semantic VCS dispatcher.
 # Uses real git repos (temp) as fixtures. jj arms are skipped when jj isn't
 # available or can't be set up in the temp dir.
+bats_require_minimum_version 1.5.0
 
 setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
@@ -147,14 +148,111 @@ SH
   [ "$output" = "$sha" ]
 }
 
-@test "jj: head-commit-sha identifies the current working revision" {
+@test "jj: head-commit-sha identifies the feature bookmark commit" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
-  expected="$(jj log --revision @ --no-graph --template commit_id)"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj bookmark create feature >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  expected="$(jj log --revision feature --no-graph --template commit_id)"
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
   [ "$status" -eq 0 ]
   [ "$output" = "$expected" ]
+}
+
+@test "jj: head-commit-sha falls back to the parent commit when only the base bookmark exists" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj bookmark create main >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  expected="$(jj log --revision @- --no-graph --template commit_id)"
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+}
+
+@test "jj: head-commit-sha fails loudly in a fresh repository with no revision" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
+  [ "$status" -eq 1 ]
+  [[ "$output" != *0000* ]]
+}
+
+@test "jj: head-commit-sha emits exactly a 40-hex SHA plus one newline on both paths" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$TEST_DIR/fallback.out" 2>/dev/null
+  jj log --revision @- --no-graph --template 'commit_id ++ "\n"' > "$TEST_DIR/expected.fallback"
+  cmp "$TEST_DIR/expected.fallback" "$TEST_DIR/fallback.out"
+
+  jj bookmark create main >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$TEST_DIR/bookmark.out" 2>/dev/null
+  jj log --revision main --no-graph --template 'commit_id ++ "\n"' > "$TEST_DIR/expected.bookmark"
+  cmp "$TEST_DIR/expected.bookmark" "$TEST_DIR/bookmark.out"
+}
+
+@test "git: head-commit-sha emits exactly a 40-hex SHA plus one newline" {
+  # A git-only repo: the setup() fixture is already git (no .jj directory
+  # exists unless a jj test created one), so detection must report git —
+  # a detection regression fails here, it never silently skips.
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op detect
+  [ "$status" -eq 0 ]
+  [ "$output" = "git" ]
+  mk_initial_commit
+
+  git_out="$TEST_DIR/git.out"
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$git_out" 2>/dev/null
+  git rev-parse HEAD > "$TEST_DIR/expected.git"
+  cmp "$TEST_DIR/expected.git" "$git_out"
+  [ "$(wc -c < "$git_out")" -eq 41 ]
+}
+
+@test "jj: branch reads surface the underlying jj stderr on probe failure" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  rm -rf .jj/repo/index
+
+  run --separate-stderr node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op current-branch
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"The repository appears broken"* ]]
+}
+
+@test "jj: head-revision reports the base bookmark when it sits on the parent" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj bookmark create main >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op current-branch
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+}
+
+@test "jj: head-revision falls back to the parent bookmark like current-branch" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj bookmark create feature >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision
+  [ "$status" -eq 0 ]
+  [ "$output" = "feature" ]
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op current-branch
+  [ "$status" -eq 0 ]
+  [ "$output" = "feature" ]
 }
 
 @test "jj: branch reads are empty rather than opaque IDs without a bookmark" {
@@ -384,6 +482,19 @@ SH
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-head
   [ "$status" -eq 0 ]
   [[ "$output" == *"initial"* ]]
+}
+
+@test "jj: log-head shows the parent commit one-liner" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  jj commit -m "initial" >/dev/null 2>&1
+  jj new >/dev/null 2>&1
+  jj describe -m initial @- >/dev/null 2>&1
+  expected="$(jj log -r '@-' --no-graph --limit 1 --template 'separate(" ", commit_id.shortest(8), change_id.shortest(8), description.first_line())')"
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-head
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
 }
 
 # ─── log-range ────────────────────────────────────────────────────────
