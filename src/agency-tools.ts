@@ -95,14 +95,12 @@ function rewriteDeviceFieldHoistErrors(messages: readonly unknown[]): unknown[] 
     const path = String(shape.path);
     // Payload rebuild by exclusion (everything except path/i): a hoisted key
     // the DEVICE_ARG_KEYS list does not know yet still lands in the suggested
-    // payload instead of being silently dropped from the repair. BigInt and
-    // undefined/function/symbol values cannot survive JSON.stringify; they are
-    // stringified or omitted rather than aborting the whole context event.
+    // payload instead of being silently dropped from the repair.
     const devicePayload: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(shape)) {
       if (key === "path" || key === "i") continue;
       if (value === undefined || typeof value === "function" || typeof value === "symbol") continue;
-      devicePayload[key] = typeof value === "bigint" ? String(value) : value;
+      devicePayload[key] = value;
     }
     let payloadJson: string;
     try {
