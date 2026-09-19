@@ -106,10 +106,13 @@ function rewriteDeviceFieldHoistErrors(messages: readonly unknown[]): unknown[] 
     }
     let payloadJson: string;
     try {
-      payloadJson = JSON.stringify(devicePayload);
+      payloadJson = JSON.stringify(devicePayload, (_key, value) =>
+        typeof value === "bigint" ? String(value) : value,
+      );
     } catch (error) {
       // Best-effort: cycle or getter throw in a model-supplied value degrades
-      // to a hint without the payload line rather than failing the request.
+      // to a hint without the payload line rather than failing the whole
+      // context event.
       payloadJson = `  content: <unserializable (${error instanceof Error ? error.message : String(error)})>`;
     }
     const hint = [
