@@ -24,6 +24,80 @@ type ToolContext = {
   cwd: string;
 };
 
+// Device argument fields per schema (issue #79). When the model hoists these
+// onto the outer write call, the harness write schema rejects with a generic
+// "content must be file content (was missing)" before the device dispatch ever
+// runs, and no hook fires on that path. Rewrite the paired error with a
+// targeted hint so recovery no longer depends on the model guessing.
+const DEVICE_ARG_KEYS = ["args", "body", "field", "files", "from", "message", "name", "op", "ref"];
+
+function rewriteDeviceFieldHoistErrors(messages: readonly unknown[]): unknown[] | undefined {
+  // Pair each failing write call with its tool result by call id.
+  const failingCalls: Record<string, Record<string, unknown>> = {};
+  for (const message of messages) {
+    if (!message || typeof message !== "object") continue;
+    const record = message as Record<string, unknown>;
+    if (record.role !== "assistant" || !Array.isArray(record.content)) continue;
+    for (const block of record.content) {
+      if (!block || typeof block !== "object") continue;
+      const call = block as Record<string, unknown>;
+      if (call.type !== "toolCall" || call.name !== "write") continue;
+      const args = call.arguments;
+      if (!args || typeof args !== "object" || Array.isArray(args)) continue;
+      const shape = args as Record<string, unknown>;
+      const path = shape.path;
+      if (typeof path !== "string" || !path.startsWith("xd://")) continue;
+      if (shape.content !== undefined) continue;
+      const hoisted = Object.keys(shape).filter(
+        key => key !== "path" && key !== "i" && DEVICE_ARG_KEYS.includes(key),
+      );
+      if (hoisted.length === 0) continue;
+      failingCalls[String(call.id)] = shape;
+    }
+  }
+  if (Object.keys(failingCalls).length === 0) return undefined;
+
+  let changed = false;
+  const next = [...messages];
+  for (let index = 0; index < next.length; index++) {
+    const message = next[index];
+    if (!message || typeof message !== "object") continue;
+    const record = message as Record<string, unknown>;
+    if (record.role !== "toolResult" || record.toolName !== "write" || record.isError !== true) continue;
+    const shape = failingCalls[String(record.toolCallId)];
+    if (!shape) continue;
+    if (!Array.isArray(record.content)) continue;
+    const text = record.content
+      .map(block => (block && typeof block === "object" && (block as Record<string, unknown>).type === "text"
+        ? String((block as Record<string, unknown>).text)
+        : ""))
+      .join("\n");
+    if (!text.includes("content must be file content (was missing)")) continue;
+    if (text.includes("received no `content`, but found device argument fields")) continue;
+    const path = String(shape.path);
+    // Every hoisted field moves into the device payload verbatim — `op`
+    // included; the payload keys mirror the device schema, not the write call.
+    const devicePayload: Record<string, unknown> = {};
+    for (const key of DEVICE_ARG_KEYS) {
+      if (key in shape) devicePayload[key] = shape[key];
+    }
+    const hint = [
+      `Target ${path} received no \`content\`, but found device argument fields on the write call.`,
+      `Put them inside a JSON object as the \`content\` field:`,
+      `  content: ${JSON.stringify(devicePayload)}`,
+      ``,
+      `The write call itself carries only path (and the intent \`i\`).`,
+    ].join("\n");
+    const replacement = {
+      ...record,
+      content: [{ type: "text", text: `${text}\n\n${hint}` }],
+    };
+    next[index] = replacement;
+    changed = true;
+  }
+  return changed ? next : undefined;
+}
+
 const forgeBodyOperations = ["pr-create", "pr-edit", "pr-comment"];
 
 let apiPromise: Promise<AgencyApi> | undefined;
@@ -124,7 +198,7 @@ export default function (pi: ExtensionAPI) {
     name: "vcs_read",
     label: "VCS Read",
     description:
-      "Read-only VCS operations. Use args exactly as the semantic vcs-op CLI: detect, remote-url, head-revision, head-commit-sha, default-branch, current-branch, base, dirty, diff-range, diff-names, diff-stat, new-files, log-range, or log-head, followed by any operation arguments such as paths. Fetching belongs to agency_driver sync because it updates remote-tracking refs.",
+      "Read-only VCS operations. Use args exactly as the semantic vcs-op CLI: detect, remote-url, head-revision, head-commit-sha, default-branch, current-branch, base, dirty, diff-range, diff-names, diff-stat, new-files, log-range, or log-head, followed by any operation arguments such as paths. Fetching belongs to agency_driver sync because it updates remote-tracking refs. Invoke via the write tool: the outer call carries only path and i; ALL arguments ({ \"args\": [...] }) go inside a JSON object as the content field — never hoisted onto the write call itself.",
     parameters: z.object({ args: z.array(z.string()) }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       return executeApi("vcs_read", params.args);
@@ -135,7 +209,7 @@ export default function (pi: ExtensionAPI) {
     name: "vcs_write",
     label: "VCS Write",
     description:
-      "Mutating VCS operations with operation-specific arguments: branch requires name; commit and fix-commit require message and a non-empty files list; push accepts an optional ref. Do not provide fields from another operation.",
+      "Mutating VCS operations with operation-specific arguments: branch requires name; commit and fix-commit require message and a non-empty files list; push accepts an optional ref. Do not provide fields from another operation. Invoke via the write tool: the outer call carries only path and i; ALL arguments ({ \"op\": ..., \"message\": ... }) go inside a JSON object as the content field — never hoisted onto the write call itself.",
     parameters: z.union([
       z.object({
         op: z.literal("branch"),
@@ -183,7 +257,7 @@ export default function (pi: ExtensionAPI) {
     name: "forge",
     label: "Forge",
     description:
-      "Forge operations over the detected remote host. Use op detect, supports, pr-view, pr-create, pr-edit, pr-comment, issue-view, or pr-checks; pass forge CLI flags in args. The body field is only valid for pr-create, pr-edit, and pr-comment.",
+      "Forge operations over the detected remote host. Use op detect, supports, pr-view, pr-create, pr-edit, pr-comment, issue-view, or pr-checks; pass forge CLI flags in args. The body field is only valid for pr-create, pr-edit, and pr-comment. Invoke via the write tool: the outer call carries only path and i; ALL arguments ({ \"op\": ..., \"args\": [...] }) go inside a JSON object as the content field — never hoisted onto the write call itself.",
     parameters: z.union([
       z.object({
         op: z.literal("detect"),
@@ -235,7 +309,7 @@ export default function (pi: ExtensionAPI) {
     name: "workflow",
     label: "Workflow",
     description:
-      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared workflow entry point to seed/resume from that entry point.",
+      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared workflow entry point to seed/resume from that entry point. Invoke via the write tool: the outer call carries only path and i; ALL arguments ({ \"field\": \"cli\" }) go inside a JSON object as the content field — never hoisted onto the write call itself.",
     parameters: z.union([
       z.object({
         field: z.literal("cli"),
@@ -258,7 +332,7 @@ export default function (pi: ExtensionAPI) {
     name: "agency_driver",
     label: "Agency Driver",
     description:
-      "Advance or inspect /do workflow state through the existing driver and results parsers. op selects one of init, start, end, skip, set, summary, sync, step-start, step-end, or step; args contains only that operation's operands and must not repeat op (for example, { op: \"sync\", args: [\"false\"] } or { op: \"start\", args: [\"research\"] }).",
+      "Advance or inspect /do workflow state through the existing driver and results parsers. op selects one of init, start, end, skip, set, summary, sync, step-start, step-end, or step; args contains only that operation's operands and must not repeat op (for example, { op: \"sync\", args: [\"false\"] } or { op: \"start\", args: [\"research\"] }). Invoke via the write tool: the outer call carries only path and i; ALL arguments ({ \"op\": ..., \"args\": [...] }) go inside a JSON object as the content field — never hoisted onto the write call itself.",
     parameters: z.object({
       op: z.enum(["init", "start", "end", "skip", "set", "summary", "sync", "step-start", "step-end", "step"]),
       args: z.array(z.string()),
@@ -266,5 +340,10 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       return executeApi("agency_driver", [params.op, ...params.args]);
     },
+  });
+
+  pi.on("context", event => {
+    const rewritten = rewriteDeviceFieldHoistErrors(event.messages);
+    return rewritten ? { messages: rewritten } : undefined;
   });
 }
