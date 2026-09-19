@@ -24,18 +24,29 @@ type ToolContext = {
   cwd: string;
 };
 
+// The exact arktype-composed phrase the harness write schema emits for a
+// missing required string field (packages/ai validation.ts asserts its
+// stability). The context event exposes no structured error field, so this
+// substring match is the only extension-visible signal; harness rewording
+// degrades the rewrite to the status-quo generic error.
+const MISSING_CONTENT_ERROR = "content must be file content (was missing)";
+
 // Device argument fields per schema (issue #79). When the model hoists these
 // onto the outer write call, the harness write schema rejects with a generic
-// "content must be file content (was missing)" before the device dispatch ever
-// runs, and no hook fires on that path. Rewrite the paired error with a
-// targeted hint so recovery no longer depends on the model guessing.
-// Kept in lockstep with the five parameter schemas below; a missed key only
-// degrades to the pre-fix generic error, never to a wrong repair.
+// error before the device dispatch ever runs, and no hook fires on that path.
+// Rewrite the paired error with a targeted hint so recovery no longer depends
+// on the model guessing. Kept in lockstep with the five parameter schemas
+// below; a missed key only degrades to the pre-fix generic error, never to a
+// wrong repair.
 const DEVICE_ARG_KEYS = ["args", "body", "field", "files", "from", "message", "name", "op", "ref"];
 
 function rewriteDeviceFieldHoistErrors(messages: readonly unknown[]): unknown[] | undefined {
   // Pair each failing write call with its tool result by call id.
-  const failingCalls: Record<string, Record<string, unknown>> = {};
+  // Null prototype: toolCallIds are model-controlled strings, and a plain
+  // object literal turns a "__proto__" id into prototype assignment. First
+  // occurrence wins: a duplicated id (compaction artifacts) must not let a
+  // later shape mispair with the first call's tool result.
+  const failingCalls: Record<string, Record<string, unknown>> = Object.create(null);
   for (const message of messages) {
     if (!message || typeof message !== "object") continue;
     const record = message as Record<string, unknown>;
@@ -44,17 +55,19 @@ function rewriteDeviceFieldHoistErrors(messages: readonly unknown[]): unknown[] 
       if (!block || typeof block !== "object") continue;
       const call = block as Record<string, unknown>;
       if (call.type !== "toolCall" || call.name !== "write") continue;
+      if (typeof call.id !== "string" || call.id.length === 0) continue;
       const args = call.arguments;
       if (!args || typeof args !== "object" || Array.isArray(args)) continue;
       const shape = args as Record<string, unknown>;
       const path = shape.path;
       if (typeof path !== "string" || !path.startsWith("xd://")) continue;
-      if (shape.content !== undefined) continue;
+      if ("content" in shape && shape.content !== undefined && shape.content !== null) continue;
       const hoisted = Object.keys(shape).filter(
         key => key !== "path" && key !== "i" && DEVICE_ARG_KEYS.includes(key),
       );
       if (hoisted.length === 0) continue;
-      failingCalls[String(call.id)] = shape;
+      if (call.id in failingCalls) continue;
+      failingCalls[call.id] = shape;
     }
   }
   if (Object.keys(failingCalls).length === 0) return undefined;
@@ -69,33 +82,46 @@ function rewriteDeviceFieldHoistErrors(messages: readonly unknown[]): unknown[] 
     if (!message || typeof message !== "object") continue;
     const record = message as Record<string, unknown>;
     if (record.role !== "toolResult" || record.toolName !== "write" || record.isError !== true) continue;
-    const shape = failingCalls[String(record.toolCallId)];
+    if (typeof record.toolCallId !== "string" || record.toolCallId.length === 0) continue;
+    const shape = failingCalls[record.toolCallId];
     if (!shape) continue;
     if (!Array.isArray(record.content)) continue;
     const text = record.content
       .filter(block => block && typeof block === "object" && (block as Record<string, unknown>).type === "text")
       .map(block => String((block as Record<string, unknown>).text))
       .join("\n");
-    if (!text.includes("content must be file content (was missing)")) continue;
+    if (!text.includes(MISSING_CONTENT_ERROR)) continue;
     if (text.includes(marker)) continue;
     const path = String(shape.path);
     // Payload rebuild by exclusion (everything except path/i): a hoisted key
     // the DEVICE_ARG_KEYS list does not know yet still lands in the suggested
-    // payload instead of being silently dropped from the repair.
+    // payload instead of being silently dropped from the repair. BigInt and
+    // undefined/function/symbol values cannot survive JSON.stringify; they are
+    // stringified or omitted rather than aborting the whole context event.
     const devicePayload: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(shape)) {
-      if (key !== "path" && key !== "i") devicePayload[key] = value;
+      if (key === "path" || key === "i") continue;
+      if (value === undefined || typeof value === "function" || typeof value === "symbol") continue;
+      devicePayload[key] = typeof value === "bigint" ? String(value) : value;
+    }
+    let payloadJson: string;
+    try {
+      payloadJson = JSON.stringify(devicePayload);
+    } catch (error) {
+      // Best-effort: cycle or getter throw in a model-supplied value degrades
+      // to a hint without the payload line rather than failing the request.
+      payloadJson = `  content: <unserializable (${error instanceof Error ? error.message : String(error)})>`;
     }
     const hint = [
       `Target ${path} ${marker} on the write call.`,
       `Put them inside a JSON object as the \`content\` field:`,
-      `  content: ${JSON.stringify(devicePayload)}`,
+      `  content: ${payloadJson}`,
       ``,
       `The write call itself carries only path (and the intent \`i\`).`,
     ].join("\n");
     const replacement = {
       ...record,
-      content: [{ type: "text", text: `${text}\n\n${hint}` }],
+      content: [...record.content, { type: "text", text: hint }],
     };
     next[index] = replacement;
     changed = true;
