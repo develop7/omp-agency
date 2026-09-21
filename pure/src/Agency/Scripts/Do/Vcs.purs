@@ -392,7 +392,10 @@ diffRange context paths = case context.base of
       source <- jjRangeFrom context value
       case source of
         Left outcome -> pure outcome
-        Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--" ] <> paths)
+        -- --git emits a standard unified diff; jj's default format is not
+        -- consumable by the unified-diff readers downstream (reviewers,
+        -- code-police passes). The git branch already emits unified diffs.
+        Right from -> passthroughCommand context Binaries.jj ([ "diff", "--git", "--from", from, "--to", "@", "--" ] <> paths)
     Unknown -> pure noVcsOutcome
 
 diffNames :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome

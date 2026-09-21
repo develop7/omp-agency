@@ -56,13 +56,13 @@ At every non-trivial declaration or block, ask whether a reader who did not writ
 
 ## Running the passes
 
-Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
+Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {args: ["diff-range"]}` and embeds the full diff in the shared batch context of both scout prompts — scouts never fetch the diff themselves. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
 
 Each scout starts without the implementer's context and must use this file as the rules of record.
 
 ### Pass 1: Rule checklist
 
-The Pass 1 scout must read the Reviewing principles and Rules here plus `.agency/code-police.md` if present; scope the current diff with `vcs_read {args: ["diff-range"]}`; and return one table covering **every** built-in and project rule:
+The Pass 1 scout must read the Reviewing principles and Rules here plus `.agency/code-police.md` if present; scope its review to **the diff embedded in the prompt**; and return one table covering **every** built-in and project rule:
 
 | Rule ID | Violation found? | What was identified | Action taken |
 | ------- | ---------------- | ------------------- | ------------ |
@@ -71,7 +71,7 @@ Every "No" requires a **`Checked by:`** field: use a grep-for-absence for purely
 
 ### Pass 2: Fact-check
 
-The Pass 2 scout must read and apply the Reviewing principles, scope the current diff with `vcs_read {args: ["diff-range"]}`, and perform a logic review rather than a style review. Find where the code lies to itself:
+The Pass 2 scout must read and apply the Reviewing principles, scope its review to **the diff embedded in the prompt**, and perform a logic review rather than a style review. Find where the code lies to itself:
 
 - silent error swallowing and inaccurate fallbacks that mask misconfiguration;
 - unvalidated boundary inputs, code that can fail despite "can't fail" assumptions, and races papered over with comments;
@@ -82,7 +82,7 @@ Fail loud over fail silent; every fallback needs a reason for its failure case; 
 
 ### Pass 3: Elegance
 
-Skip under `--no-elegance` and report `Elegance | – | Skipped (--no-elegance)`. Otherwise obtain the shortstat with `vcs_read {args: ["diff-stat"]}`. If the diff is under 10 lines, report `Elegance | 0 | Skipped (tiny diff)`; Passes 1–2 still run.
+Skip under `--no-elegance` and report `Elegance | – | Skipped (--no-elegance)`. Otherwise the orchestrator (running this pass in main context after both scouts return) obtains the shortstat itself with `vcs_read {args: ["diff-stat"]}`. If the diff is under 10 lines, report `Elegance | 0 | Skipped (tiny diff)`; Passes 1–2 still run.
 
 For a larger diff, run the `elegance` skill loop for three iterations. Each iteration: understand the changed files and their unnecessary complexity; research simple, elegant, readable patterns with `web_search`; apply a refactor favoring fewer lines, clearer intent, and idiomatic style without adding abstractions; and verify with tests/CI. Simple beats clever, readable beats terse, idiomatic beats generic, and each iteration builds on the last. The Reviewing principles bind here too.
 

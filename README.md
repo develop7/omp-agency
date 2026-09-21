@@ -156,7 +156,7 @@ workflow evaluation is provided by `nickel-vm` WASM:
 just test          # build, then run bats tests (unit + integration)
 just test-pure     # run the PureScript core unit tests
 just lint          # run shellcheck on bash scripts
-just lint-skills   # lint skill markdown: no raw VCS/forge commands
+just lint-skills   # lint skill markdown: no raw VCS/forge commands; reviewer skill tool references stay on the executor's allowlist
 just build         # compile and bundle the PureScript core
 just ci            # full CI: tests + lint + skill prose lint + runtime package proof
 just nickel-build  # build the Nickel WASM evaluator and Node glue
