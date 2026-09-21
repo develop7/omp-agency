@@ -26,7 +26,8 @@ Invoke `hickey` and `lowy` as two **parallel sub-agents** via the `task` tool (`
 a review, retry that reviewer once; if it still cannot produce a sub-agent review, run that review in
 the main model by loading the reviewer skill against the same diff. Do not replace it with an informal
 review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
-model override.
+model override. The main-model fallback uses the reviewer's tool set (`read`, `grep`, `glob`,
+`vcs_read`) until findings are reported; apply the fixes afterward via `vcs_write` as usual.
 
 Each sub-agent prompt must be self-contained (sub-agents inherit no context). Brief each one with:
 

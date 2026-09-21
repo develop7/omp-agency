@@ -116,3 +116,42 @@ run_lint() {
   run_lint
   [ "$status" -eq 0 ]
 }
+
+# Tool-reference consistency check (reviewer skills).
+# Fixture runs have no agents/ tree, so the reviewer-agent branch is skipped;
+# code-police files are checked against the bundled scout allowlist plus the
+# extension-registered tools regardless.
+
+@test "tool-allowlist check passes when reviewer skills reference allowed tools" {
+  mkdir -p "$FIXTURE_SKILLS/lowy" "$FIXTURE_SKILLS/code-police"
+  printf 'Use the `vcs_read` tool with `{ args: ["diff-range"] }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Do not use the `ask` tool. Orchestration may use `web_search`.\n' > "$FIXTURE_SKILLS/code-police/SKILL.md"
+  run_lint
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tool references are consistent"* ]]
+}
+
+@test "tool-allowlist check fails on disallowed reviewer tool reference" {
+  mkdir -p "$FIXTURE_SKILLS/lowy"
+  printf 'Invoke the `bash` tool with a shell command.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  run_lint
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Tool reference 'bash' is not on the reviewer-agent effective allowlist."* ]]
+}
+
+@test "tool-allowlist check fails on disallowed scout tool reference in code-police" {
+  mkdir -p "$FIXTURE_SKILLS/code-police"
+  printf 'Invoke the `bash` tool with a shell command.\n' > "$FIXTURE_SKILLS/code-police/SKILL.md"
+  run_lint
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Tool reference 'bash' is not on the scout effective allowlist."* ]]
+}
+
+@test "tool-allowlist check accepts extension tool references in reviewer skills" {
+  mkdir -p "$FIXTURE_SKILLS/hickey"
+  printf 'Fetch with `forge { args: ["pr-view"] }` when the harness exposes it.\n' > "$FIXTURE_SKILLS/hickey/SKILL.md"
+  run_lint
+  # Without an agents/ tree the reviewer branch is skipped, so this only
+  # proves the scanner itself does not crash on hickey files.
+  [ "$status" -eq 0 ]
+}
