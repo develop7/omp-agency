@@ -421,7 +421,9 @@ diffStat context paths = case context.base of
       source <- jjRangeFrom context value
       case source of
         Left outcome -> pure outcome
-        Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--summary", "--" ] <> paths)
+        -- --stat emits a histogram with a trailing total, matching the
+        -- shortstat shape the git branch produces behind the same op.
+        Right from -> passthroughCommand context Binaries.jj ([ "diff", "--stat", "--from", from, "--to", "@", "--" ] <> paths)
     Unknown -> pure noVcsOutcome
 
 newFiles :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
