@@ -158,8 +158,20 @@ echo "No raw VCS or forge commands found in skill files."
 
 AGENTS_DIR="${AGENTS_DIR:-"$REPO_DIR/agents"}"
 
-# Extension-registered tools (src/agency-tools.ts `pi.registerTool` names).
-EXTENSION_TOOLS=(vcs_read vcs_write forge workflow agency_driver)
+# Extension-registered tools: derived from src/agency-tools.ts so the
+# registry stays the single source of truth (the `pi.registerTool` calls are
+# the canonical list).
+AGENCY_TOOLS_TS="$REPO_DIR/src/agency-tools.ts"
+if [ ! -f "$AGENCY_TOOLS_TS" ]; then
+  echo "::error file=$AGENCY_TOOLS_TS::src/agency-tools.ts missing; cannot derive extension tool registry." >&2
+  exit 1
+fi
+EXTENSION_TOOLS=()
+mapfile -t EXTENSION_TOOLS < <(sed -n 's/^    name: "\([a-z_]*\)",$/\1/p' "$AGENCY_TOOLS_TS" | sort -u)
+if [ "${#EXTENSION_TOOLS[@]}" -eq 0 ]; then
+  echo "::error file=$AGENCY_TOOLS_TS::No pi.registerTool name fields found; the registry parse yielded nothing. Did src/agency-tools.ts move or change format?" >&2
+  exit 1
+fi
 
 # Bundled scout allowlist (see provenance comment above).
 SCOUT_TOOLS=(read find grep glob web_search)
@@ -176,7 +188,8 @@ trim() {
 reviewer_tools() {
   local agent_file="$1"
   local line
-  line="$(sed -n 's/^tools:[[:space:]]*//p' "$agent_file" | head -n 1)"
+  # GNU sed range form: first `tools:` line only, no pipe to head (SIGPIPE).
+  line="$(sed -n '0,/tools:/s/^tools:[[:space:]]*//p' "$agent_file")"
   if [ -n "$line" ]; then
     local IFS=','
     local tools=()
@@ -209,7 +222,7 @@ tool_refs_in_file() {
         sub(/[[:space:]].*/, "", tok)
         if (tok ~ /^[a-z_]+$/) print tok
       } else if (span ~ /^[a-z_]+$/ && after ~ /^ ?(tool|tools)([^a-zA-Z_]|$)/) {
-        if (before !~ /[Nn]ot/ && before !~ /never/) print tok
+        if (before !~ /(not|never)(\*\*)?([[:space:]]+[[:alpha:]]+)*[[:space:]]+$/) print tok
       }
       s = substr(s, RSTART + RLENGTH)
     }
@@ -237,20 +250,23 @@ check_tool_refs() {
 
 tool_violations=0
 
-# Reviewer-agent skills: checked only when the agent definitions are present
-# (fixture test runs without an agents/ tree skip this check).
+# Reviewer-agent skills: checked only when the agent definitions are present.
+# The skip is announced explicitly so CI can distinguish checked-clean from
+# skipped; fixture test runs without an agents/ tree take this branch.
 if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
-  REVIEWER_ALLOWLIST=()
-  mapfile -t REVIEWER_ALLOWLIST < <(reviewer_tools "$AGENTS_DIR/hickey.md")
+  mapfile -t HICKEY_TOOLS < <(reviewer_tools "$AGENTS_DIR/hickey.md")
+  mapfile -t LOWY_TOOLS < <(reviewer_tools "$AGENTS_DIR/lowy.md")
   # lowy.md must declare the same allowlist; verify rather than merge.
-  if ! diff <(reviewer_tools "$AGENTS_DIR/hickey.md") <(reviewer_tools "$AGENTS_DIR/lowy.md") >/dev/null; then
+  if ! diff <(printf '%s\n' "${HICKEY_TOOLS[@]}") <(printf '%s\n' "${LOWY_TOOLS[@]}") >/dev/null; then
     echo "::error file=$AGENTS_DIR/lowy.md::Reviewer agent frontmatter tools differ from agents/hickey.md." >&2
     tool_violations=$((tool_violations + 1))
   fi
   for reviewer_file in "$SKILLS_DIR"/hickey/*.md "$SKILLS_DIR"/lowy/*.md "$SKILLS_DIR"/fact-check/*.md; do
     [ -f "$reviewer_file" ] || continue
-    check_tool_refs "$reviewer_file" "reviewer-agent" "${REVIEWER_ALLOWLIST[@]}"
+    check_tool_refs "$reviewer_file" "reviewer-agent" "${HICKEY_TOOLS[@]}"
   done
+else
+  echo "Reviewer tool-reference check skipped: agents/ tree absent." >&2
 fi
 
 # Code-police: passes 1-2 run as bundled-scout sub-agents; effective allowlist
