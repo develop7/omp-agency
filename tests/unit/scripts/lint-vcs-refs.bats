@@ -155,3 +155,68 @@ run_lint() {
   # proves the scanner itself does not crash on hickey files.
   [ "$status" -eq 0 ]
 }
+
+# Reviewer-agent branch coverage: fixture agents/ tree with controlled
+# frontmatter, exercised through the AGENTS_DIR override.
+
+setup_agents_fixture() {
+  FIXTURE_AGENTS="$TEST_DIR/fixtures/agents"
+  mkdir -p "$FIXTURE_AGENTS"
+  printf -- '---\nname: hickey\ntools: read, grep, glob, vcs_read\n---\nbody\n' > "$FIXTURE_AGENTS/hickey.md"
+  printf -- '---\nname: lowy\ntools: read, grep, glob, vcs_read\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+}
+
+run_lint_agents() {
+  SKILLS_DIR="$FIXTURE_SKILLS" AGENTS_DIR="$FIXTURE_AGENTS" run bash "$LINT" "$@"
+}
+
+@test "tool-allowlist check runs reviewer branch and passes equal frontmatters" {
+  setup_agents_fixture
+  mkdir -p "$FIXTURE_SKILLS/lowy"
+  printf 'Use the `vcs_read` tool with `{ args: ["new-files"] }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  run_lint_agents
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tool references are consistent"* ]]
+}
+
+@test "tool-allowlist check fails on reviewer frontmatter mismatch" {
+  setup_agents_fixture
+  printf -- '---\nname: lowy\ntools: read, grep\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"frontmatter tools differ"* ]]
+}
+
+@test "tool-allowlist check fails on disallowed reviewer reference with agents present" {
+  setup_agents_fixture
+  mkdir -p "$FIXTURE_SKILLS/lowy"
+  printf 'Invoke the `bash` tool with a shell command.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Tool reference 'bash' is not on the reviewer-agent effective allowlist."* ]]
+}
+
+@test "negation guard: 'Note' does not suppress the check" {
+  setup_agents_fixture
+  mkdir -p "$FIXTURE_SKILLS/lowy"
+  printf 'Note: invoke the `bash` tool when needed.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Tool reference 'bash'"* ]]
+}
+
+@test "negation guard: 'Do not use' still suppresses the check" {
+  setup_agents_fixture
+  mkdir -p "$FIXTURE_SKILLS/lowy"
+  printf 'Do not use the `ask` tool.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  run_lint_agents
+  [ "$status" -eq 0 ]
+}
+
+@test "negation guard: bolded 'Do **not** use' suppresses the check" {
+  setup_agents_fixture
+  mkdir -p "$FIXTURE_SKILLS/lowy"
+  printf 'Do **not** use the `ask` tool.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  run_lint_agents
+  [ "$status" -eq 0 ]
+}
