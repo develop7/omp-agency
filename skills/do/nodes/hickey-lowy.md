@@ -62,9 +62,11 @@ in the PR description as a strategic note, not a deferred finding.
 
 **Collect, then reconcile — never apply on arrival.** The reviewers stream each finding the moment it
 forms, and each result auto-delivers when its reviewer finishes ("resume your work" is not a license to
-apply). Collect all of it; edit nothing for any finding while either reviewer is still running — `hub
-wait` the sibling job ids, or spend the gap only on non-application work. Once BOTH are done, reconcile
-the collected findings into one disposition set:
+apply). Collect per lens: its streamed messages (latest word wins), any `undelivered` entries its
+result carries (equal standing in the set), and — on fallback or retry — its result as that lens's
+authoritative set, superseding any partial stream wholesale. Edit nothing for any finding while either
+reviewer is still running — `hub wait` the sibling job ids, or spend the gap only on non-application
+work. Once BOTH are done, reconcile the collected findings into one disposition set:
 
 - **Dedupe** — a finding both lenses report becomes one row carrying both lenses and one commit:
   `refactor(hickey+lowy): <short label>`.
