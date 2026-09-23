@@ -36,8 +36,11 @@ Each sub-agent prompt must be self-contained (sub-agents inherit no context). Br
 
 - The full task prompt plus anything relevant that **research** uncovered
 - Scope: the actual diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
-- The findings channel: `hub` `op: "send"` to this session, ONE message per finding as it forms (the
-  reply target named in the reviewer's delivery contract)
+- **Findings channel (the complete send contract)**: `hub` `op: "send"` to **this session**, ONE message
+  per finding as it forms, carrying the skill's **Actions** entry verbatim. The reviewer's latest word
+  wins over its earlier messages. On send failure: retry the send once, then mark that entry
+  `undelivered` in the result. The final result is ONE summary line (e.g. `N findings streamed;
+  fact-check clean`) — never a findings list.
 - **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
   `{ args: ["new-files"] }` and only include the hint if the output is non-empty: survey the codebase
   for the canonical in-repo pattern for the same *kind* of operation and flag it as the headline finding
