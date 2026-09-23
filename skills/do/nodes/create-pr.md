@@ -37,8 +37,9 @@ Check whether a PR already exists for this branch by calling the `forge` tool wi
 2. **Post hickey/lowy results** as a PR comment by calling the `forge` tool with
    `{ op: "pr-comment", args: [], body: "<comment>" }` under a
    `## [Hickey/Lowy](https://kolu.dev/blog/hickey-lowy/) Analysis` header — always when the step ran,
-   even if every finding was a No-op. Compose a single findings-ledger table from both sub-agents'
-   Actions sections so a reviewer sees disposition at a glance, with each lens's prose underneath:
+   even if every finding was a No-op. Compose a single findings-ledger table from the reconciled
+   disposition set (the sub-agents' Actions entries are its input) so a reviewer sees disposition at a
+   glance, with each lens's prose underneath:
 
    ```md
    ## [Hickey/Lowy](https://kolu.dev/blog/hickey-lowy/) Analysis
@@ -55,7 +56,8 @@ Check whether a PR already exists for this branch by calling the `forge` tool wi
    <prose>
    ```
 
-   The Disposition cell mirrors the sub-agent's Actions disposition verbatim. **Render every No-op as
+   The Disposition cell mirrors the reconciled row's disposition; the Lens cell reads `Hickey`, `Lowy`,
+   or `Hickey+Lowy` for a merged row. **Render every No-op as
    `⚠️ **No-op**`** so the rows a human most needs to scrutinize (a finding acknowledged but not fixed)
    stand out. There is no Deferred disposition — the audit step flipped any defer to Fixed in this PR.
    If both lenses produced zero findings, write a one-line "No findings — analysis below" instead of an

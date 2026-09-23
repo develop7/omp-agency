@@ -14,7 +14,8 @@ description: Parallel structural review with hickey and lowy sub-agents.
 
 ## Ensures
 
-- Review findings applied as individual commits (or working-tree fixes under --no-vcs)
+- Reconciled review findings applied as individual commits (or working-tree fixes under --no-vcs) —
+  application starts only after both reviewers are done and their findings are reconciled
 - Findings ledger for PR comment
 
 ## Strategies
@@ -27,13 +28,16 @@ a review, retry that reviewer once; if it still cannot produce a sub-agent revie
 the main model by loading the reviewer skill against the same diff. Do not replace it with an informal
 review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
 model override. The main-model fallback uses the reviewer's declared tool set (the frontmatter
-`tools:` in `agents/{hickey,lowy}.md`) until findings are reported; apply the fixes afterward via
-`vcs_write` as usual.
+`tools:` in `agents/{hickey,lowy}.md`) until findings are reported; its output is that lens's
+authoritative findings set, superseding any partial stream from the failed attempt, and it enters the
+same collect → reconcile pipeline before anything is applied.
 
 Each sub-agent prompt must be self-contained (sub-agents inherit no context). Brief each one with:
 
 - The full task prompt plus anything relevant that **research** uncovered
 - Scope: the actual diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
+- The findings channel: `hub` `op: "send"` to this session, ONE message per finding as it forms (the
+  reply target named in the reviewer's delivery contract)
 - **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
   `{ args: ["new-files"] }` and only include the hint if the output is non-empty: survey the codebase
   for the canonical in-repo pattern for the same *kind* of operation and flag it as the headline finding
@@ -56,30 +60,48 @@ genuinely require coordination outside this repo shouldn't have surfaced as stru
 if one did, apply a local workaround or interface boundary in this PR and flag the upstream dependency
 in the PR description as a strategic note, not a deferred finding.
 
+**Collect, then reconcile — never apply on arrival.** The reviewers stream each finding the moment it
+forms, and each result auto-delivers when its reviewer finishes ("resume your work" is not a license to
+apply). Collect all of it; edit nothing for any finding while either reviewer is still running — `hub
+wait` the sibling job ids, or spend the gap only on non-application work. Once BOTH are done, reconcile
+the collected findings into one disposition set:
+
+- **Dedupe** — a finding both lenses report becomes one row carrying both lenses and one commit:
+  `refactor(hickey+lowy): <short label>`.
+- **Resolve disagreements** with the `/lowy` ↔ `/hickey` rule (`skill://lowy`, "Relationship to
+  /hickey"): *unify the volatile axis without complecting the strategies*. If unification needs a mode
+  flag, conditional branch, or type-switch, find the layer where it is mechanical.
+- **Latest word wins** — a later message from a lens amends or retracts its earlier findings.
+
 **Cross-validate the parallel findings.** Skip only when both reviewers returned zero findings.
 Otherwise, for each reviewer that produced findings, spawn a **second invocation of that same skill**
 in parallel, with a self-contained prompt containing:
 
 - The actual diff (`vcs_read` with `{ args: ["diff-range"] }`)
-- The other reviewer's full findings output — paste verbatim; the cross-validator must see the
-  recommendations being audited, not a summary
+- The reconciled disposition set — each row carrying its source entries verbatim (merged rows carry
+  both lenses' raw text); the cross-validator must audit the recommendations that will be applied, not
+  a summary
 - The question, phrased neutrally: _"Apply your lens to the diff **and** to the other reviewer's
   recommendations. Does any recommendation, if applied, create a problem your lens would flag? If yes,
   surface it as a new finding with the same disposition rules (Fix in this PR / No-op, no Defer)."_
 
 Treat any new finding identically to a first-pass finding, with commit prefix
 `refactor(hickey): cross-validate — <short label>` (or `refactor(lowy): cross-validate — …`) so the log
-distinguishes cross-validation findings.
+distinguishes cross-validation findings. New cross-validation findings re-enter **collect → reconcile**
+before any application.
 
 **Apply each "Fix in this PR" finding as its own commit** — do not batch. A reviewer reading the PR's
 commit history should follow the structural refinement one finding at a time:
 
 1. Apply the fix narrowly — only the lines that address this specific finding.
 2. Run the project's format command on the changed files, if one is configured.
-3. Call the `vcs_write` tool with `{ op: "fix-commit", message: "refactor(hickey): <short finding label>", files: ["<file1>", "<file2>", ...] }` (or `refactor(lowy): …`). Body restates the finding in one line; the dispatcher stages only the passed files and pushes.
+3. Call the `vcs_write` tool with `{ op: "fix-commit", message: "refactor(hickey): <short finding label>", files: ["<file1>", "<file2>", ...] }` (or `refactor(lowy): …`; a merged row uses `refactor(hickey+lowy): …`). Body restates the finding in one line; the dispatcher stages only the passed files and pushes.
 
 **Under `--no-vcs`**: skip commit/push. Apply fixes to the working tree and move on.
 
-**Verify**: Both hickey and lowy produced review output. Cross-validation ran (or was correctly skipped
-because both reviewers returned zero findings). Every finding has a disposition — **Fix in this PR** or
-**No-op**, no defers. Every Fix has a corresponding commit, except under `--no-vcs`.
+**Verify**: Both hickey and lowy are done and produced findings (streamed, in their results, or both).
+The reconciled disposition set exists — dedupes merged, disagreements resolved, latest word applied.
+Cross-validation ran (or was correctly skipped because both reviewers returned zero findings). No
+application — commit or working-tree edit — predates both reviewers' completion. Every finding has a
+disposition — **Fix in this PR** or **No-op**, no defers. Every Fix has a corresponding commit, except
+under `--no-vcs`.
