@@ -86,6 +86,8 @@ in parallel, with a self-contained prompt containing:
 - The reconciled disposition set — each row carrying its source entries verbatim (merged rows carry
   both lenses' raw text); the cross-validator must audit the recommendations that will be applied, not
   a summary
+- The findings channel: the same complete send contract as the first pass (above) — stream each
+  finding as it forms, ONE `hub` message per Actions entry
 - The question, phrased neutrally: _"Apply your lens to the diff **and** to the other reviewer's
   recommendations. Does any recommendation, if applied, create a problem your lens would flag? If yes,
   surface it as a new finding with the same disposition rules (Fix in this PR / No-op, no Defer)."_
