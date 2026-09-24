@@ -18,7 +18,7 @@ teardown() {
 }
 
 run_lint() {
-  SKILLS_DIR="$FIXTURE_SKILLS" run bash "$LINT" "$@"
+  SKILLS_DIR="$FIXTURE_SKILLS" AGENTS_DIR="$TEST_DIR/fixtures/agents-absent" run bash "$LINT" "$@"
 }
 
 @test "clean skill files: exit 0" {
