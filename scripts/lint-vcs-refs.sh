@@ -249,6 +249,7 @@ check_tool_refs() {
 }
 
 tool_violations=0
+config_violations=0
 
 # Reviewer-agent skills: checked only when the agent definitions are present.
 # The skip is announced explicitly so CI can distinguish checked-clean from
@@ -259,7 +260,7 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   # lowy.md must declare the same allowlist; verify rather than merge.
   if ! diff <(printf '%s\n' "${HICKEY_TOOLS[@]}") <(printf '%s\n' "${LOWY_TOOLS[@]}") >/dev/null; then
     echo "::error file=$AGENTS_DIR/lowy.md::Reviewer agent frontmatter tools differ from agents/hickey.md." >&2
-    config_violations=$((${config_violations:-0} + 1))
+    config_violations=$((config_violations + 1))
   fi
   # Pin the reviewer capability set (frontmatter `tools:` only — the effective
   # allowlist used above also carries extension tools and must not feed the
@@ -267,10 +268,10 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   # transport swap grew messaging into full file writes), not an accidental
   # side effect. Update this pin deliberately.
   expected_reviewer_tools=$'ast-grep\nfind\nglob\ngrep\nread\nvcs_read\nwrite'
-  actual_reviewer_tools="$(sed -n 's/^tools:[[:space:]]*//p' "$AGENTS_DIR/hickey.md" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
+  actual_reviewer_tools="$(sed -n '0,/tools:/s/^tools:[[:space:]]*//p' "$AGENTS_DIR/hickey.md" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
   if [ "$actual_reviewer_tools" != "$expected_reviewer_tools" ]; then
     echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent frontmatter tools drifted from the pinned set [${expected_reviewer_tools//$'\n'/, }]. Widening or narrowing the list is a deliberate decision - update this pin in the same change." >&2
-    config_violations=$((${config_violations:-0} + 1))
+    config_violations=$((config_violations + 1))
   fi
   for reviewer_file in "$SKILLS_DIR"/hickey/*.md "$SKILLS_DIR"/lowy/*.md "$SKILLS_DIR"/fact-check/*.md; do
     [ -f "$reviewer_file" ] || continue
@@ -287,15 +288,15 @@ for police_file in "$SKILLS_DIR"/code-police/*.md; do
   check_tool_refs "$police_file" "scout" "${SCOUT_TOOLS[@]}" "${EXTENSION_TOOLS[@]}"
 done
 
-if [ "${config_violations:-0}" -gt 0 ]; then
-  echo "Found ${config_violations:-0} reviewer-agent configuration violation(s) (frontmatter drift)." >&2
+if [ "$config_violations" -gt 0 ]; then
+  echo "Found $config_violations reviewer-agent configuration violation(s) (frontmatter drift)." >&2
   echo "Align agents/hickey.md and agents/lowy.md with the pinned tool set, or update the pin deliberately." >&2
 fi
 if [ "$tool_violations" -gt 0 ]; then
   echo "Found $tool_violations tool-reference violation(s) in reviewer skill files." >&2
   echo "Remove the reference or add the tool to the executor's allowlist (agents/*.md frontmatter or src/agency-tools.ts)." >&2
 fi
-if [ "$((${config_violations:-0} + tool_violations))" -gt 0 ]; then
+if [ "$((config_violations + tool_violations))" -gt 0 ]; then
   exit 1
 fi
 
