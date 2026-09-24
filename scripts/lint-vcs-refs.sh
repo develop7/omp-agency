@@ -183,13 +183,23 @@ trim() {
   printf '%s' "$s"
 }
 
-# Emit the executor allowlist: frontmatter `tools:` (comma-separated) of the
-# given agent file plus the extension-registered tools.
+# Emit the raw comma-separated `tools:` declaration of an agent file, taken
+# from the leading `---` frontmatter block only. A body-level `tools:` must
+# never stand in for agent configuration; the pin check enforces exactly one
+# declaration.
+frontmatter_tools_line() {
+  awk 'BEGIN { b = 0 }
+    /^---[[:space:]]*$/ { b++; next }
+    b == 1 && /^tools:[[:space:]]*/ { sub(/^tools:[[:space:]]*/, ""); print }
+    b > 1 { exit }' "$1"
+}
+
+# Emit the executor allowlist: frontmatter `tools:` tokens of the given agent
+# file plus the extension-registered tools.
 reviewer_tools() {
   local agent_file="$1"
   local line
-  # GNU sed range form: first `tools:` line only, no pipe to head (SIGPIPE).
-  line="$(sed -n '0,/tools:/s/^tools:[[:space:]]*//p' "$agent_file")"
+  line="$(frontmatter_tools_line "$agent_file")"
   if [ -n "$line" ]; then
     local IFS=','
     local tools=()
@@ -268,10 +278,16 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   # transport swap grew messaging into full file writes), not an accidental
   # side effect. Update this pin deliberately.
   expected_reviewer_tools=$'ast-grep\nfind\nglob\ngrep\nread\nvcs_read\nwrite'
-  actual_reviewer_tools="$(sed -n '0,/tools:/s/^tools:[[:space:]]*//p' "$AGENTS_DIR/hickey.md" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
-  if [ "$actual_reviewer_tools" != "$expected_reviewer_tools" ]; then
-    echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent frontmatter tools drifted from the pinned set [${expected_reviewer_tools//$'\n'/, }]. Widening or narrowing the list is a deliberate decision - update this pin in the same change." >&2
+  tools_decls="$(frontmatter_tools_line "$AGENTS_DIR/hickey.md" | grep -c .)"
+  if [ "$tools_decls" -ne 1 ]; then
+    echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent must declare exactly one frontmatter \`tools:\` line (found $tools_decls). Fix: declare the tool list once inside the leading --- block." >&2
     config_violations=$((config_violations + 1))
+  else
+    actual_reviewer_tools="$(frontmatter_tools_line "$AGENTS_DIR/hickey.md" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
+    if [ "$actual_reviewer_tools" != "$expected_reviewer_tools" ]; then
+      echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent frontmatter tools drifted from the pinned set [${expected_reviewer_tools//$'\n'/, }]. Widening or narrowing the list is a deliberate decision - update this pin in the same change." >&2
+      config_violations=$((config_violations + 1))
+    fi
   fi
   for reviewer_file in "$SKILLS_DIR"/hickey/*.md "$SKILLS_DIR"/lowy/*.md "$SKILLS_DIR"/fact-check/*.md; do
     [ -f "$reviewer_file" ] || continue
