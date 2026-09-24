@@ -239,3 +239,34 @@ run_lint_agents() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"pinned set"* ]]
 }
+
+@test "reviewer agent tree with one missing file is a configuration violation" {
+  setup_agents_fixture
+  rm "$FIXTURE_AGENTS/lowy.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"agents/lowy.md is missing"* ]]
+}
+
+@test "duplicate frontmatter tools declarations are a configuration violation" {
+  setup_agents_fixture
+  printf -- "---\nname: hickey\ntools: %s\ntools: %s\n---\nbody\n" "$REVIEWER_TOOLS" "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/hickey.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly one frontmatter"* ]]
+}
+
+@test "body-level tools line cannot stand in for frontmatter" {
+  setup_agents_fixture
+  printf -- "---\nname: hickey\n---\ntools: %s\nbody\n" "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/hickey.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly one frontmatter"* ]]
+}
+
+@test "frontmatter equality is order-insensitive" {
+  setup_agents_fixture
+  printf -- '---\nname: lowy\ntools: write, vcs_read, read, grep, glob, find, ast-grep\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  run_lint_agents
+  [ "$status" -eq 0 ]
+}
