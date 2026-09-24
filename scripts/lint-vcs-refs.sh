@@ -193,7 +193,7 @@ frontmatter_tools_line() {
     b == 1 && /^---[[:space:]]*$/ { b = 2; next }
     b == 1 && /^tools:[[:space:]]*/ { sub(/^tools:[[:space:]]*/, ""); print }
     b != 1 { exit }
-    END { if (b == 1) exit 3 }' "$1"
+    END { if (b != 2) exit 3 }' "$1"
 }
 
 # Count raw `tools:` declarations in the leading block, including empty ones.
@@ -289,12 +289,21 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   # transport swap grew messaging into full file writes), not an accidental
   # side effect. Update this pin deliberately.
   expected_reviewer_tools=$'ast-grep\nfind\nglob\ngrep\nread\nvcs_read\nwrite'
-  tools_decls="$(frontmatter_tools_line "$AGENTS_DIR/hickey.md" | awk 'NF { n++ } END { print n + 0 }')"
-  if [ "$tools_decls" -ne 1 ]; then
-    echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent must declare exactly one frontmatter \`tools:\` line (found $tools_decls). Fix: declare the tool list once inside the leading --- block." >&2
-    config_violations=$((config_violations + 1))
-  else
-    actual_reviewer_tools="$(frontmatter_tools_line "$AGENTS_DIR/hickey.md" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
+  for agent in hickey lowy; do
+    agent_file="$AGENTS_DIR/$agent.md"
+    if ! frontmatter_tools_line "$agent_file" >/dev/null; then
+      echo "::error file=$agent_file::Reviewer agent frontmatter must be a closed block opening on line 1 (\`---\`). Fix: declare frontmatter, then the body." >&2
+      config_violations=$((config_violations + 1))
+      continue
+    fi
+    tools_decls="$(frontmatter_tools_decls "$agent_file")"
+    if [ "$tools_decls" -ne 1 ]; then
+      echo "::error file=$agent_file::Reviewer agent must declare exactly one frontmatter \`tools:\` line (found $tools_decls). Fix: declare the tool list once inside the leading --- block." >&2
+      config_violations=$((config_violations + 1))
+    fi
+  done
+  if actual_reviewer_tools="$(frontmatter_tools_line "$AGENTS_DIR/hickey.md")"; then
+    actual_reviewer_tools="$(printf '%s' "$actual_reviewer_tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
     if [ "$actual_reviewer_tools" != "$expected_reviewer_tools" ]; then
       echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent frontmatter tools drifted from the pinned set [${expected_reviewer_tools//$'\n'/, }]. Widening or narrowing the list is a deliberate decision - update this pin in the same change." >&2
       config_violations=$((config_violations + 1))
