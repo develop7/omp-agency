@@ -39,8 +39,9 @@ Each sub-agent prompt must be self-contained (sub-agents inherit no context). Br
 - Scope: the actual diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
 - **Findings channel (the complete send contract)**: ONE `write` per finding as it forms —
   `path: "agent://<caller>"`, `content: <entry>` — carrying the skill's **Actions** entry verbatim
-  (`agent://Main` unless this brief names another caller id). The reviewer's latest word
-  wins over its earlier messages. On a failed `write`: retry once, then mark that entry
+  (`agent://Main` unless this brief names another caller id). An amendment names
+  the bolded label of the entry it replaces (the label is the entry's key); the latest word per key
+  wins. On a failed `write`: retry once, then mark that entry
   `undelivered` in the result. The final result is ONE summary line (e.g. `N findings streamed;
   fact-check clean`) — never a findings list.
 - **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
