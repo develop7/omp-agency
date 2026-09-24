@@ -259,7 +259,7 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   mapfile -t LOWY_TOOLS < <(reviewer_tools "$AGENTS_DIR/lowy.md")
   # lowy.md must declare the same allowlist; verify rather than merge.
   if ! diff <(printf '%s\n' "${HICKEY_TOOLS[@]}") <(printf '%s\n' "${LOWY_TOOLS[@]}") >/dev/null; then
-    echo "::error file=$AGENTS_DIR/lowy.md::Reviewer agent frontmatter tools differ from agents/hickey.md." >&2
+    echo "::error file=$AGENTS_DIR/lowy.md::Reviewer agent frontmatter tools differ from agents/hickey.md. Fix: declare the identical tools list in both agent files." >&2
     config_violations=$((config_violations + 1))
   fi
   # Pin the reviewer capability set (frontmatter `tools:` only — the effective
