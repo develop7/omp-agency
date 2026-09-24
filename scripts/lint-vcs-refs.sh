@@ -184,14 +184,24 @@ trim() {
 }
 
 # Emit the raw comma-separated `tools:` declaration of an agent file, taken
-# from the leading `---` frontmatter block only. A body-level `tools:` must
-# never stand in for agent configuration; the pin check enforces exactly one
-# declaration.
+# from a closed leading `---` frontmatter block only. The opener must be line
+# 1 and the block must close before the body: a body-level `tools:` must never
+# stand in for agent configuration. Exits non-zero on a malformed block; the
+# pin check enforces exactly one declaration.
 frontmatter_tools_line() {
-  awk 'BEGIN { b = 0 }
-    /^---[[:space:]]*$/ { b++; next }
+  awk 'NR == 1 { if ($0 ~ /^---[[:space:]]*$/) b = 1; next }
+    b == 1 && /^---[[:space:]]*$/ { b = 2; next }
     b == 1 && /^tools:[[:space:]]*/ { sub(/^tools:[[:space:]]*/, ""); print }
-    b > 1 { exit }' "$1"
+    b != 1 { exit }
+    END { if (b == 1) exit 3 }' "$1"
+}
+
+# Count raw `tools:` declarations in the leading block, including empty ones.
+frontmatter_tools_decls() {
+  awk 'NR == 1 { if ($0 ~ /^---[[:space:]]*$/) b = 1; next }
+    b == 1 && /^---[[:space:]]*$/ { exit }
+    b == 1 && /^tools:/ { n++ }
+    END { print n + 0 }' "$1"
 }
 
 # Emit the executor allowlist: frontmatter `tools:` tokens of the given agent
