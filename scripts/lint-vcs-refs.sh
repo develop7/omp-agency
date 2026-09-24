@@ -261,11 +261,13 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
     echo "::error file=$AGENTS_DIR/lowy.md::Reviewer agent frontmatter tools differ from agents/hickey.md." >&2
     tool_violations=$((tool_violations + 1))
   fi
-  # Pin the reviewer capability set: widening `tools:` must be a diff-visible
-  # decision (the hub->write transport swap grew messaging into full file
-  # writes), not an accidental side effect. Update this pin deliberately.
+  # Pin the reviewer capability set (frontmatter `tools:` only — the effective
+  # allowlist used above also carries extension tools and must not feed the
+  # pin): widening `tools:` must be a diff-visible decision (the hub->write
+  # transport swap grew messaging into full file writes), not an accidental
+  # side effect. Update this pin deliberately.
   expected_reviewer_tools=$'ast-grep\nfind\nglob\ngrep\nread\nvcs_read\nwrite'
-  actual_reviewer_tools="$(printf '%s\n' "${HICKEY_TOOLS[@]}" | LC_ALL=C sort)"
+  actual_reviewer_tools="$(sed -n 's/^tools:[[:space:]]*//p' "$AGENTS_DIR/hickey.md" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
   if [ "$actual_reviewer_tools" != "$expected_reviewer_tools" ]; then
     echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent frontmatter tools drifted from the pinned set [ast-grep, find, glob, grep, read, vcs_read, write]. Widening or narrowing the list is a deliberate decision - update this pin in the same change." >&2
     tool_violations=$((tool_violations + 1))
