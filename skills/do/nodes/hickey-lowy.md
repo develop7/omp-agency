@@ -37,9 +37,10 @@ Each sub-agent prompt must be self-contained (sub-agents inherit no context). Br
 
 - The full task prompt plus anything relevant that **research** uncovered
 - Scope: the actual diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
-- **Findings channel (the complete send contract)**: `hub` `op: "send"` to **this session**, ONE message
-  per finding as it forms, carrying the skill's **Actions** entry verbatim. The reviewer's latest word
-  wins over its earlier messages. On send failure: retry the send once, then mark that entry
+- **Findings channel (the complete send contract)**: ONE `write` per finding as it forms —
+  `path: "agent://<caller>"`, `content: <entry>` — carrying the skill's **Actions** entry verbatim
+  (`agent://Main` unless this brief names another caller id). The reviewer's latest word
+  wins over its earlier messages. On a failed `write`: retry once, then mark that entry
   `undelivered` in the result. The final result is ONE summary line (e.g. `N findings streamed;
   fact-check clean`) — never a findings list.
 - **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
@@ -69,8 +70,9 @@ forms, and each result auto-delivers when its reviewer finishes ("resume your wo
 apply). Collect per lens: its streamed messages (latest word wins), any `undelivered` entries its
 result carries (equal standing in the set), and — on fallback or retry — its result as that lens's
 authoritative set, superseding any partial stream wholesale. Edit nothing for any finding while either
-reviewer is still running — `hub wait` the sibling job ids, or spend the gap only on non-application
-work. Once BOTH are done, reconcile the collected findings into one disposition set:
+reviewer is still running — call `wait` (it returns on the first settled sibling job or message), or
+spend the gap only on non-application work. Once BOTH are done, reconcile the collected findings into
+one disposition set:
 
 - **Dedupe** — a finding both lenses report becomes one row carrying both lenses and one commit:
   `refactor(hickey+lowy): <short label>`.
@@ -88,7 +90,7 @@ in parallel, with a self-contained prompt containing:
   both lenses' raw text); the cross-validator must audit the recommendations that will be applied, not
   a summary
 - The findings channel: the same complete send contract as the first pass (above) — stream each
-  finding as it forms, ONE `hub` message per Actions entry
+  finding as it forms, ONE `write` to `agent://<caller>` per Actions entry
 - The question, phrased neutrally: _"Apply your lens to the diff **and** to the other reviewer's
   recommendations. Does any recommendation, if applied, create a problem your lens would flag? If yes,
   surface it as a new finding with the same disposition rules (Fix in this PR / No-op, no Defer)."_
