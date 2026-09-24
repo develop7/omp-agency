@@ -71,10 +71,11 @@ in the PR description as a strategic note, not a deferred finding.
 **Collect, then reconcile — never apply on arrival.** The reviewers stream each finding the moment it
 forms, and each result auto-delivers when its reviewer finishes ("resume your work" is not a license to
 apply). Collect per lens: its streamed messages (latest word per entry key wins). The terminal result
-adds exactly one kind of content to the set: its `undelivered` entries, merged with equal standing
-(never treated as a replacement findings list). If a result instead carries a findings list, that
-result replaces the lens's stream as its authoritative set, superseding any partial stream wholesale
-(a retried reviewer supersedes by its fresh stream, not its summary-line result). Edit nothing for any finding while
+adds exactly one kind of content to the set: its `undelivered` entries, merged with equal standing. A
+result carrying any other finding-shaped content is a malformed result — treat the attempt as failed
+(retry, then fallback) rather than letting it replace collected findings. A fallback or retried
+attempt supersedes that lens's earlier partial stream wholesale (a retry supersedes by its fresh
+stream). Edit nothing for any finding while
 either reviewer is still running — call `wait` until BOTH reviewers' results have arrived, or spend
 the gap only on non-application work (the same move when `wait` is unavailable). Once BOTH are done,
 reconcile the collected findings into one disposition set:
