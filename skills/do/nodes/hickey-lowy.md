@@ -29,9 +29,9 @@ review in the main model by loading the reviewer skill against the same diff. Do
 informal review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
 model override. The main-model fallback uses the reviewer's declared tool set (the frontmatter
 `tools:` in `agents/{hickey,lowy}.md`) until findings are reported, under the named role **caller
-(fallback)**: it emits that lens's set as one plain-text Actions list (no channel to supersede), and
-that result is the lens's authoritative findings set, superseding any partial stream wholesale. It
-enters the same collect → reconcile pipeline before anything is applied.
+(fallback)**: it emits that lens's set as ONE plain-text Actions list in its result — the streaming
+channel is in-process self-delivery, so there is nothing to stream to. It enters the same
+collect → reconcile pipeline before anything is applied.
 
 Each sub-agent prompt must be self-contained (sub-agents inherit no context). Brief each one with:
 
