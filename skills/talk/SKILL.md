@@ -81,8 +81,12 @@ before the user invokes `do`.
 
 Whenever the conversation produces a concrete code plan, diff proposal, or implementable design sketch, invoke both
 reviewers in parallel before presenting the recommendation: use `task` with `agent: "lowy"` and `agent: "hickey"`.
-The deliverable is the post-review proposal. Change the design where a finding lands; do not append raw critique to an
-unchanged sketch. Briefly explain findings that did not land.
+Brief each to stream its findings per the `hickey-lowy` node's complete send contract (its "Findings channel" bullet,
+`skills/do/nodes/hickey-lowy.md`), overriding only the caller id (`agent://<this session>`).
+The deliverable is the post-review proposal. Collect and reconcile per the `hickey-lowy` node's canonical statement
+(`skills/do/nodes/hickey-lowy.md`, "Collect, then reconcile — never apply on arrival"), keeping only this step local:
+fold every surviving finding into the design only after both reviewers' results have arrived, then present. Never
+append raw critique to an unchanged sketch. Briefly explain findings that did not land.
 
 Ask Lowy to identify volatility boundaries and missing seams. Ask Hickey to identify concrete complecting or
 fragmentation risks in this sketch, or explicitly say there is nothing to bite into; generic principles are not findings.

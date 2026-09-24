@@ -183,13 +183,33 @@ trim() {
   printf '%s' "$s"
 }
 
-# Emit the executor allowlist: frontmatter `tools:` (comma-separated) of the
-# given agent file plus the extension-registered tools.
+# Emit the raw comma-separated `tools:` declaration of an agent file, taken
+# from a closed leading `---` frontmatter block only. The opener must be line
+# 1 and the block must close before the body: a body-level `tools:` must never
+# stand in for agent configuration. Exits non-zero on a malformed block; the
+# pin check enforces exactly one declaration.
+frontmatter_tools_line() {
+  awk 'NR == 1 { if ($0 ~ /^---[[:space:]]*$/) b = 1; next }
+    b == 1 && /^---[[:space:]]*$/ { b = 2; next }
+    b == 1 && /^tools:[[:space:]]*/ { sub(/^tools:[[:space:]]*/, ""); print }
+    b != 1 { exit }
+    END { if (b != 2) exit 3 }' "$1"
+}
+
+# Count raw `tools:` declarations in the leading block, including empty ones.
+frontmatter_tools_decls() {
+  awk 'NR == 1 { if ($0 ~ /^---[[:space:]]*$/) b = 1; next }
+    b == 1 && /^---[[:space:]]*$/ { exit }
+    b == 1 && /^tools:/ { n++ }
+    END { print n + 0 }' "$1"
+}
+
+# Emit the executor allowlist: frontmatter `tools:` tokens of the given agent
+# file plus the extension-registered tools.
 reviewer_tools() {
   local agent_file="$1"
   local line
-  # GNU sed range form: first `tools:` line only, no pipe to head (SIGPIPE).
-  line="$(sed -n '0,/tools:/s/^tools:[[:space:]]*//p' "$agent_file")"
+  line="$(frontmatter_tools_line "$agent_file")"
   if [ -n "$line" ]; then
     local IFS=','
     local tools=()
@@ -249,6 +269,7 @@ check_tool_refs() {
 }
 
 tool_violations=0
+config_violations=0
 
 # Reviewer-agent skills: checked only when the agent definitions are present.
 # The skip is announced explicitly so CI can distinguish checked-clean from
@@ -256,17 +277,53 @@ tool_violations=0
 if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   mapfile -t HICKEY_TOOLS < <(reviewer_tools "$AGENTS_DIR/hickey.md")
   mapfile -t LOWY_TOOLS < <(reviewer_tools "$AGENTS_DIR/lowy.md")
-  # lowy.md must declare the same allowlist; verify rather than merge.
-  if ! diff <(printf '%s\n' "${HICKEY_TOOLS[@]}") <(printf '%s\n' "${LOWY_TOOLS[@]}") >/dev/null; then
-    echo "::error file=$AGENTS_DIR/lowy.md::Reviewer agent frontmatter tools differ from agents/hickey.md." >&2
-    tool_violations=$((tool_violations + 1))
+  # lowy.md must declare the same allowlist (order-insensitive); verify rather
+  # than merge.
+  if ! diff <(printf '%s\n' "${HICKEY_TOOLS[@]}" | LC_ALL=C sort) <(printf '%s\n' "${LOWY_TOOLS[@]}" | LC_ALL=C sort) >/dev/null; then
+    echo "::error file=$AGENTS_DIR/lowy.md::Reviewer agent frontmatter tools differ from agents/hickey.md. Fix: declare the identical tools list in both agent files." >&2
+    config_violations=$((config_violations + 1))
+  fi
+  # Pin the reviewer capability set (frontmatter `tools:` only — the effective
+  # allowlist used above also carries extension tools and must not feed the
+  # pin): widening `tools:` must be a diff-visible decision (the hub->write
+  # transport swap grew messaging into full file writes), not an accidental
+  # side effect. Update this pin deliberately.
+  expected_reviewer_tools=$'ast-grep\nfind\nglob\ngrep\nread\nvcs_read\nwrite'
+  for agent in hickey lowy; do
+    agent_file="$AGENTS_DIR/$agent.md"
+    if ! frontmatter_tools_line "$agent_file" >/dev/null; then
+      echo "::error file=$agent_file::Reviewer agent frontmatter must be a closed block opening on line 1 (\`---\`). Fix: declare frontmatter, then the body." >&2
+      config_violations=$((config_violations + 1))
+      continue
+    fi
+    tools_decls="$(frontmatter_tools_decls "$agent_file")"
+    if [ "$tools_decls" -ne 1 ]; then
+      echo "::error file=$agent_file::Reviewer agent must declare exactly one frontmatter \`tools:\` line (found $tools_decls). Fix: declare the tool list once inside the leading --- block." >&2
+      config_violations=$((config_violations + 1))
+    fi
+  done
+  if actual_reviewer_tools="$(frontmatter_tools_line "$AGENTS_DIR/hickey.md")"; then
+    actual_reviewer_tools="$(printf '%s' "$actual_reviewer_tools" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
+    if [ "$actual_reviewer_tools" != "$expected_reviewer_tools" ]; then
+      echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent frontmatter tools drifted from the pinned set [${expected_reviewer_tools//$'\n'/, }]. Widening or narrowing the list is a deliberate decision - update this pin in the same change." >&2
+      config_violations=$((config_violations + 1))
+    fi
   fi
   for reviewer_file in "$SKILLS_DIR"/hickey/*.md "$SKILLS_DIR"/lowy/*.md "$SKILLS_DIR"/fact-check/*.md; do
     [ -f "$reviewer_file" ] || continue
     check_tool_refs "$reviewer_file" "reviewer-agent" "${HICKEY_TOOLS[@]}"
   done
 else
-  echo "Reviewer tool-reference check skipped: agents/ tree absent." >&2
+  if [ -f "$AGENTS_DIR/hickey.md" ] || [ -f "$AGENTS_DIR/lowy.md" ]; then
+    for missing in hickey lowy; do
+      if [ ! -f "$AGENTS_DIR/$missing.md" ]; then
+        echo "::error file=$AGENTS_DIR/$missing.md::Reviewer agent agents/$missing.md is missing. Fix: declare both reviewer agent files or remove both." >&2
+        config_violations=$((config_violations + 1))
+      fi
+    done
+  else
+    echo "Reviewer tool-reference check skipped: agents/ tree absent." >&2
+  fi
 fi
 
 # Code-police: passes 1-2 run as bundled-scout sub-agents; effective allowlist
@@ -276,9 +333,15 @@ for police_file in "$SKILLS_DIR"/code-police/*.md; do
   check_tool_refs "$police_file" "scout" "${SCOUT_TOOLS[@]}" "${EXTENSION_TOOLS[@]}"
 done
 
+if [ "$config_violations" -gt 0 ]; then
+  echo "Found $config_violations reviewer-agent configuration violation(s) (frontmatter drift)." >&2
+  echo "Align agents/hickey.md and agents/lowy.md with the pinned tool set, or update the pin deliberately." >&2
+fi
 if [ "$tool_violations" -gt 0 ]; then
   echo "Found $tool_violations tool-reference violation(s) in reviewer skill files." >&2
   echo "Remove the reference or add the tool to the executor's allowlist (agents/*.md frontmatter or src/agency-tools.ts)." >&2
+fi
+if [ "$((config_violations + tool_violations))" -gt 0 ]; then
   exit 1
 fi
 

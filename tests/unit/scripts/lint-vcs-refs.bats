@@ -18,7 +18,7 @@ teardown() {
 }
 
 run_lint() {
-  SKILLS_DIR="$FIXTURE_SKILLS" run bash "$LINT" "$@"
+  SKILLS_DIR="$FIXTURE_SKILLS" AGENTS_DIR="$TEST_DIR/fixtures/agents-absent" run bash "$LINT" "$@"
 }
 
 @test "clean skill files: exit 0" {
@@ -118,23 +118,25 @@ run_lint() {
 }
 
 # Tool-reference consistency check (reviewer skills).
-# Fixture runs have no agents/ tree, so the reviewer-agent branch is skipped;
-# code-police files are checked against the bundled scout allowlist plus the
-# extension-registered tools regardless.
+# Reviewer-skill checks run only against the controlled agents fixtures
+# (setup_agents_fixture); code-police files are checked against the bundled
+# scout allowlist plus the extension-registered tools regardless.
 
 @test "tool-allowlist check passes when reviewer skills reference allowed tools" {
+  setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy" "$FIXTURE_SKILLS/code-police"
   printf 'Use the `vcs_read` tool with `{ args: ["diff-range"] }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
   printf 'Do not use the `ask` tool. Orchestration may use `web_search`.\n' > "$FIXTURE_SKILLS/code-police/SKILL.md"
-  run_lint
+  run_lint_agents
   [ "$status" -eq 0 ]
   [[ "$output" == *"tool references are consistent"* ]]
 }
 
 @test "tool-allowlist check fails on disallowed reviewer tool reference" {
+  setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy"
   printf 'Invoke the `bash` tool with a shell command.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
-  run_lint
+  run_lint_agents
   [ "$status" -eq 1 ]
   [[ "$output" == *"Tool reference 'bash' is not on the reviewer-agent effective allowlist."* ]]
 }
@@ -148,22 +150,24 @@ run_lint() {
 }
 
 @test "tool-allowlist check accepts extension tool references in reviewer skills" {
+  setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/hickey"
   printf 'Fetch with `forge { args: ["pr-view"] }` when the harness exposes it.\n' > "$FIXTURE_SKILLS/hickey/SKILL.md"
-  run_lint
-  # Without an agents/ tree the reviewer branch is skipped, so this only
-  # proves the scanner itself does not crash on hickey files.
+  run_lint_agents
   [ "$status" -eq 0 ]
 }
 
 # Reviewer-agent branch coverage: fixture agents/ tree with controlled
 # frontmatter, exercised through the AGENTS_DIR override.
 
+# The pinned reviewer capability set, shared by the fixture builders below.
+REVIEWER_TOOLS="read, ast-grep, grep, find, glob, vcs_read, write"
+
 setup_agents_fixture() {
   FIXTURE_AGENTS="$TEST_DIR/fixtures/agents"
   mkdir -p "$FIXTURE_AGENTS"
-  printf -- '---\nname: hickey\ntools: read, grep, glob, vcs_read\n---\nbody\n' > "$FIXTURE_AGENTS/hickey.md"
-  printf -- '---\nname: lowy\ntools: read, grep, glob, vcs_read\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  printf -- "---\nname: hickey\ntools: $REVIEWER_TOOLS\n---\nbody\n" > "$FIXTURE_AGENTS/hickey.md"
+  printf -- "---\nname: lowy\ntools: $REVIEWER_TOOLS\n---\nbody\n" > "$FIXTURE_AGENTS/lowy.md"
 }
 
 run_lint_agents() {
@@ -219,4 +223,76 @@ run_lint_agents() {
   printf 'Do **not** use the `ask` tool.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 0 ]
+}
+
+@test "reviewer frontmatter tools pinned to the expected set" {
+  setup_agents_fixture
+  run_lint_agents
+  [ "$status" -eq 0 ]
+}
+
+@test "reviewer frontmatter widening fails the pinned-set check" {
+  setup_agents_fixture
+  printf -- "---\nname: hickey\ntools: $REVIEWER_TOOLS, bash\n---\nbody\n" > "$FIXTURE_AGENTS/hickey.md"
+  printf -- "---\nname: lowy\ntools: $REVIEWER_TOOLS, bash\n---\nbody\n" > "$FIXTURE_AGENTS/lowy.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pinned set"* ]]
+}
+
+@test "reviewer agent tree with one missing file is a configuration violation" {
+  setup_agents_fixture
+  rm "$FIXTURE_AGENTS/lowy.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"agents/lowy.md is missing"* ]]
+}
+
+@test "duplicate frontmatter tools declarations are a configuration violation" {
+  setup_agents_fixture
+  printf -- "---\nname: hickey\ntools: %s\ntools: %s\n---\nbody\n" "$REVIEWER_TOOLS" "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/hickey.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly one frontmatter"* ]]
+}
+
+@test "body-level tools line cannot stand in for frontmatter" {
+  setup_agents_fixture
+  printf -- "---\nname: hickey\n---\ntools: %s\nbody\n" "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/hickey.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly one frontmatter"* ]]
+}
+
+@test "frontmatter equality is order-insensitive" {
+  setup_agents_fixture
+  printf -- '---\nname: lowy\ntools: write, vcs_read, read, grep, glob, find, ast-grep\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  run_lint_agents
+  [ "$status" -eq 0 ]
+}
+
+@test "unclosed frontmatter block is a configuration violation" {
+  setup_agents_fixture
+  printf -- '---\nname: hickey\ntools: %s\nbody without closing delimiter\n' "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/hickey.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"closed block"* ]]
+}
+
+@test "frontmatter must open on line 1" {
+  setup_agents_fixture
+  printf -- 'prose first\n---\nname: hickey\ntools: %s\n---\nbody\n' "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/hickey.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"closed block"* ]]
+}
+
+@test "empty duplicate tools declarations are configuration violations" {
+  setup_agents_fixture
+  for agent in hickey lowy; do
+    printf -- '---\nname: %s\ntools: %s\ntools:\n---\nbody\n' "$agent" "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/$agent.md"
+  done
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly one frontmatter"* ]]
 }
