@@ -68,11 +68,11 @@ in the PR description as a strategic note, not a deferred finding.
 
 **Collect, then reconcile — never apply on arrival.** The reviewers stream each finding the moment it
 forms, and each result auto-delivers when its reviewer finishes ("resume your work" is not a license to
-apply). Collect per lens: its streamed messages (latest word wins), any `undelivered` entries its
-result carries (equal standing in the set), and its result — nominally ONE summary line plus those
-entries; if a result instead carries a findings list, treat it as that lens's authoritative set. An
-authoritative set supersedes any partial stream wholesale; a retried reviewer supersedes by its fresh
-stream, not its summary-line result. Edit nothing for any finding while either
+apply). Collect per lens: its streamed messages (latest word per entry key wins), merging any
+`undelivered` entries its result carries with equal standing. Its result is nominally ONE summary line
+plus those entries; if a result instead carries a findings list, that result replaces the lens's
+stream as its authoritative set, superseding any partial stream wholesale (a retried reviewer
+supersedes by its fresh stream, not its summary-line result). Edit nothing for any finding while either
 reviewer is still running — call `wait` until BOTH reviewers' results have arrived, or spend the gap
 only on non-application work (the same move when `wait` is unavailable). Once BOTH are done, reconcile the collected findings into
 one disposition set:
