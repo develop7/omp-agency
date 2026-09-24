@@ -162,8 +162,8 @@ run_lint() {
 setup_agents_fixture() {
   FIXTURE_AGENTS="$TEST_DIR/fixtures/agents"
   mkdir -p "$FIXTURE_AGENTS"
-  printf -- '---\nname: hickey\ntools: read, grep, glob, vcs_read\n---\nbody\n' > "$FIXTURE_AGENTS/hickey.md"
-  printf -- '---\nname: lowy\ntools: read, grep, glob, vcs_read\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  printf -- '---\nname: hickey\ntools: read, ast-grep, grep, find, glob, vcs_read, write\n---\nbody\n' > "$FIXTURE_AGENTS/hickey.md"
+  printf -- '---\nname: lowy\ntools: read, ast-grep, grep, find, glob, vcs_read, write\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
 }
 
 run_lint_agents() {
@@ -219,4 +219,19 @@ run_lint_agents() {
   printf 'Do **not** use the `ask` tool.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 0 ]
+}
+
+@test "reviewer frontmatter tools pinned to the expected set" {
+  setup_agents_fixture
+  run_lint_agents
+  [ "$status" -eq 0 ]
+}
+
+@test "reviewer frontmatter widening fails the pinned-set check" {
+  setup_agents_fixture
+  printf -- '---\nname: hickey\ntools: read, ast-grep, grep, find, glob, vcs_read, write, bash\n---\nbody\n' > "$FIXTURE_AGENTS/hickey.md"
+  printf -- '---\nname: lowy\ntools: read, ast-grep, grep, find, glob, vcs_read, write, bash\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pinned set"* ]]
 }
