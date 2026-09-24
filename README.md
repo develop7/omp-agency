@@ -155,12 +155,14 @@ workflow evaluation is provided by `nickel-vm` WASM:
 ```bash
 just test          # build, then run bats tests (unit + integration)
 just test-pure     # run the PureScript core unit tests
+just test-plugin   # adapter-level plugin tests against the real backend + omptype zod
 just lint          # run shellcheck on bash scripts
 just lint-skills   # lint skill markdown: no raw VCS/forge commands; reviewer skill tool references stay on the executor's allowlist
 just build         # compile and bundle the PureScript core
-just ci            # full CI: tests + lint + skill prose lint + runtime package proof
-just nickel-build  # build the Nickel WASM evaluator and Node glue
-just runtime-check # stage the minimal runtime package and verify it
+just ci            # full CI: tests + lint + skill prose lint + drift guards, then plugin surface tests
+just drift-check   # drift guards: vocabulary regeneration is a no-op, Nickel drv fingerprint matches
+just nickel-build  # build the Nickel WASM evaluator (dist + drv fingerprint ledger)
+just nickel-check  # verify nickel-vm/dist/ is fresh against the flake inputs
 node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite (inside nix develop)
 ```
 
@@ -171,11 +173,16 @@ One-off CLI invocations outside the dev shell should pin the interpreter too:
 
 The PureScript bundles (`pure/dist/*.js`) and the Nickel WASM glue
 (`nickel-vm/dist/*`) are **build outputs, not source**: a clean checkout ships
-none of them, and they are never committed. Every bundle-level recipe (`test`,
-`test-unit`, `test-integration`, `runtime-check`, `ci`) therefore builds them
-first. Source checkouts that link the plugin directly
-(`omp plugin link ./path/to/agency`) must run `just build nickel-build` first —
+none of them, and they are never committed. Every recipe that consumes
+`nickel-vm/dist/` (`test`, `test-unit`, `test-integration`, `runtime-check`,
+`test-plugin`) depends on `nickel-build` first. Source checkouts that link the
+plugin directly (`omp plugin link ./path/to/agency`) must run
+`just build nickel-build` first —
 a linked checkout without built artifacts cannot load the extension.
+
+The lone exception is `nickel-vm/dist/.drv-fingerprint` — the committed
+staleness ledger for the WASM runtime, checked by `just nickel-check`
+(see `nickel-vm/README.md`).
 
 CI builds and verifies the artifacts on every PR, and on pushes to `main`
 publishes the installable runtime: it stages the minimal runtime package

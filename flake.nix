@@ -183,6 +183,21 @@
               test -f "$out/dist/nickel_vm.js"
             '';
           };
+
+          # The OMP omptype package (raw TypeScript sources) pinned from the
+          # public npm registry. The version must track the OMP host that
+          # injects `pi.zod`; tests/plugin bundles src/zod.ts with esbuild so
+          # adapter-level tests exercise real schema semantics without
+          # node_modules.
+          omptype =
+            let
+              version = "18.1.16";
+            in
+            pkgs.fetchzip {
+              url = "https://registry.npmjs.org/@oh-my-pi/omptype/-/omptype-${version}.tgz";
+              hash = "sha256-YsfBGUNdp+6zT9QHexqeq7R8fO5k933LmTQSEQ0n0OY=";
+              stripRoot = true;
+            };
         }
       );
 

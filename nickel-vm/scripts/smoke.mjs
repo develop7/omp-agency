@@ -2,22 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { evaluateWorkflow } from './workflow-runtime.mjs';
-
-
-const TEST_STATE = {
-    active: "working",
-    status: "running",
-    steps: [],
-    noVcs: false,
-    minimal: false,
-    review: false,
-    forge: "github",
-    supportsPrCreate: true,
-    supportsPrComment: true,
-    supportsIssueView: true,
-    supportsPrChecks: true,
-    task: "test"
-};
+import { TEST_STATE } from '../../tests/fixtures/do-state.mjs';
 
 function stateSource(state) {
     return JSON.stringify(state);
@@ -107,7 +92,8 @@ async function run() {
     assert('cli_seed "followup"', res3.stdout, GOLDENS.cli_seed_followup);
 
     const invalidSeed = await workflowResult('cli_seed', TEST_STATE, "\u0000\n\"\\雪");
-    assert('cli_seed rejects an unknown nonempty entry point', invalidSeed.exit !== 0, true);
+    assert('cli_seed rejects an unknown nonempty entry point',
+        invalidSeed.exit !== 0 && /record\/get/.test(invalidSeed.stderr), true);
 
     for (const status of ["failed", "completed"]) {
         const terminal = await workflowResult('cli', { ...TEST_STATE, status });
