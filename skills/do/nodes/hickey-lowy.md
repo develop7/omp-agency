@@ -113,8 +113,9 @@ commit history should follow the structural refinement one finding at a time:
 
 **Under `--no-vcs`**: skip commit/push. Apply fixes to the working tree and move on.
 
-**Verify**: Both hickey and lowy are done and produced findings (streamed, in their results, or both).
-The reconciled disposition set exists — dedupes merged, disagreements resolved, latest word applied.
+**Verify**: Both hickey and lowy are done and produced a terminal result (zero findings is a valid
+result). The reconciled disposition set exists — dedupes merged, disagreements resolved, latest word
+applied.
 Cross-validation ran (or was correctly skipped because both reviewers returned zero findings). No
 application — commit or working-tree edit — predates both reviewers' completion. Every finding has a
 disposition — **Fix in this PR** or **No-op**, no defers. Every Fix has a corresponding commit, except
