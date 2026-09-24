@@ -267,8 +267,9 @@ config_violations=0
 if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   mapfile -t HICKEY_TOOLS < <(reviewer_tools "$AGENTS_DIR/hickey.md")
   mapfile -t LOWY_TOOLS < <(reviewer_tools "$AGENTS_DIR/lowy.md")
-  # lowy.md must declare the same allowlist; verify rather than merge.
-  if ! diff <(printf '%s\n' "${HICKEY_TOOLS[@]}") <(printf '%s\n' "${LOWY_TOOLS[@]}") >/dev/null; then
+  # lowy.md must declare the same allowlist (order-insensitive); verify rather
+  # than merge.
+  if ! diff <(printf '%s\n' "${HICKEY_TOOLS[@]}" | LC_ALL=C sort) <(printf '%s\n' "${LOWY_TOOLS[@]}" | LC_ALL=C sort) >/dev/null; then
     echo "::error file=$AGENTS_DIR/lowy.md::Reviewer agent frontmatter tools differ from agents/hickey.md. Fix: declare the identical tools list in both agent files." >&2
     config_violations=$((config_violations + 1))
   fi
