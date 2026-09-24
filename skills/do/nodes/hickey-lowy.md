@@ -70,8 +70,8 @@ forms, and each result auto-delivers when its reviewer finishes ("resume your wo
 apply). Collect per lens: its streamed messages (latest word wins), any `undelivered` entries its
 result carries (equal standing in the set), and — on fallback or retry — its result as that lens's
 authoritative set, superseding any partial stream wholesale. Edit nothing for any finding while either
-reviewer is still running — call `wait` (it returns on the first settled sibling job or message), or
-spend the gap only on non-application work. Once BOTH are done, reconcile the collected findings into
+reviewer is still running — call `wait` until BOTH reviewers' results have arrived, or spend the gap
+only on non-application work (the same move when `wait` is unavailable). Once BOTH are done, reconcile the collected findings into
 one disposition set:
 
 - **Dedupe** — a finding both lenses report becomes one row carrying both lenses and one commit:
