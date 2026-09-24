@@ -39,7 +39,8 @@ Check whether a PR already exists for this branch by calling the `forge` tool wi
    `## [Hickey/Lowy](https://kolu.dev/blog/hickey-lowy/) Analysis` header — always when the step ran,
    even if every finding was a No-op. Compose a single findings-ledger table from the reconciled
    disposition set — collected per the `hickey-lowy` node's canonical collect statement — so a
-   reviewer sees disposition at a glance, with each lens's prose underneath:
+   reviewer sees disposition at a glance. The rows are self-contained (each carries its label,
+   disposition, and fix line); no separate rationale prose is collected:
 
    ```md
    ## [Hickey/Lowy](https://kolu.dev/blog/hickey-lowy/) Analysis
@@ -48,20 +49,13 @@ Check whether a PR already exists for this branch by calling the `forge` tool wi
    |---|--------|----------------------------------------|------------------|
    | 1 | Hickey | viewportDimensions complects two roles | Fixed in this PR |
    | 2 | Lowy   | clipboard.ts named after a consumer    | ⚠️ **No-op**     |
-
-   ### Hickey rationale
-   <prose>
-
-   ### Lowy rationale
-   <prose>
    ```
 
    The Disposition cell mirrors the reconciled row's disposition; the Lens cell reads `Hickey`, `Lowy`,
    or `Hickey+Lowy` for a merged row. **Render every No-op as
    `⚠️ **No-op**`** so the rows a human most needs to scrutinize (a finding acknowledged but not fixed)
    stand out. There is no Deferred disposition — the audit step flipped any defer to Fixed in this PR.
-   If both lenses produced zero findings, write a one-line "No findings — analysis below" instead of an
-   empty table.
+   If both lenses produced zero findings, write a one-line `No findings.` instead of an empty table.
 
 **If a PR already exists** (followup runs, `--from` entry points): re-check the PR title/body against
 current scope. If scope changed, update via the `forge` tool with `{ op: "pr-edit", args: [...], body: "<updated body>" }`
