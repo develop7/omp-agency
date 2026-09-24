@@ -279,7 +279,7 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   # transport swap grew messaging into full file writes), not an accidental
   # side effect. Update this pin deliberately.
   expected_reviewer_tools=$'ast-grep\nfind\nglob\ngrep\nread\nvcs_read\nwrite'
-  tools_decls="$(frontmatter_tools_line "$AGENTS_DIR/hickey.md" | grep -c .)"
+  tools_decls="$(frontmatter_tools_line "$AGENTS_DIR/hickey.md" | awk 'NF { n++ } END { print n + 0 }')"
   if [ "$tools_decls" -ne 1 ]; then
     echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent must declare exactly one frontmatter \`tools:\` line (found $tools_decls). Fix: declare the tool list once inside the leading --- block." >&2
     config_violations=$((config_violations + 1))
