@@ -30,9 +30,10 @@ terminal result, run that review in the main model by loading the reviewer skill
 diff. Do not replace it with an informal review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
 model override. The main-model fallback uses the reviewer's declared tool set (the frontmatter
 `tools:` in `agents/{hickey,lowy}.md`) until findings are reported, under the named role **caller
-(fallback)**: it emits that lens's set as ONE plain-text Actions list in its result — the streaming
-channel is in-process self-delivery, so there is nothing to stream to. It enters the same
-collect → reconcile pipeline before anything is applied.
+(fallback)**: its findings enter the collected set directly — there is no stream because the channel
+would be in-process self-delivery — and its terminal result keeps the standard shape (summary line
+plus `undelivered` entries). It enters the same collect → reconcile pipeline before anything is
+applied.
 
 Each sub-agent prompt must be self-contained (sub-agents inherit no context). Brief each one with:
 
