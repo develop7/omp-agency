@@ -38,8 +38,8 @@ Check whether a PR already exists for this branch by calling the `forge` tool wi
    `{ op: "pr-comment", args: [], body: "<comment>" }` under a
    `## [Hickey/Lowy](https://kolu.dev/blog/hickey-lowy/) Analysis` header — always when the step ran,
    even if every finding was a No-op. Compose a single findings-ledger table from the reconciled
-   disposition set (the sub-agents' Actions entries are its input) so a reviewer sees disposition at a
-   glance, with each lens's prose underneath:
+   disposition set — collected per the `hickey-lowy` node's canonical collect statement — so a
+   reviewer sees disposition at a glance, with each lens's prose underneath:
 
    ```md
    ## [Hickey/Lowy](https://kolu.dev/blog/hickey-lowy/) Analysis
