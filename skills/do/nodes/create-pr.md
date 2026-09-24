@@ -47,14 +47,14 @@ Check whether a PR already exists for this branch by calling the `forge` tool wi
 
    | # | Lens   | Finding                                | Disposition      |
    |---|--------|----------------------------------------|------------------|
-   | 1 | Hickey | viewportDimensions complects two roles | Fixed in this PR |
+   | 1 | Hickey | viewportDimensions complects two roles | Fix in this PR |
    | 2 | Lowy   | clipboard.ts named after a consumer    | ⚠️ **No-op**     |
    ```
 
    The Disposition cell mirrors the reconciled row's disposition; the Lens cell reads `Hickey`, `Lowy`,
    or `Hickey+Lowy` for a merged row. **Render every No-op as
    `⚠️ **No-op**`** so the rows a human most needs to scrutinize (a finding acknowledged but not fixed)
-   stand out. There is no Deferred disposition — the audit step flipped any defer to Fixed in this PR.
+   stand out. There is no Deferred disposition — the audit step flipped any defer to Fix in this PR.
    If both lenses produced zero findings, write a one-line `No findings.` instead of an empty table.
 
 **If a PR already exists** (followup runs, `--from` entry points): re-check the PR title/body against
