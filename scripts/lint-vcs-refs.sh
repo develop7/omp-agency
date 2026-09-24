@@ -269,7 +269,7 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
   expected_reviewer_tools=$'ast-grep\nfind\nglob\ngrep\nread\nvcs_read\nwrite'
   actual_reviewer_tools="$(sed -n 's/^tools:[[:space:]]*//p' "$AGENTS_DIR/hickey.md" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C sort)"
   if [ "$actual_reviewer_tools" != "$expected_reviewer_tools" ]; then
-    echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent frontmatter tools drifted from the pinned set [ast-grep, find, glob, grep, read, vcs_read, write]. Widening or narrowing the list is a deliberate decision - update this pin in the same change." >&2
+    echo "::error file=$AGENTS_DIR/hickey.md::Reviewer agent frontmatter tools drifted from the pinned set [${expected_reviewer_tools//$'\n'/, }]. Widening or narrowing the list is a deliberate decision - update this pin in the same change." >&2
     config_violations=$((${config_violations:-0} + 1))
   fi
   for reviewer_file in "$SKILLS_DIR"/hickey/*.md "$SKILLS_DIR"/lowy/*.md "$SKILLS_DIR"/fact-check/*.md; do

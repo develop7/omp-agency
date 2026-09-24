@@ -159,11 +159,14 @@ run_lint() {
 # Reviewer-agent branch coverage: fixture agents/ tree with controlled
 # frontmatter, exercised through the AGENTS_DIR override.
 
+# The pinned reviewer capability set, shared by the fixture builders below.
+REVIEWER_TOOLS="read, ast-grep, grep, find, glob, vcs_read, write"
+
 setup_agents_fixture() {
   FIXTURE_AGENTS="$TEST_DIR/fixtures/agents"
   mkdir -p "$FIXTURE_AGENTS"
-  printf -- '---\nname: hickey\ntools: read, ast-grep, grep, find, glob, vcs_read, write\n---\nbody\n' > "$FIXTURE_AGENTS/hickey.md"
-  printf -- '---\nname: lowy\ntools: read, ast-grep, grep, find, glob, vcs_read, write\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  printf -- "---\nname: hickey\ntools: $REVIEWER_TOOLS\n---\nbody\n" > "$FIXTURE_AGENTS/hickey.md"
+  printf -- "---\nname: lowy\ntools: $REVIEWER_TOOLS\n---\nbody\n" > "$FIXTURE_AGENTS/lowy.md"
 }
 
 run_lint_agents() {
@@ -229,8 +232,8 @@ run_lint_agents() {
 
 @test "reviewer frontmatter widening fails the pinned-set check" {
   setup_agents_fixture
-  printf -- '---\nname: hickey\ntools: read, ast-grep, grep, find, glob, vcs_read, write, bash\n---\nbody\n' > "$FIXTURE_AGENTS/hickey.md"
-  printf -- '---\nname: lowy\ntools: read, ast-grep, grep, find, glob, vcs_read, write, bash\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  printf -- "---\nname: hickey\ntools: $REVIEWER_TOOLS, bash\n---\nbody\n" > "$FIXTURE_AGENTS/hickey.md"
+  printf -- "---\nname: lowy\ntools: $REVIEWER_TOOLS, bash\n---\nbody\n" > "$FIXTURE_AGENTS/lowy.md"
   run_lint_agents
   [ "$status" -eq 1 ]
   [[ "$output" == *"pinned set"* ]]
