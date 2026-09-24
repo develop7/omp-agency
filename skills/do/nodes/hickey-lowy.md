@@ -39,11 +39,10 @@ Each sub-agent prompt must be self-contained (sub-agents inherit no context). Br
 - Scope: the actual diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
 - **Findings channel (the complete send contract)**: ONE `write` per finding as it forms —
   `path: "agent://<caller>"`, `content: <entry>` — carrying the skill's **Actions** entry verbatim
-  (`agent://Main` unless this brief names another caller id). An amendment names
-  the bolded label of the entry it replaces (the label is the entry's key); the latest word per key
-  wins. On a failed `write`: retry once, then mark that entry
-  `undelivered` in the result. The final result is ONE summary line (e.g. `N findings streamed;
-  fact-check clean`) — never a findings list.
+  (`agent://Main` unless this brief names another caller id). An amendment names the bolded label of
+  the entry it replaces (the label is the entry's key); the latest word per key wins. On a failed
+  `write`: retry once, then mark that entry `undelivered` in the result. The final result is ONE
+  summary line (e.g. `N findings streamed; fact-check clean`) — never a findings list.
 - **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
   `{ args: ["new-files"] }` and only include the hint if the output is non-empty: survey the codebase
   for the canonical in-repo pattern for the same *kind* of operation and flag it as the headline finding
@@ -72,10 +71,10 @@ apply). Collect per lens: its streamed messages (latest word per entry key wins)
 `undelivered` entries its result carries with equal standing. Its result is nominally ONE summary line
 plus those entries; if a result instead carries a findings list, that result replaces the lens's
 stream as its authoritative set, superseding any partial stream wholesale (a retried reviewer
-supersedes by its fresh stream, not its summary-line result). Edit nothing for any finding while either
-reviewer is still running — call `wait` until BOTH reviewers' results have arrived, or spend the gap
-only on non-application work (the same move when `wait` is unavailable). Once BOTH are done, reconcile the collected findings into
-one disposition set:
+supersedes by its fresh stream, not its summary-line result). Edit nothing for any finding while
+either reviewer is still running — call `wait` until BOTH reviewers' results have arrived, or spend
+the gap only on non-application work (the same move when `wait` is unavailable). Once BOTH are done,
+reconcile the collected findings into one disposition set:
 
 - **Dedupe** — a finding both lenses report becomes one row carrying both lenses and one commit:
   `refactor(hickey+lowy): <short label>`.
