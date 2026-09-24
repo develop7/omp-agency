@@ -23,10 +23,11 @@ description: Parallel structural review with hickey and lowy sub-agents.
 Invoke `hickey` and `lowy` as two **parallel sub-agents** via the `task` tool (`agent: "hickey"` and
 `agent: "lowy"`), both `task` calls emitted in a single response.
 
-**Fallback, never skip.** If a sub-agent invocation fails for harness/tooling reasons before producing
-a review, retry that reviewer invocation once; if it still cannot produce a sub-agent review, run that
-review in the main model by loading the reviewer skill against the same diff. Do not replace it with an
-informal review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
+**Fallback, never skip.** A failed attempt is one that ends without a terminal result — partial
+streamed findings do not count as produced. On failure for harness/tooling reasons, retry that
+reviewer invocation once (its fresh stream supersedes the partial one); if the retry still yields no
+terminal result, run that review in the main model by loading the reviewer skill against the same
+diff. Do not replace it with an informal review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
 model override. The main-model fallback uses the reviewer's declared tool set (the frontmatter
 `tools:` in `agents/{hickey,lowy}.md`) until findings are reported, under the named role **caller
 (fallback)**: it emits that lens's set as ONE plain-text Actions list in its result — the streaming
