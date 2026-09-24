@@ -278,7 +278,16 @@ if [ -f "$AGENTS_DIR/hickey.md" ] && [ -f "$AGENTS_DIR/lowy.md" ]; then
     check_tool_refs "$reviewer_file" "reviewer-agent" "${HICKEY_TOOLS[@]}"
   done
 else
-  echo "Reviewer tool-reference check skipped: agents/ tree absent." >&2
+  if [ -f "$AGENTS_DIR/hickey.md" ] || [ -f "$AGENTS_DIR/lowy.md" ]; then
+    for missing in hickey lowy; do
+      if [ ! -f "$AGENTS_DIR/$missing.md" ]; then
+        echo "::error file=$AGENTS_DIR/$missing.md::Reviewer agent agents/$missing.md is missing. Fix: declare both reviewer agent files or remove both." >&2
+        config_violations=$((config_violations + 1))
+      fi
+    done
+  else
+    echo "Reviewer tool-reference check skipped: agents/ tree absent." >&2
+  fi
 fi
 
 # Code-police: passes 1-2 run as bundled-scout sub-agents; effective allowlist
