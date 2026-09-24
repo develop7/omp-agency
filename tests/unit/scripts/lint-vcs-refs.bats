@@ -270,3 +270,29 @@ run_lint_agents() {
   run_lint_agents
   [ "$status" -eq 0 ]
 }
+
+@test "unclosed frontmatter block is a configuration violation" {
+  setup_agents_fixture
+  printf -- '---\nname: hickey\ntools: %s\nbody without closing delimiter\n' "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/hickey.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"closed block"* ]]
+}
+
+@test "frontmatter must open on line 1" {
+  setup_agents_fixture
+  printf -- 'prose first\n---\nname: hickey\ntools: %s\n---\nbody\n' "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/hickey.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"closed block"* ]]
+}
+
+@test "empty duplicate tools declarations are configuration violations" {
+  setup_agents_fixture
+  for agent in hickey lowy; do
+    printf -- '---\nname: %s\ntools: %s\ntools:\n---\nbody\n' "$agent" "$REVIEWER_TOOLS" > "$FIXTURE_AGENTS/$agent.md"
+  done
+  run_lint_agents
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly one frontmatter"* ]]
+}
