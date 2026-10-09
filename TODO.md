@@ -56,7 +56,8 @@ argument bag:
 3. `agency_driver` uses operation-specific fields for lifecycle, state, and
    sync operations; lifecycle statuses are `passed`, `failed`, or `skipped`.
 4. `forge` uses named fields per operation (including body fields for PR
-   create/edit/comment) rather than a CLI argv array.
+   create/edit/comment) rather than a CLI argv array. GitHub-specific CLI options
+   are typed inside the optional `github` extension, not the neutral operation fields.
 5. `workflow` restricts `cli_seed` to the documented entry-point vocabulary.
 6. Non-zero adapter results become tool errors with useful predicate
    diagnostics instead of empty messages.

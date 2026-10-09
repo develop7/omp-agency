@@ -137,9 +137,42 @@ export default function (pi: ExtensionAPI) {
   });
 
   const selector = text.refine(value => !value.startsWith("-"), "A selector cannot be a CLI flag");
+  // GitHub's CLI vocabulary is a provider extension, not part of the neutral
+  // operation fields. Each option owns its schema and lowering flag together.
+  function githubOptions<Fields extends Record<string, { schema: Parameters<typeof z.object>[0][string]; flag: string }>>(fields: Fields) {
+    const shape = Object.fromEntries(Object.entries(fields).map(([name, field]) => [name, field.schema])) as {
+      [Name in keyof Fields]: Fields[Name]["schema"];
+    };
+    return {
+      schema: z.object(shape).strict().optional(),
+      append(args: string[], values: Record<string, Parameters<typeof option>[2]> | undefined) {
+        if (values === undefined) return;
+        for (const [name, field] of Object.entries(fields)) option(args, field.flag, values[name]);
+      },
+    };
+  }
+  const githubOutput = githubOptions({
+    jq: { schema: text.optional(), flag: "--jq" },
+    template: { schema: text.optional(), flag: "--template" },
+  });
+  const githubCreate = githubOptions({
+    fill: { schema: z.boolean().optional(), flag: "--fill" },
+    fillFirst: { schema: z.boolean().optional(), flag: "--fill-first" },
+    fillVerbose: { schema: z.boolean().optional(), flag: "--fill-verbose" },
+    noMaintainerEdit: { schema: z.boolean().optional(), flag: "--no-maintainer-edit" },
+    editor: { schema: z.boolean().optional(), flag: "--editor" },
+    web: { schema: z.boolean().optional(), flag: "--web" },
+    recover: { schema: text.optional(), flag: "--recover" },
+    templateFile: { schema: text.optional(), flag: "--template" },
+    dryRun: { schema: z.boolean().optional(), flag: "--dry-run" },
+  });
+  const githubComment = githubOptions({
+    editor: { schema: z.boolean().optional(), flag: "--editor" },
+    web: { schema: z.boolean().optional(), flag: "--web" },
+    yes: { schema: z.boolean().optional(), flag: "--yes" },
+  });
   const outputFields = {
-    repo: text.optional(), json: strings.min(1).optional(), jq: text.optional(),
-    template: text.optional(), web: z.boolean().optional(),
+    repo: text.optional(), json: strings.min(1).optional(), web: z.boolean().optional(), github: githubOutput.schema,
   };
   const bodyFields = { attachments: strings.optional() };
   // Body alternatives are distinct closed shapes, so exclusivity is visible
@@ -156,7 +189,7 @@ export default function (pi: ExtensionAPI) {
     name: "forge",
     label: "Forge",
     description:
-      "Forge operations with named fields, never CLI flags. pr/issue identify a number, URL, or (PR only) branch; absent pr selects the current branch. JSON field names are supplied as a list. body and bodyFile are mutually exclusive. Attachments are file paths, optionally suffixed with #alt text. Backend capability checks remain authoritative.",
+      "Forge operations with named fields, never CLI flags. pr/issue identify a number, URL, or (PR only) branch; absent pr selects the current branch. JSON field names are supplied as a list. body and bodyFile are mutually exclusive. GitHub-only options such as jq, commit-based fill, and editor flows belong in github. Backend capability checks remain authoritative.",
     parameters: z.union([
       z.object({ op: z.literal("detect") }).strict(),
       z.object({ op: z.literal("supports"), operation: text }).strict(),
@@ -167,22 +200,25 @@ export default function (pi: ExtensionAPI) {
         watch: z.boolean().optional(), required: z.boolean().optional(),
         failFast: z.boolean().optional(), interval: z.number().int().positive().optional(),
       }).strict(),
-      bodyOperation({ op: z.literal("pr-create"), repo: text.optional(), title: text.optional(), ...bodyFields,
-      base: text.optional(), head: text.optional(), draft: z.boolean().optional(),
-      fill: z.boolean().optional(), fillFirst: z.boolean().optional(), fillVerbose: z.boolean().optional(),
-      reviewers: strings.optional(), assignees: strings.optional(), labels: strings.optional(), projects: strings.optional(),
-      milestone: text.optional(), noMaintainerEdit: z.boolean().optional(),
-      editor: z.boolean().optional(), web: z.boolean().optional(), recover: text.optional(),
-      templateFile: text.optional(), dryRun: z.boolean().optional(), }),
-      bodyOperation({ op: z.literal("pr-edit"), pr: selector.optional(), repo: text.optional(), title: text.optional(), ...bodyFields,
-      base: text.optional(), milestone: text.optional(), removeMilestone: z.boolean().optional(),
-      addAssignees: strings.optional(), removeAssignees: strings.optional(),
-      addLabels: strings.optional(), removeLabels: strings.optional(),
-      addProjects: strings.optional(), removeProjects: strings.optional(),
-      addReviewers: strings.optional(), removeReviewers: strings.optional(), }),
-      bodyOperation({ op: z.literal("pr-comment"), pr: selector.optional(), repo: text.optional(), ...bodyFields,
-      editLast: z.boolean().optional(), deleteLast: z.boolean().optional(), createIfNone: z.boolean().optional(),
-      editor: z.boolean().optional(), web: z.boolean().optional(), yes: z.boolean().optional(), }),
+      bodyOperation({
+        op: z.literal("pr-create"), repo: text.optional(), title: text.optional(), ...bodyFields,
+        base: text.optional(), head: text.optional(), draft: z.boolean().optional(),
+        reviewers: strings.optional(), assignees: strings.optional(), labels: strings.optional(), projects: strings.optional(),
+        milestone: text.optional(), github: githubCreate.schema,
+      }),
+      bodyOperation({
+        op: z.literal("pr-edit"), pr: selector.optional(), repo: text.optional(), title: text.optional(), ...bodyFields,
+        base: text.optional(), milestone: text.optional(), removeMilestone: z.boolean().optional(),
+        addAssignees: strings.optional(), removeAssignees: strings.optional(),
+        addLabels: strings.optional(), removeLabels: strings.optional(),
+        addProjects: strings.optional(), removeProjects: strings.optional(),
+        addReviewers: strings.optional(), removeReviewers: strings.optional(),
+      }),
+      bodyOperation({
+        op: z.literal("pr-comment"), pr: selector.optional(), repo: text.optional(), ...bodyFields,
+        editLast: z.boolean().optional(), deleteLast: z.boolean().optional(), createIfNone: z.boolean().optional(),
+        github: githubComment.schema,
+      }),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const args: string[] = [];
@@ -194,8 +230,7 @@ export default function (pi: ExtensionAPI) {
       switch (params.op) {
         case "pr-view": case "issue-view": case "pr-checks":
           option(args, "--json", params.json?.join(","));
-          option(args, "--jq", params.jq);
-          option(args, "--template", params.template);
+          githubOutput.append(args, params.github);
           option(args, "--web", params.web);
           if (params.op === "pr-checks") {
             option(args, "--watch", params.watch);
@@ -209,20 +244,12 @@ export default function (pi: ExtensionAPI) {
           option(args, "--base", params.base);
           option(args, "--head", params.head);
           option(args, "--draft", params.draft);
-          option(args, "--fill", params.fill);
-          option(args, "--fill-first", params.fillFirst);
-          option(args, "--fill-verbose", params.fillVerbose);
+          githubCreate.append(args, params.github);
           option(args, "--reviewer", params.reviewers);
           option(args, "--assignee", params.assignees);
           option(args, "--label", params.labels);
           option(args, "--project", params.projects);
           option(args, "--milestone", params.milestone);
-          option(args, "--no-maintainer-edit", params.noMaintainerEdit);
-          option(args, "--editor", params.editor);
-          option(args, "--web", params.web);
-          option(args, "--recover", params.recover);
-          option(args, "--template", params.templateFile);
-          option(args, "--dry-run", params.dryRun);
           break;
         case "pr-edit":
           option(args, "--title", params.title);
@@ -242,9 +269,7 @@ export default function (pi: ExtensionAPI) {
           option(args, "--edit-last", params.editLast);
           option(args, "--delete-last", params.deleteLast);
           option(args, "--create-if-none", params.createIfNone);
-          option(args, "--editor", params.editor);
-          option(args, "--web", params.web);
-          option(args, "--yes", params.yes);
+          githubComment.append(args, params.github);
           break;
       }
       option(args, "--body-file", "bodyFile" in params ? params.bodyFile : undefined);
