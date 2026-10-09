@@ -198,6 +198,14 @@ operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and
 `just build`; the OMP adapter lazily loads `pure/dist/agency-api.js`. See
 `pure/README.md` for the module map and these recipes:
 
+The model-facing contracts use named operands rather than CLI argument arrays:
+`vcs_read {op: "diff-range", paths: ["src/"]}` and
+`agency_driver {op: "start", step: "implement"}`. Forge operations keep their
+common values at the top level; GitHub-specific options are namespaced, such as
+`forge {op: "pr-view", json: ["number"], github: {jq: ".number"}}`.
+Backend parsers and permission checks remain authoritative; old model-facing
+`args` payloads are rejected rather than translated through a compatibility layer.
+
 ```bash
 just test-pure    # PureScript unit tests
 just build        # compile and bundle the PureScript core (CLI + tool API)

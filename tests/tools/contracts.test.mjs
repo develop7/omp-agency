@@ -88,6 +88,15 @@ test("forge rejects injected selectors, arbitrary argv, and conflicting bodies",
   assert.equal(schema.safeParse({ op: "supports", operation: "pull-request" }).success, true);
 });
 
+test("forge keeps provider-only options in a strict GitHub extension", () => {
+  const schema = tool(tools, "forge").parameters;
+  rejects(schema, { op: "pr-create", fillFirst: true });
+  rejects(schema, { op: "pr-view", jq: ".number" });
+  rejects(schema, { op: "pr-comment", github: { arbitrary: true } });
+  assert.equal(schema.safeParse({ op: "pr-create", github: { fillFirst: true } }).success, true);
+  assert.equal(schema.safeParse({ op: "pr-view", json: ["number"], github: { jq: ".number" } }).success, true);
+});
+
 test("real PureScript lifecycle retains a failed step's reason", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
