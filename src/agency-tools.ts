@@ -141,8 +141,16 @@ export default function (pi: ExtensionAPI) {
     repo: text.optional(), json: strings.min(1).optional(), jq: text.optional(),
     template: text.optional(), web: z.boolean().optional(),
   };
-  const bodyFields = { body: z.string().optional(), bodyFile: text.optional(), attachments: strings.optional() };
-  const oneBody = (value: { body?: string; bodyFile?: string }) => value.body === undefined || value.bodyFile === undefined;
+  const bodyFields = { attachments: strings.optional() };
+  // Body alternatives are distinct closed shapes, so exclusivity is visible
+  // to both runtime validation and the model-facing JSON Schema.
+  function bodyOperation<Shape extends Parameters<typeof z.object>[0]>(shape: Shape) {
+    return z.union([
+      z.object({ ...shape, body: z.string() }).strict(),
+      z.object({ ...shape, bodyFile: text }).strict(),
+      z.object(shape).strict(),
+    ]);
+  }
 
   pi.registerTool({
     name: "forge",
@@ -159,28 +167,22 @@ export default function (pi: ExtensionAPI) {
         watch: z.boolean().optional(), required: z.boolean().optional(),
         failFast: z.boolean().optional(), interval: z.number().int().positive().optional(),
       }).strict(),
-      z.object({
-        op: z.literal("pr-create"), repo: text.optional(), title: text.optional(), ...bodyFields,
-        base: text.optional(), head: text.optional(), draft: z.boolean().optional(),
-        fill: z.boolean().optional(), fillFirst: z.boolean().optional(), fillVerbose: z.boolean().optional(),
-        reviewers: strings.optional(), assignees: strings.optional(), labels: strings.optional(), projects: strings.optional(),
-        milestone: text.optional(), noMaintainerEdit: z.boolean().optional(),
-        editor: z.boolean().optional(), web: z.boolean().optional(), recover: text.optional(),
-        templateFile: text.optional(), dryRun: z.boolean().optional(),
-      }).strict().refine(oneBody, "Provide body or bodyFile, not both"),
-      z.object({
-        op: z.literal("pr-edit"), pr: selector.optional(), repo: text.optional(), title: text.optional(), ...bodyFields,
-        base: text.optional(), milestone: text.optional(), removeMilestone: z.boolean().optional(),
-        addAssignees: strings.optional(), removeAssignees: strings.optional(),
-        addLabels: strings.optional(), removeLabels: strings.optional(),
-        addProjects: strings.optional(), removeProjects: strings.optional(),
-        addReviewers: strings.optional(), removeReviewers: strings.optional(),
-      }).strict().refine(oneBody, "Provide body or bodyFile, not both"),
-      z.object({
-        op: z.literal("pr-comment"), pr: selector.optional(), repo: text.optional(), ...bodyFields,
-        editLast: z.boolean().optional(), deleteLast: z.boolean().optional(), createIfNone: z.boolean().optional(),
-        editor: z.boolean().optional(), web: z.boolean().optional(), yes: z.boolean().optional(),
-      }).strict().refine(oneBody, "Provide body or bodyFile, not both"),
+      bodyOperation({ op: z.literal("pr-create"), repo: text.optional(), title: text.optional(), ...bodyFields,
+      base: text.optional(), head: text.optional(), draft: z.boolean().optional(),
+      fill: z.boolean().optional(), fillFirst: z.boolean().optional(), fillVerbose: z.boolean().optional(),
+      reviewers: strings.optional(), assignees: strings.optional(), labels: strings.optional(), projects: strings.optional(),
+      milestone: text.optional(), noMaintainerEdit: z.boolean().optional(),
+      editor: z.boolean().optional(), web: z.boolean().optional(), recover: text.optional(),
+      templateFile: text.optional(), dryRun: z.boolean().optional(), }),
+      bodyOperation({ op: z.literal("pr-edit"), pr: selector.optional(), repo: text.optional(), title: text.optional(), ...bodyFields,
+      base: text.optional(), milestone: text.optional(), removeMilestone: z.boolean().optional(),
+      addAssignees: strings.optional(), removeAssignees: strings.optional(),
+      addLabels: strings.optional(), removeLabels: strings.optional(),
+      addProjects: strings.optional(), removeProjects: strings.optional(),
+      addReviewers: strings.optional(), removeReviewers: strings.optional(), }),
+      bodyOperation({ op: z.literal("pr-comment"), pr: selector.optional(), repo: text.optional(), ...bodyFields,
+      editLast: z.boolean().optional(), deleteLast: z.boolean().optional(), createIfNone: z.boolean().optional(),
+      editor: z.boolean().optional(), web: z.boolean().optional(), yes: z.boolean().optional(), }),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const args: string[] = [];
@@ -245,9 +247,9 @@ export default function (pi: ExtensionAPI) {
           option(args, "--yes", params.yes);
           break;
       }
-      option(args, "--body-file", params.bodyFile);
+      option(args, "--body-file", "bodyFile" in params ? params.bodyFile : undefined);
       option(args, "--attach", params.attachments);
-      return executeForge(params.op, args, params.body, ctx);
+      return executeForge(params.op, args, "body" in params ? params.body : undefined, ctx);
     },
   });
 
