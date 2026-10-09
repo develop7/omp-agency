@@ -198,6 +198,11 @@ operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and
 `just build`; the OMP adapter lazily loads `pure/dist/agency-api.js`. See
 `pure/README.md` for the module map and these recipes:
 
+```bash
+just test-pure    # PureScript unit tests
+just build        # compile and bundle the PureScript core (CLI + tool API)
+```
+
 The model-facing contracts use named operands rather than CLI argument arrays:
 `vcs_read {op: "diff-range", paths: ["src/"]}` and
 `agency_driver {op: "start", step: "implement"}`. Forge operations keep their
@@ -207,11 +212,6 @@ Backend parsers and permission checks remain authoritative; old model-facing
 `args` payloads are rejected rather than translated through a compatibility layer.
 Push refs and forge selectors cannot be CLI flags; the Git backend also terminates
 push options before the explicit ref operand.
-
-```bash
-just test-pure    # PureScript unit tests
-just build        # compile and bundle the PureScript core (CLI + tool API)
-```
 
 Consumers only need `node`; development requires nothing beyond Nix.
 
