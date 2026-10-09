@@ -36,7 +36,8 @@ teardown() {
 }
 
 @test "detect returns unknown outside any repo" {
-  cd /tmp
+  mkdir "$TEST_DIR/no-vcs"
+  cd "$TEST_DIR/no-vcs"
   VCS_OVERRIDE= run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op detect
   [ "$status" -eq 0 ]
   [ "$output" = "unknown" ]
@@ -582,7 +583,8 @@ SH
 }
 
 @test "no-VCS operations exit 1 with message" {
-  cd /tmp
+  mkdir "$TEST_DIR/no-vcs"
+  cd "$TEST_DIR/no-vcs"
   VCS_OVERRIDE= run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fetch
   [ "$status" -eq 1 ]
   [[ "$output" == *"no VCS detected"* ]]
