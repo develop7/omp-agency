@@ -667,7 +667,7 @@ push :: WorkflowContext -> Maybe String -> Effect Outcome.OpOutcome
 push context ref = case context.vcs of
   Git -> case ref of
     Just value -> withRemote context \remote ->
-      passthroughCommand context Binaries.git [ "push", "--set-upstream", remote, value ]
+      passthroughCommand context Binaries.git [ "push", "--set-upstream", remote, "--", value ]
     Nothing -> passthroughCommand context Binaries.git [ "push" ]
   Jj -> do
     bookmark <- case ref of
