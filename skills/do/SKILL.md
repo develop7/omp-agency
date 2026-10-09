@@ -19,27 +19,25 @@ sensible default choices and keep moving.
 ## How to walk the graph
 
 **Convention: workflow operations are tool invocations, not shell commands.** Use the
-`vcs_read`, `vcs_write`, `forge`, `workflow`, and `agency_driver` tools with the argument
-objects documented by their schemas. Keep operation arguments in the `args` array where
-the tool exposes one; use the hoisted fields on `vcs_write` for mutating VCS operations.
+`vcs_read`, `vcs_write`, `forge`, `workflow`, and `agency_driver` tools with the argument objects documented by their schemas. Supply operation-specific named fields; `vcs_read` uses `op` and, where supported, `paths`.
 
 1. Parse arguments: `[--review] [--no-vcs] [--minimal] [--from <step-id>] [--base <branch> | --stack] <task>`.
    `--review`/`--no-vcs`/`--minimal`/`--from` go to `agency_driver` `init`; `--base`/`--stack` go to `agency_driver`
    `sync` (they select the stacked-PR base, which sync resolves and persists — `agency_driver` `init` rejects them).
-2. Call the `agency_driver` tool with `{ op: "init", args: [<flags>, <task>] }` to initialize state.
+2. Call `agency_driver` with `{ op: "init", task?: <task>, review?: <bool>, noVcs?: <bool>, minimal?: <bool>, restart?: <bool>, from?: <entry> }` to initialize state.
 3. Seed the task checklist by calling the `workflow` tool with `{ field: "cli_seed", from: "<from>" }` — it returns
    `[{ name, initial_status }]`; mark `completed` steps and seed the todo UI.
 4. For each step, call the `workflow` tool with `{ field: "cli" }` — it returns
    `{ step, skip, pattern, instructions, requires, pattern_config }`.
-    - If `skip` is true, call the `agency_driver` tool with `{ op: "skip", args: [<step>, <reason>] }` and continue.
-    - Otherwise: call `agency_driver` with `{ op: "start", args: [<step>] }`, read `nodes/<step>.md`, do the work,
-      then call `agency_driver` with `{ op: "end", args: [<status>, "<verification>", <reason>] }`.
-5. When the `workflow` tool reports done, call `agency_driver` with `{ op: "summary", args: [] }`.
+    - If `skip` is true, call the `agency_driver` tool with `{ op: "skip", step: <step>, reason: <reason> }` and continue.
+    - Otherwise: call `agency_driver` with `{ op: "start", step: <step> }`, read `nodes/<step>.md`, do the work,
+      then call `agency_driver` with `{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }`.
+5. When the `workflow` tool reports done, call `agency_driver` with `{ op: "summary" }`.
 
 ## Arguments
 
-The workflow is **forge-aware**: during **sync**, call the `forge` tool with `{ op: "detect", args: [] }` and query
-`{ op: "supports", args: [<op>] }` to persist `supportsX` capability booleans. Nodes and skip predicates branch on
+The workflow is **forge-aware**: during **sync**, call the `forge` tool with `{ op: "detect" }` and query
+`{ op: "supports", operation: <op> }` to persist `supportsX` capability booleans. Nodes and skip predicates branch on
 these booleans — not on the forge string — so the forge → supported-ops map lives in one place (the `forge` tool's
 capability table). Today only GitHub has an active code path; other forges skip PR-related steps gracefully. Tracking:
 [srid/agency#10](https://github.com/srid/agency/issues/10).
@@ -60,15 +58,14 @@ capability table). Today only GitHub has an active code path; other forges skip 
 
 **Base vs default branch.** The workflow branches from, diffs against, and targets the PR at a single resolved `base`.
 Without `--base`/`--stack`, `base` is the default branch (origin HEAD). Every review/diff op reads `base` from state
-(`vcs_read` with `{ args: ["base"] }`), so a stacked PR's review covers just that PR's changes, not the cumulative
+(`vcs_read` with `{ op: "base" }`), so a stacked PR's review covers just that PR's changes, not the cumulative
 stack. Deep stacks (>2) need a fresh `/do` per level; `/do` does not auto-restack when a parent merges.
 
 ## Results Tracking
 
-Every node is bookended by calling `agency_driver` with `{ op: "start", args: [<name>] }` before work and
-`{ op: "end", args: [<status>, "<verification>", <reason>] }` after verification. The driver records step state in
+Every node is bookended by calling `agency_driver` with `{ op: "start", step: <name> }` before work and
+`{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }` after verification. The driver records step state in
 `.do-results.json`.
-
 **Trust the driver's stdout.** Every mutation echoes a one-line confirmation. State schema, commands, and the full
 field list (`vcs`, `forge`, `noVcs`, `minimal`, `review`, `base`, `active`, `status`) live in `.do-results.json` —
 use `agency_driver` and `vcs_read` rather than re-deriving here. The one field worth calling out is `base`: written
@@ -90,7 +87,7 @@ Drive the harness's native todo UI so the user sees a live checklist (seed via `
   `completed`, recorded with back-to-back `step-start`/`step-end skipped`.
 - `--minimal` omissions are in neither the CLI path nor the seeded list — never record a skip for them.
 - **Failure**: leave the failing step `in_progress`, mark `done` `completed` after the failure summary is written, and
-  call `agency_driver` with `{ op: "set", args: ["status", "failed"] }`.
+  call `agency_driver` with `{ op: "set", field: "status", value: "failed" }`.
 
 ## Entry Points
 

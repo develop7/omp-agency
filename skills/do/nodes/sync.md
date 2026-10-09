@@ -23,8 +23,8 @@ description: Fetch origin, detect forge, resolve base, initialize workflow state
 
 ## Strategies
 
-Call the `agency_driver` tool **once** with `{ op: "sync", args: [<noVcs>, "--base", <branch>] }`,
-`{ op: "sync", args: [<noVcs>, "--stack"] }`, or just `{ op: "sync", args: [<noVcs>] }` when neither
+Call the `agency_driver` tool **once** with `{ op: "sync", noVcs: <bool>, base: <branch> }`,
+`{ op: "sync", noVcs: <bool>, stack: true }`, or just `{ op: "sync", noVcs: <bool> }` when neither
 base selector is requested. This single model-facing call performs all context resolution in the
 shared PureScript core — it resolves the VCS and forge, fetches the default remote, pins `origin/HEAD`
 (git), fast-forwards when clean (preserving the tree under `--no-vcs`), prints the dirty-tree hint to

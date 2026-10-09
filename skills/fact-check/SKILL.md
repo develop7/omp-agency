@@ -14,7 +14,7 @@ lies to itself.
 Scope comes from `$ARGUMENTS`:
 
 - `branch` (default when `$ARGUMENTS` is empty) — audit only changes in the current branch/PR. Get the diff using
-  the `vcs_read` tool with `{ args: ["diff-range"] }` to identify changed files and limit all subsequent steps to those
+  the `vcs_read` tool with `{ op: "diff-range" }` to identify changed files and limit all subsequent steps to those
   files.
 - `all` — audit the whole codebase.
 - Anything else — treat the argument as the target itself (a file path, a diff range like `origin/main...HEAD`, or

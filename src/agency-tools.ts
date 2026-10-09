@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { evaluateWorkflow } from "../nickel-vm/scripts/workflow-runtime.mjs";
-import { workflowEntryPoints } from "./workflow-vocabulary.js";
+import { workflowEntryPoints, workflowSteps } from "./workflow-vocabulary.js";
 
 type ApiRequest = {
   tool: string;
@@ -23,8 +23,6 @@ type AgencyApi = {
 type ToolContext = {
   cwd: string;
 };
-
-const forgeBodyOperations = ["pr-create", "pr-edit", "pr-comment"];
 
 let apiPromise: Promise<AgencyApi> | undefined;
 
@@ -74,60 +72,50 @@ function emptyFailureMessage(tool: string, args: string[], exit: number): string
   return `${tool} ${operation} failed: exit ${exit} (no output)`;
 }
 
-function requireValue(value: string | undefined, field: string, operation: string): string {
-  if (value === undefined || value === "") {
-    throw new Error(`vcs_write ${operation} requires ${field}`);
-  }
-  return value;
+// Lower typed option values into the existing CLI parser's operands. Lists remain
+// lists of values; models never supply flag syntax or positional argument vectors.
+function option(args: string[], flag: string, value: string | number | boolean | string[] | undefined): void {
+  if (value === undefined || value === false) return;
+  if (value === true) args.push(flag);
+  else if (Array.isArray(value)) {
+    for (const item of value) args.push(flag, item);
+  } else args.push(flag, String(value));
 }
 
-function requireFiles(files: string[] | undefined, operation: string): string[] {
-  if (files === undefined || files.length === 0) {
-    throw new Error(`vcs_write ${operation} requires at least one file`);
-  }
-  return files;
-}
-
-async function executeForge(
-  params: { op: string; args: string[]; body?: string },
-  ctx: ToolContext,
-): Promise<{
-  content: Array<{ type: "text"; text: string }>;
-  details: ApiResult;
-}> {
+async function executeForge(op: string, args: string[], body: string | undefined, ctx: ToolContext) {
   let tempDir: string | undefined;
   try {
-    if (params.body !== undefined && !forgeBodyOperations.includes(params.op)) {
-      throw new Error(
-        `forge ${params.op} does not accept body; body is only valid for pr-create, pr-edit, and pr-comment`,
-      );
-    }
-    let args = params.args;
-    if (params.body !== undefined) {
+    if (body !== undefined) {
       tempDir = await mkdtemp(join(ctx.cwd, ".agency-forge-"));
       const bodyPath = join(tempDir, "body.md");
-      await writeFile(bodyPath, params.body, "utf8");
-      args = [...args, "--body-file", bodyPath];
+      await writeFile(bodyPath, body, "utf8");
+      args.push("--body-file", bodyPath);
     }
-    return await executeApi("forge", [params.op, ...args]);
+    return await executeApi("forge", [op, ...args]);
   } finally {
-    if (tempDir !== undefined) {
-      await rm(tempDir, { recursive: true, force: true });
-    }
+    if (tempDir !== undefined) await rm(tempDir, { recursive: true, force: true });
   }
 }
 
+/** Register the model-facing contracts; the shared core retains semantic validation. */
 export default function (pi: ExtensionAPI) {
   const z = pi.zod;
+  const text = z.string().min(1);
+  const strings = z.array(text);
+  const step = z.enum(workflowSteps);
+  const status = z.enum(["passed", "failed", "skipped"]);
 
   pi.registerTool({
     name: "vcs_read",
     label: "VCS Read",
     description:
-      "Read-only VCS operations. Use args exactly as the semantic vcs-op CLI: detect, remote-url, head-revision, head-commit-sha, default-branch, current-branch, base, dirty, diff-range, diff-names, diff-stat, new-files, log-range, or log-head, followed by any operation arguments such as paths. head-revision and current-branch return the checked-out branch/bookmark name — under jj the bookmark on @, else the bookmark on @- (which may be the base branch) — or an empty value when neither carries a bookmark. head-commit-sha returns the commit CI will run against: git's HEAD commit, or under jj the feature bookmark's commit (bookmark on @, else on @-; with no feature bookmark, the parent commit; fails loudly when no revision exists). Fetching belongs to agency_driver sync because it updates remote-tracking refs.",
-    parameters: z.object({ args: z.array(z.string()) }),
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      return executeApi("vcs_read", params.args);
+      "Read-only VCS operations selected by op. Diff, new-files, and log-range optionally filter paths. head-revision/current-branch return the current branch/bookmark (under jj, on @ or its parent); head-commit-sha returns the feature commit CI will run against. Sync owns fetching. No raw CLI arguments are accepted.",
+    parameters: z.union([
+      z.object({ op: z.enum(["detect", "remote-url", "head-revision", "head-commit-sha", "default-branch", "current-branch", "base", "dirty", "log-head"]) }).strict(),
+      z.object({ op: z.enum(["diff-range", "diff-names", "diff-stat", "new-files", "log-range"]), paths: strings.optional() }).strict(),
+    ]),
+    async execute(_toolCallId, params) {
+      return executeApi("vcs_read", [params.op, ...("paths" in params ? params.paths ?? [] : [])]);
     },
   });
 
@@ -135,99 +123,131 @@ export default function (pi: ExtensionAPI) {
     name: "vcs_write",
     label: "VCS Write",
     description:
-      "Mutating VCS operations with operation-specific arguments: branch requires name; commit and fix-commit require message and a non-empty files list; push accepts an optional ref. Do not provide fields from another operation.",
+      "Mutating VCS operations: branch requires name; commit/fix-commit require message and files; push accepts ref. Only files the caller actually changed may be committed. Fields from other operations are rejected.",
     parameters: z.union([
-      z.object({
-        op: z.literal("branch"),
-        name: z.string().min(1),
-        message: z.undefined().optional(),
-        files: z.undefined().optional(),
-        ref: z.undefined().optional(),
-      }).strict(),
-      z.object({
-        op: z.literal("commit"),
-        message: z.string().min(1),
-        files: z.array(z.string().min(1)).min(1),
-        name: z.undefined().optional(),
-        ref: z.undefined().optional(),
-      }).strict(),
-      z.object({
-        op: z.literal("fix-commit"),
-        message: z.string().min(1),
-        files: z.array(z.string().min(1)).min(1),
-        name: z.undefined().optional(),
-        ref: z.undefined().optional(),
-      }).strict(),
-      z.object({
-        op: z.literal("push"),
-        ref: z.string().min(1).optional(),
-        name: z.undefined().optional(),
-        message: z.undefined().optional(),
-        files: z.undefined().optional(),
-      }).strict(),
+      z.object({ op: z.literal("branch"), name: text }).strict(),
+      z.object({ op: z.enum(["commit", "fix-commit"]), message: text, files: strings.min(1) }).strict(),
+      z.object({ op: z.literal("push"), ref: text.optional() }).strict(),
     ]),
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      if (params.op === "branch") {
-        return executeApi("vcs_write", ["branch", requireValue(params.name, "name", params.op)]);
-      }
-      if (params.op === "push") {
-        return executeApi("vcs_write", ["push", ...(params.ref === undefined ? [] : [params.ref])]);
-      }
-      const message = requireValue(params.message, "message", params.op);
-      const files = requireFiles(params.files, params.op);
-      return executeApi("vcs_write", [params.op, message, ...files]);
+    async execute(_toolCallId, params) {
+      if (params.op === "branch") return executeApi("vcs_write", [params.op, params.name]);
+      if (params.op === "push") return executeApi("vcs_write", [params.op, ...(params.ref === undefined ? [] : [params.ref])]);
+      return executeApi("vcs_write", [params.op, params.message, ...params.files]);
     },
   });
+
+  const selector = text.refine(value => !value.startsWith("-"), "A selector cannot be a CLI flag");
+  const outputFields = {
+    repo: text.optional(), json: strings.min(1).optional(), jq: text.optional(),
+    template: text.optional(), web: z.boolean().optional(),
+  };
+  const bodyFields = { body: z.string().optional(), bodyFile: text.optional(), attachments: strings.optional() };
+  const oneBody = (value: { body?: string; bodyFile?: string }) => value.body === undefined || value.bodyFile === undefined;
 
   pi.registerTool({
     name: "forge",
     label: "Forge",
     description:
-      "Forge operations over the detected remote host. Use op detect, supports, pr-view, pr-create, pr-edit, pr-comment, issue-view, or pr-checks; pass forge CLI flags in args. The body field is only valid for pr-create, pr-edit, and pr-comment.",
+      "Forge operations with named fields, never CLI flags. pr/issue identify a number, URL, or (PR only) branch; absent pr selects the current branch. JSON field names are supplied as a list. body and bodyFile are mutually exclusive. Attachments are file paths, optionally suffixed with #alt text. Backend capability checks remain authoritative.",
     parameters: z.union([
+      z.object({ op: z.literal("detect") }).strict(),
+      z.object({ op: z.literal("supports"), operation: text }).strict(),
+      z.object({ op: z.literal("pr-view"), pr: selector.optional(), comments: z.boolean().optional(), ...outputFields }).strict(),
+      z.object({ op: z.literal("issue-view"), issue: selector, comments: z.boolean().optional(), ...outputFields }).strict(),
       z.object({
-        op: z.literal("detect"),
-        args: z.array(z.string()),
-        body: z.undefined().optional(),
+        op: z.literal("pr-checks"), pr: selector.optional(), ...outputFields,
+        watch: z.boolean().optional(), required: z.boolean().optional(),
+        failFast: z.boolean().optional(), interval: z.number().int().positive().optional(),
       }).strict(),
       z.object({
-        op: z.literal("supports"),
-        args: z.array(z.string()),
-        body: z.undefined().optional(),
-      }).strict(),
+        op: z.literal("pr-create"), repo: text.optional(), title: text.optional(), ...bodyFields,
+        base: text.optional(), head: text.optional(), draft: z.boolean().optional(),
+        fill: z.boolean().optional(), fillFirst: z.boolean().optional(), fillVerbose: z.boolean().optional(),
+        reviewers: strings.optional(), assignees: strings.optional(), labels: strings.optional(), projects: strings.optional(),
+        milestone: text.optional(), noMaintainerEdit: z.boolean().optional(),
+        editor: z.boolean().optional(), web: z.boolean().optional(), recover: text.optional(),
+        templateFile: text.optional(), dryRun: z.boolean().optional(),
+      }).strict().refine(oneBody, "Provide body or bodyFile, not both"),
       z.object({
-        op: z.literal("pr-view"),
-        args: z.array(z.string()),
-        body: z.undefined().optional(),
-      }).strict(),
+        op: z.literal("pr-edit"), pr: selector.optional(), repo: text.optional(), title: text.optional(), ...bodyFields,
+        base: text.optional(), milestone: text.optional(), removeMilestone: z.boolean().optional(),
+        addAssignees: strings.optional(), removeAssignees: strings.optional(),
+        addLabels: strings.optional(), removeLabels: strings.optional(),
+        addProjects: strings.optional(), removeProjects: strings.optional(),
+        addReviewers: strings.optional(), removeReviewers: strings.optional(),
+      }).strict().refine(oneBody, "Provide body or bodyFile, not both"),
       z.object({
-        op: z.literal("pr-create"),
-        args: z.array(z.string()),
-        body: z.string().optional(),
-      }).strict(),
-      z.object({
-        op: z.literal("pr-edit"),
-        args: z.array(z.string()),
-        body: z.string().optional(),
-      }).strict(),
-      z.object({
-        op: z.literal("pr-comment"),
-        args: z.array(z.string()),
-        body: z.string().optional(),
-      }).strict(),
-      z.object({
-        op: z.literal("issue-view"),
-        args: z.array(z.string()),
-        body: z.undefined().optional(),
-      }).strict(),
-      z.object({
-        op: z.literal("pr-checks"),
-        args: z.array(z.string()),
-        body: z.undefined().optional(),
-      }).strict(),
+        op: z.literal("pr-comment"), pr: selector.optional(), repo: text.optional(), ...bodyFields,
+        editLast: z.boolean().optional(), deleteLast: z.boolean().optional(), createIfNone: z.boolean().optional(),
+        editor: z.boolean().optional(), web: z.boolean().optional(), yes: z.boolean().optional(),
+      }).strict().refine(oneBody, "Provide body or bodyFile, not both"),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      return executeForge(params, ctx);
+      const args: string[] = [];
+      if (params.op === "detect") return executeApi("forge", [params.op]);
+      if (params.op === "supports") return executeApi("forge", [params.op, params.operation]);
+      if ("pr" in params && params.pr !== undefined) args.push(params.pr);
+      if (params.op === "issue-view") args.push(params.issue);
+      option(args, "--repo", params.repo);
+      switch (params.op) {
+        case "pr-view": case "issue-view": case "pr-checks":
+          option(args, "--json", params.json?.join(","));
+          option(args, "--jq", params.jq);
+          option(args, "--template", params.template);
+          option(args, "--web", params.web);
+          if (params.op === "pr-checks") {
+            option(args, "--watch", params.watch);
+            option(args, "--required", params.required);
+            option(args, "--fail-fast", params.failFast);
+            option(args, "--interval", params.interval);
+          } else option(args, "--comments", params.comments);
+          return executeApi("forge", [params.op, ...args]);
+        case "pr-create":
+          option(args, "--title", params.title);
+          option(args, "--base", params.base);
+          option(args, "--head", params.head);
+          option(args, "--draft", params.draft);
+          option(args, "--fill", params.fill);
+          option(args, "--fill-first", params.fillFirst);
+          option(args, "--fill-verbose", params.fillVerbose);
+          option(args, "--reviewer", params.reviewers);
+          option(args, "--assignee", params.assignees);
+          option(args, "--label", params.labels);
+          option(args, "--project", params.projects);
+          option(args, "--milestone", params.milestone);
+          option(args, "--no-maintainer-edit", params.noMaintainerEdit);
+          option(args, "--editor", params.editor);
+          option(args, "--web", params.web);
+          option(args, "--recover", params.recover);
+          option(args, "--template", params.templateFile);
+          option(args, "--dry-run", params.dryRun);
+          break;
+        case "pr-edit":
+          option(args, "--title", params.title);
+          option(args, "--base", params.base);
+          option(args, "--milestone", params.milestone);
+          option(args, "--remove-milestone", params.removeMilestone);
+          option(args, "--add-assignee", params.addAssignees);
+          option(args, "--remove-assignee", params.removeAssignees);
+          option(args, "--add-label", params.addLabels);
+          option(args, "--remove-label", params.removeLabels);
+          option(args, "--add-project", params.addProjects);
+          option(args, "--remove-project", params.removeProjects);
+          option(args, "--add-reviewer", params.addReviewers);
+          option(args, "--remove-reviewer", params.removeReviewers);
+          break;
+        case "pr-comment":
+          option(args, "--edit-last", params.editLast);
+          option(args, "--delete-last", params.deleteLast);
+          option(args, "--create-if-none", params.createIfNone);
+          option(args, "--editor", params.editor);
+          option(args, "--web", params.web);
+          option(args, "--yes", params.yes);
+          break;
+      }
+      option(args, "--body-file", params.bodyFile);
+      option(args, "--attach", params.attachments);
+      return executeForge(params.op, args, params.body, ctx);
     },
   });
 
@@ -235,36 +255,87 @@ export default function (pi: ExtensionAPI) {
     name: "workflow",
     label: "Workflow",
     description:
-      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared workflow entry point to seed/resume from that entry point.",
+      "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared entry point to seed/resume.",
     parameters: z.union([
-      z.object({
-        field: z.literal("cli"),
-        from: z.undefined().optional(),
-      }).strict(),
-      z.object({
-        field: z.literal("cli_seed"),
-        from: z.enum(workflowEntryPoints),
-      }).strict(),
+      z.object({ field: z.literal("cli") }).strict(),
+      z.object({ field: z.literal("cli_seed"), from: z.enum(workflowEntryPoints) }).strict(),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (params.field === "cli") {
-        return executeWorkflow({ field: params.field }, ctx);
-      }
-      return executeWorkflow({ field: params.field, from: params.from }, ctx);
+      return executeWorkflow(params, ctx);
     },
   });
+
+  const booleanFields = ["review", "noVcs", "minimal", "hasEvidence", "supportsPrCreate", "supportsPrComment", "supportsIssueView", "supportsPrChecks"] as const;
+  const typedFields = [...booleanFields, "active", "status", "from", "steps", "pendingStep"];
+  const recordedStep = z.object({
+    name: step, status, verification: z.string(), startedAt: text, completedAt: text, reason: text.optional(),
+  }).strict();
+  const pendingStep = z.object({ name: step, startedAt: text }).strict();
+  const completion = { status, verification: z.string().optional(), reason: text.optional() };
 
   pi.registerTool({
     name: "agency_driver",
     label: "Agency Driver",
     description:
-      "Advance or inspect /do workflow state through the existing driver and results parsers. op selects one of init, start, end, skip, set, summary, sync, step-start, step-end, or step; args contains only that operation's operands and must not repeat op (for example, { op: \"sync\", args: [\"false\"] } or { op: \"start\", args: [\"research\"] }).",
-    parameters: z.object({
-      op: z.enum(["init", "start", "end", "skip", "set", "summary", "sync", "step-start", "step-end", "step"]),
-      args: z.array(z.string()),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      return executeApi("agency_driver", [params.op, ...params.args]);
+      "Advance/inspect /do state with operation-specific named fields. init accepts task/review/noVcs/minimal/restart/from; base and stack belong to sync and are mutually exclusive. start/skip use step; end uses status/verification/reason. set takes typed value: booleans for capability/options, structured values for steps/pendingStep, strings for custom fields. Step names and entry points come from the workflow manifest. No raw CLI args.",
+    parameters: z.union([
+      z.object({
+        op: z.literal("init"), task: text.refine(value => !value.startsWith("--"), "Task must not be a CLI flag").optional(),
+        review: z.boolean().optional(), noVcs: z.boolean().optional(), minimal: z.boolean().optional(),
+        restart: z.boolean().optional(), from: z.enum(workflowEntryPoints).optional(),
+      }).strict().refine(value => !value.review || value.from === undefined || value.from === "default", "review requires the default entry point"),
+      z.object({ op: z.enum(["start", "step-start"]), step }).strict(),
+      z.object({ op: z.enum(["end", "step-end"]), ...completion }).strict(),
+      z.object({ op: z.literal("skip"), step, reason: text }).strict(),
+      z.object({ op: z.literal("summary") }).strict(),
+      z.object({
+        op: z.literal("sync"), noVcs: z.boolean(), base: text.optional(), stack: z.literal(true).optional(),
+      }).strict().refine(value => !(value.base !== undefined && value.stack) && !(value.noVcs && (value.base !== undefined || value.stack)), "base/stack are mutually exclusive and require VCS"),
+      z.object({ op: z.literal("set"), field: z.enum(booleanFields), value: z.boolean() }).strict(),
+      z.object({ op: z.literal("set"), field: z.literal("active"), value: z.enum(["idle", "working", "waiting"]) }).strict(),
+      z.object({ op: z.literal("set"), field: z.literal("status"), value: z.enum(["idle", "running", "completed", "failed"]) }).strict(),
+      z.object({ op: z.literal("set"), field: z.literal("from"), value: z.enum(workflowEntryPoints) }).strict(),
+      z.object({ op: z.literal("set"), field: z.literal("steps"), value: z.array(recordedStep) }).strict(),
+      z.object({ op: z.literal("set"), field: z.literal("pendingStep"), value: pendingStep.nullable() }).strict(),
+      // State intentionally supports additional string fields. Exclude typed
+      // fields here so malformed typed values cannot fall through to this arm.
+      z.object({ op: z.literal("set"), field: text.refine(value => !typedFields.includes(value), "Use the typed value for this field"), value: text }).strict(),
+      z.object({ op: z.literal("step"), step, status, verification: z.string(), startedAt: text, completedAt: text, reason: text.optional() }).strict(),
+    ]),
+    async execute(_toolCallId, params) {
+      const args: string[] = [params.op];
+      switch (params.op) {
+        case "init":
+          option(args, "--review", params.review);
+          option(args, "--no-vcs", params.noVcs);
+          option(args, "--minimal", params.minimal);
+          option(args, "--restart", params.restart);
+          if (params.from !== undefined) args.push("--from=" + params.from);
+          if (params.task !== undefined) args.push(params.task);
+          break;
+        case "start": case "step-start": args.push(params.step); break;
+        case "end": case "step-end":
+          args.push(params.status);
+          if (params.verification !== undefined || params.reason !== undefined) args.push(params.verification ?? "");
+          if (params.reason !== undefined) args.push(params.reason);
+          break;
+        case "skip": args.push(params.step, params.reason); break;
+        case "summary": break;
+        case "sync":
+          args.push(String(params.noVcs));
+          option(args, "--base", params.base);
+          option(args, "--stack", params.stack);
+          break;
+        case "set":
+          args.push(params.field, typeof params.value === "string" ? params.value : JSON.stringify(params.value));
+          break;
+        case "step":
+          args.push(params.step, params.status, params.verification, params.startedAt, params.completedAt);
+          if (params.reason !== undefined) args.push(params.reason);
+          break;
+      }
+      return executeApi("agency_driver", args);
     },
   });
 }
+

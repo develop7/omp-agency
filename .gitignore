@@ -12,6 +12,10 @@ result-*
 target/
 nickel-vm/target/
 
+# JavaScript test dependencies and generated extension bundle
+node_modules/
+dist/agency-tools.mjs
+
 # Agency
 # Generated runtime artifacts (build outputs, never merge inputs)
 pure/dist/

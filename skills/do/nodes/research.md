@@ -17,7 +17,7 @@ description: Research the task thoroughly before writing code.
 ## Strategies
 
 - If given a GitHub issue URL **and** `supportsIssueView` is true (read from state), fetch it with the
-  `forge` tool using `{ op: "issue-view", args: [<url>] }`. On forges that don't support issue viewing,
+  `forge` tool using `{ op: "issue-view", issue: <url> }`. On forges that don't support issue viewing,
   treat any issue-like URL as opaque context — use the prompt text as-is. (Bitbucket issue/Jira
   fetching is tracked in #10.)
 - **Never assume** how something works. Read the code. Check the config.

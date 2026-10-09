@@ -9,7 +9,7 @@ description: Three-pass quality gate.
 
 - `--minimal` flag
 - `--no-vcs` flag
-- Diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
+- Diff from the `vcs_read` tool with `{ op: "diff-range" }`
 
 ## Ensures
 
@@ -18,7 +18,7 @@ description: Three-pass quality gate.
 
 ## Strategies
 
-Use the `vcs_read` tool with `{ args: ["diff-names"] }` to check if the PR contains code changes. If all
+Use the `vcs_read` tool with `{ op: "diff-names" }` to check if the PR contains code changes. If all
 changed files are documentation-only (`.md`, `.txt`, README, docs/) — skip this step with reason
 `"docs-only changes"`.
 

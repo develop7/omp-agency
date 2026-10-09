@@ -21,15 +21,15 @@ there. If no command is documented, skip this step with a note. Run CI with `asy
 tool if the command takes more than a few seconds — never pipe to `tail`/`head`, never append `2>&1`.
 
 **Active state**: before waiting for background CI, call `agency_driver` with
-`{ op: "set", args: ["active", "waiting"] }`; when it returns, call
-`{ op: "set", args: ["active", "working"] }` before proceeding.
+`{ op: "set", field: "active", value: "waiting" }`; when it returns, call
+`{ op: "set", field: "active", value: "working" }` before proceeding.
 
 CI commands are local and **forge-independent — run them regardless of forge**. Only the *verification
 method* may be forge-specific: if `.agency/do.md` describes verification via PR checks and
 `supportsPrChecks` is false (read from state), fall back to exit code + command output.
 
 **Verify coverage of `HEAD`.** Before recording the step as passed, compare the commit SHA CI ran
-against with the `vcs_read` tool using `{ args: ["head-commit-sha"] }`. That op is the CI-target
+against with the `vcs_read` tool using `{ op: "head-commit-sha" }`. That op is the CI-target
 identity: under jj it resolves the feature bookmark's commit (bookmark on `@`, else on `@-`; with
 no feature bookmark, the parent commit). **commit** runs before **ci**, so by this step the working
 copy is empty and the bookmark names the pushed change — but a bookmark sitting on `@` names the

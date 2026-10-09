@@ -30,6 +30,6 @@ just that PR's changes.
 
 That's it — just the local branch. commit pushes it, create-pr opens the PR later.
 
-**Verify**: calling the `vcs_read` tool with `{ args: ["head-revision"] }` returns the new branch name
+**Verify**: calling the `vcs_read` tool with `{ op: "head-revision" }` returns the new branch name
 (not master/main). Under jj this holds only after this node creates the bookmark — before it, the
 op reports the bookmark on the working copy's parent, which may be the base branch itself.

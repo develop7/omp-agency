@@ -4,11 +4,16 @@ repo := justfile_directory()
 # dev shell (`nix develop`), so recipes stay recursion-safe there.
 nix_shell := if env('IN_NIX_SHELL', '') != '' { '' } else { 'nix develop ' + repo + ' --accept-flake-config -c' }
 
-# Run all bats tests (unit + integration). Bundle-level suites invoke the
-# generated CLI/API artifacts, so build them first — source checkouts ship no
-# dist files.
-test: build nickel-build
+# Run all bats tests (unit + integration) and the typed tool boundary suite.
+test: test-tools
     {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/
+
+# Build the extension with the pinned esbuild and run real-Zod/real-API
+# boundary tests. npm ci is deterministic from the committed lockfile.
+test-tools: build nickel-build
+    {{ nix_shell }} npm ci
+    {{ nix_shell }} esbuild src/agency-tools.ts --bundle --format=esm --platform=node --packages=external --external:../pure/dist/agency-api.js --external:../nickel-vm/scripts/workflow-runtime.mjs --outfile=dist/agency-tools.mjs
+    {{ nix_shell }} npm run test:tools
 
 # Run unit tests only (black-box, no VCS fixtures). Builds first: some suites
 # invoke the generated CLI artifact a clean checkout does not ship.
@@ -48,8 +53,7 @@ build: workflow-vocabulary
         && spago bundle --module Agency.Scripts.Do.Api \
             --outfile dist/agency-api.js --force --platform node --bundle-type=module'
 
-# Full CI: bats + PureScript tests + lint + skill prose lint + runtime package
-# proof (the proof includes the Nickel workflow-contract smoke goldens)
+# Full CI: bats + typed tool boundary + PureScript tests + all quality gates.
 ci: test test-pure lint lint-skills runtime-check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,

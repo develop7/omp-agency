@@ -34,5 +34,5 @@ own follow-up commits — one per finding or violation addressed, via `vcs_write
 keeps the PR history a readable progression of "what was built, then what was refined" rather than a
 single opaque squash.
 
-**Verify**: calling the `vcs_read` tool with `{ args: ["log-head"] }` shows a new commit on the feature
+**Verify**: calling the `vcs_read` tool with `{ op: "log-head" }` shows a new commit on the feature
 branch, and it's pushed to remote.

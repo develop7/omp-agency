@@ -153,8 +153,9 @@ PATH directly. Nickel remains available as an editor/debugging nicety; runtime
 workflow evaluation is provided by `nickel-vm` WASM:
 
 ```bash
-just test          # build, then run bats tests (unit + integration)
+just test          # build, then run bats and typed tool boundary tests
 just test-pure     # run the PureScript core unit tests
+just test-tools    # test typed contracts against the shared PureScript runtime
 just lint          # run shellcheck on bash scripts
 just lint-skills   # lint skill markdown: no raw VCS/forge commands; reviewer skill tool references stay on the executor's allowlist
 just build         # compile and bundle the PureScript core
@@ -189,8 +190,8 @@ omp plugin marketplace add https://<owner>.github.io/<repo>/marketplace.json
 omp plugin install agency@<repo>
 ```
 
-All test and build tools (bats, shellcheck, purs, spago, git, jj) come from the
-pinned Nix dev shell via the recipes above — nothing to install. The `/do`
+All test and build tools (bats, shellcheck, purs, spago, git, jj, Node.js) come from the
+pinned Nix dev shell. Tool boundary tests install the lockfile-pinned Zod development dependency via `npm ci`. The `/do`
 operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and
 `agency_driver`) is implemented in PureScript under `pure/`. The CLI bundle,
 `pure/dist/agency-do.js`, is the black-box test entrypoint and is built by

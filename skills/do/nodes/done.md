@@ -30,11 +30,11 @@ attempts from done). If still failing after retries, set `status: "failed"`.
 6. A step `skipped` with `reason` `"docs-only changes"`.
 
 A `failed` step always blocks `"completed"` — no redefining "passed". Update via
-`{ op: "set", args: ["status", "completed"|"failed"] }`.
+`{ op: "set", field: "status", value: "completed" | "failed" }`.
 
 #### Timing summary
 
-Call the `agency_driver` tool with `{ op: "summary", args: [] }`. It emits the markdown timing table
+Call the `agency_driver` tool with `{ op: "summary" }`. It emits the markdown timing table
 (steps ≥30% of total time bold), the total wall-clock line, the `**Slowest step**:` line, and a
 `<<<FACTS ... FACTS` block with machine-readable data (`totalSeconds`, `slowestStep`, `dominantSteps`,
 `skippedSteps`, `failedSteps`). Do not compute durations yourself.
@@ -48,17 +48,17 @@ generic advice.
 #### PR comment & wrap-up
 
 - **Under `--no-vcs`**: print the timing table and suggestions to the terminal only. List files
-  modified in the working tree (the `vcs_read` tool with `{ args: ["dirty"] }`) and remind the user the
+  modified in the working tree (the `vcs_read` tool with `{ op: "dirty" }`) and remind the user the
   changes are uncommitted.
 - **If `!supportsPrComment`** (read from state): report the branch name (and remote URL via
-  `vcs_read` with `{ args: ["remote-url"] }`) instead of a PR URL. Print to the terminal only; post
+  `vcs_read` with `{ op: "remote-url" }`) instead of a PR URL. Print to the terminal only; post
   nothing.
 - **If `supportsPrComment`**: report the PR URL. Post the final step status table as a PR comment by
-  calling the `forge` tool with `{ op: "pr-comment", args: [], body: "<comment>" }` — use the emitted
+  calling the `forge` tool with `{ op: "pr-comment", body: "<comment>" }` — use the emitted
   table and slowest-step line verbatim, strip the trailing FACTS block. Format:
 
 ```text
-call the `forge` tool with `{ op: "pr-comment", args: [], body: """`
+call the `forge` tool with `{ op: "pr-comment", body: "..." }`
 ## [`/do`](https://github.com/srid/agency) results
 
 | Step | Status | Duration | Verification |

@@ -18,7 +18,7 @@ description: Run relevant tests.
 ## Strategies
 
 Read `.agency/do.md` and look for a `## Test command` section. Run only the tests relevant to the
-code paths changed in this PR — use the `vcs_read` tool with `{ args: ["diff-names"] }` to identify
+code paths changed in this PR — use the `vcs_read` tool with `{ op: "diff-names" }` to identify
 changed files. If no test command is documented, skip with a note.
 
 If changes are purely internal with no user-facing impact, unit tests may suffice — skip e2e if no

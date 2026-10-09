@@ -56,7 +56,7 @@ At every non-trivial declaration or block, ask whether a reader who did not writ
 
 ## Running the passes
 
-Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {args: ["diff-range"]}` and embeds the full diff in the shared batch context of both scout prompts — scouts never fetch the diff themselves. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
+Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff in the shared batch context of both scout prompts — scouts never fetch the diff themselves. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
 
 Each scout starts without the implementer's context and must use this file as the rules of record.
 
@@ -82,7 +82,7 @@ Fail loud over fail silent; every fallback needs a reason for its failure case; 
 
 ### Pass 3: Elegance
 
-Skip under `--no-elegance` and report `Elegance | – | Skipped (--no-elegance)`. Otherwise the orchestrator (running this pass in main context after both scouts return) obtains the shortstat itself with `vcs_read {args: ["diff-stat"]}`. If the diff is under 10 lines, report `Elegance | 0 | Skipped (tiny diff)`; Passes 1–2 still run.
+Skip under `--no-elegance` and report `Elegance | – | Skipped (--no-elegance)`. Otherwise the orchestrator (running this pass in main context after both scouts return) obtains the shortstat itself with `vcs_read {op: "diff-stat"}`. If the diff is under 10 lines, report `Elegance | 0 | Skipped (tiny diff)`; Passes 1–2 still run.
 
 For a larger diff, run the `elegance` skill loop for three iterations. Each iteration: understand the changed files and their unnecessary complexity; research simple, elegant, readable patterns with `web_search`; apply a refactor favoring fewer lines, clearer intent, and idiomatic style without adding abstractions; and verify with tests/CI. Simple beats clever, readable beats terse, idiomatic beats generic, and each iteration builds on the last. The Reviewing principles bind here too.
 
