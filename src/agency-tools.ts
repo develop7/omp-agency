@@ -267,13 +267,20 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  const booleanFields = ["review", "noVcs", "minimal", "hasEvidence", "supportsPrCreate", "supportsPrComment", "supportsIssueView", "supportsPrChecks"] as const;
-  const typedFields = [...booleanFields, "active", "status", "from", "steps", "pendingStep"];
+  const boolean = z.boolean();
   const recordedStep = z.object({
     name: step, status, verification: z.string(), startedAt: text, completedAt: text, reason: text.optional(),
   }).strict();
   const pendingStep = z.object({ name: step, startedAt: text }).strict();
   const completion = { status, verification: z.string().optional(), reason: text.optional() };
+  // These keys define both the typed cases and the custom-field exclusion.
+  const stateValues = {
+    review: boolean, noVcs: boolean, minimal: boolean, hasEvidence: boolean,
+    supportsPrCreate: boolean, supportsPrComment: boolean, supportsIssueView: boolean, supportsPrChecks: boolean,
+    active: z.enum(["idle", "working", "waiting"]),
+    status: z.enum(["idle", "running", "completed", "failed"]),
+    from: z.enum(workflowEntryPoints), steps: z.array(recordedStep), pendingStep: pendingStep.nullable(),
+  };
 
   pi.registerTool({
     name: "agency_driver",
@@ -293,15 +300,11 @@ export default function (pi: ExtensionAPI) {
       z.object({ op: z.literal("sync"), noVcs: z.boolean() }).strict(),
       z.object({ op: z.literal("sync"), noVcs: z.literal(false), base: text }).strict(),
       z.object({ op: z.literal("sync"), noVcs: z.literal(false), stack: z.literal(true) }).strict(),
-      z.object({ op: z.literal("set"), field: z.enum(booleanFields), value: z.boolean() }).strict(),
-      z.object({ op: z.literal("set"), field: z.literal("active"), value: z.enum(["idle", "working", "waiting"]) }).strict(),
-      z.object({ op: z.literal("set"), field: z.literal("status"), value: z.enum(["idle", "running", "completed", "failed"]) }).strict(),
-      z.object({ op: z.literal("set"), field: z.literal("from"), value: z.enum(workflowEntryPoints) }).strict(),
-      z.object({ op: z.literal("set"), field: z.literal("steps"), value: z.array(recordedStep) }).strict(),
-      z.object({ op: z.literal("set"), field: z.literal("pendingStep"), value: pendingStep.nullable() }).strict(),
+      ...Object.entries(stateValues).map(([field, value]) =>
+        z.object({ op: z.literal("set"), field: z.literal(field), value }).strict()),
       // State intentionally supports additional string fields. Exclude typed
       // fields here so malformed typed values cannot fall through to this arm.
-      z.object({ op: z.literal("set"), field: text.refine(value => !typedFields.includes(value), "Use the typed value for this field"), value: text }).strict(),
+      z.object({ op: z.literal("set"), field: text.refine(value => !Object.hasOwn(stateValues, value), "Use the typed value for this field"), value: text }).strict(),
       z.object({ op: z.literal("step"), step, status, verification: z.string(), startedAt: text, completedAt: text, reason: text.optional() }).strict(),
     ]),
     async execute(_toolCallId, params) {
