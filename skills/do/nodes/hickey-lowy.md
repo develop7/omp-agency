@@ -9,7 +9,7 @@ description: Parallel structural review with hickey and lowy sub-agents.
 
 - `--minimal` flag
 - `--no-vcs` flag
-- Diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
+- Diff from the `vcs_read` tool with `{ op: "diff-range" }`
 - Full task prompt + research context
 
 ## Ensures
@@ -33,9 +33,9 @@ model override. The main-model fallback uses the reviewer's declared tool set (t
 Each sub-agent prompt must be self-contained (sub-agents inherit no context). Brief each one with:
 
 - The full task prompt plus anything relevant that **research** uncovered
-- Scope: the actual diff from the `vcs_read` tool with `{ args: ["diff-range"] }`
+- Scope: the actual diff from the `vcs_read` tool with `{ op: "diff-range" }`
 - **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
-  `{ args: ["new-files"] }` and only include the hint if the output is non-empty: survey the codebase
+  `{ op: "new-files" }` and only include the hint if the output is non-empty: survey the codebase
   for the canonical in-repo pattern for the same *kind* of operation and flag it as the headline finding
   if the diff reinvents rather than extends it
 
@@ -60,7 +60,7 @@ in the PR description as a strategic note, not a deferred finding.
 Otherwise, for each reviewer that produced findings, spawn a **second invocation of that same skill**
 in parallel, with a self-contained prompt containing:
 
-- The actual diff (`vcs_read` with `{ args: ["diff-range"] }`)
+- The actual diff (`vcs_read` with `{ op: "diff-range" }`)
 - The other reviewer's full findings output — paste verbatim; the cross-validator must see the
   recommendations being audited, not a summary
 - The question, phrased neutrally: _"Apply your lens to the diff **and** to the other reviewer's

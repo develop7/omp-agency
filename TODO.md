@@ -49,13 +49,16 @@ the single workflow authority shared by the CLI and model-facing path.
 The adapters expose operation-specific schemas rather than a flat optional
 argument bag:
 
-1. `vcs_read` contains read-only VCS operations; sync owns fetching because
-   fetch updates remote-tracking refs.
+1. `vcs_read` selects the read operation with `op`; `paths` is used only for
+   `diff-range`, `diff-names`, `diff-stat`, `new-files`, and `log-range`.
 2. `vcs_write` makes branch `name`, commit/fix-commit `message` plus `files`,
    and push `ref` explicit.
-3. `forge` accepts `body` only for `pr-create`, `pr-edit`, and `pr-comment`.
-4. `workflow` restricts `cli_seed` to the documented entry-point vocabulary.
-5. Non-zero adapter results become tool errors with useful predicate
+3. `agency_driver` uses operation-specific fields for lifecycle, state, and
+   sync operations; lifecycle statuses are `passed`, `failed`, or `skipped`.
+4. `forge` uses named fields per operation (including body fields for PR
+   create/edit/comment) rather than a CLI argv array.
+5. `workflow` restricts `cli_seed` to the documented entry-point vocabulary.
+6. Non-zero adapter results become tool errors with useful predicate
    diagnostics instead of empty messages.
 
 Keep the extension thin: preserve the PureScript state transitions, parsers,

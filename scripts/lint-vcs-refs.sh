@@ -144,7 +144,7 @@ echo "No raw VCS or forge commands found in skill files."
 #     extension-registered tools — the raw bundled frontmatter alone would
 #     under-count, since extension tools are force-included in normal spawns.
 # Only positive tool-instruction references are checked, anchored to call
-# syntax: a backticked inline call shape (`tool {args: ...}`) or a backticked
+# syntax: a backticked inline call shape (`tool {op: ...}`) or a backticked
 # tool name directly followed by " tool" (`vcs_read` tool using ...). Prose
 # identifiers (rule IDs, event names, code literals) and negated mentions
 # ("Do not use the `ask` tool") are not executor instructions. References that
@@ -206,8 +206,8 @@ reviewer_tools() {
 }
 
 # Extract tool references anchored to call syntax. An inline span containing
-# an `{ args: ...}` call shape yields its first word (e.g.
-# `vcs_read {args: ["diff-range"]}`); a bare identifier span yields only when
+# a named-field call shape yields its first word (e.g.
+# `vcs_read {op: "diff-range"}`); a bare identifier span yields only when
 # directly followed by " tool"/" tools" and not negated earlier on the line.
 tool_refs_in_file() {
   awk '
@@ -218,7 +218,7 @@ tool_refs_in_file() {
       after = substr(s, RSTART + RLENGTH)
       before = substr(s, 1, RSTART - 1)
       tok = span
-      if (index(span, "{") > 0 && span ~ /\{ ?args/) {
+      if (span ~ /\{[[:space:]]*[a-zA-Z_]+[[:space:]]*:/) {
         sub(/[[:space:]].*/, "", tok)
         if (tok ~ /^[a-z_]+$/) print tok
       } else if (span ~ /^[a-z_]+$/ && after ~ /^ ?(tool|tools)([^a-zA-Z_]|$)/) {

@@ -120,12 +120,12 @@ substitution, and escaping them with `\`` produces literal backslashes in the re
 call the `forge` tool with:
 {
   op: "pr-create",
-  args: ["--draft", "--title", "...", "--base", "<defaultBranch>", "--head", "<headRevision>"],
+  draft: true, title: "...", base: "<defaultBranch>", head: "<headRevision>",
   body: "...body with ```fenced blocks``` intact..."
 }
 ```
 
-The `body` parameter is load-bearing — do not put body text in `args`. The same pattern applies to the `forge` tool's
+The `body` parameter is load-bearing — do not put body text in other fields. The same pattern applies to the `forge` tool's
 `pr-edit` and `pr-comment` operations.
 
 ## Updating existing PRs
@@ -134,7 +134,7 @@ When the user pushes further changes to an already-PR'd branch:
 
 1. Check if the PR title/description still accurately reflects the full scope
 2. If new commits meaningfully change what the PR does, update the title and/or body via the `forge` tool (
-   `{ op: "pr-edit", args: [...], body: "<updated body>" }` on GitHub)
+   `{ op: "pr-edit", body: "<updated body>" }` on GitHub)
 3. Don't rewrite from scratch — amend the existing description to cover new ground
 4. Add a brief note about what changed if the scope expanded significantly
 

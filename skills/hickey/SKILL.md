@@ -43,7 +43,7 @@ For each new abstraction (component, module, signal, type) the code introduces:
 3. **"Mirror existing pattern" is an easiness judgment** — creating B because A looks similar adds a concept; extending A keeps the count flat.
 4. **Package surface as a fragmentation site** — read a new package's exports the way Layer 2 reads a per-entity structure: a consumer forced to wire several exports together to reconstitute one concept means the package fragmented one primitive into N exports. Collapse to one entry point; see `/lowy` §6.5 for the volatility-side argument and the worked example.
 
-Budget: the survey fires when the diff adds new files (check with the `vcs_read` tool using `{ args: ["new-files"] }`) or a new exported abstraction; pure refactors and line-level fixes are exempt.
+Budget: the survey fires when the diff adds new files (check with the `vcs_read` tool using `{ op: "new-files" }`) or a new exported abstraction; pure refactors and line-level fixes are exempt.
 
 Concept Multiplication is *duplicated wholes* (two classes for one concept → delete one); Fragmentation is *split wholes* (one concept shattered → collapse). One finding can trigger both — that's redundancy, not muddling.
 

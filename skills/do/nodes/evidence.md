@@ -44,12 +44,12 @@ includes:
 
 - The literal section content from `.agency/do.md`.
 - Standard PR context: PR URL, branch name, base branch, current commit SHA, and changed files via
-  the `vcs_read` tool with `{ args: ["diff-names"] }`.
+  the `vcs_read` tool with `{ op: "diff-names" }`.
 - An explicit instruction to **return a single block of markdown** suitable for posting under a
   `## Evidence` heading — not post the comment itself.
 
 After the sub-agent returns, post its output as one PR comment by calling the `forge` tool with
-`{ op: "pr-comment", args: [], body: "## Evidence\n\n<markdown returned by the sub-agent>" }`. Embed
+`{ op: "pr-comment", body: "## Evidence\n\n<markdown returned by the sub-agent>" }`. Embed
 image/asset URLs inline — the comment operation cannot attach files; the section's mechanism is
 responsible for hosting binary artifacts so they end up referenceable.
 

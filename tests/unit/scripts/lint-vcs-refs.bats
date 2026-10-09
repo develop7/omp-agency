@@ -124,7 +124,7 @@ run_lint() {
 
 @test "tool-allowlist check passes when reviewer skills reference allowed tools" {
   mkdir -p "$FIXTURE_SKILLS/lowy" "$FIXTURE_SKILLS/code-police"
-  printf 'Use the `vcs_read` tool with `{ args: ["diff-range"] }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Use the `vcs_read` tool with `{ op: "diff-range" }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
   printf 'Do not use the `ask` tool. Orchestration may use `web_search`.\n' > "$FIXTURE_SKILLS/code-police/SKILL.md"
   run_lint
   [ "$status" -eq 0 ]
@@ -147,13 +147,12 @@ run_lint() {
   [[ "$output" == *"Tool reference 'bash' is not on the scout effective allowlist."* ]]
 }
 
-@test "tool-allowlist check accepts extension tool references in reviewer skills" {
-  mkdir -p "$FIXTURE_SKILLS/hickey"
-  printf 'Fetch with `forge { args: ["pr-view"] }` when the harness exposes it.\n' > "$FIXTURE_SKILLS/hickey/SKILL.md"
-  run_lint
-  # Without an agents/ tree the reviewer branch is skipped, so this only
-  # proves the scanner itself does not crash on hickey files.
-  [ "$status" -eq 0 ]
+@test "tool-allowlist check rejects typed inline calls to unavailable tools" {
+  setup_agents_fixture
+  mkdir -p "$FIXTURE_SKILLS/lowy"
+  printf 'Invoke `bash {command: "true"}`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  run_lint_agents
+  [ "$status" -eq 1 ]
 }
 
 # Reviewer-agent branch coverage: fixture agents/ tree with controlled
@@ -173,7 +172,7 @@ run_lint_agents() {
 @test "tool-allowlist check runs reviewer branch and passes equal frontmatters" {
   setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy"
-  printf 'Use the `vcs_read` tool with `{ args: ["new-files"] }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Use the `vcs_read` tool with `{ op: "new-files" }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 0 ]
   [[ "$output" == *"tool references are consistent"* ]]
