@@ -140,14 +140,15 @@ export default function (pi: ExtensionAPI) {
   // GitHub's CLI vocabulary is a provider extension, not part of the neutral
   // operation fields. Each option owns its schema and lowering flag together.
   function githubOptions<Fields extends Record<string, { schema: Parameters<typeof z.object>[0][string]; flag: string }>>(fields: Fields) {
-    const shape = Object.fromEntries(Object.entries(fields).map(([name, field]) => [name, field.schema])) as {
+    const entries = Object.entries(fields);
+    const shape = Object.fromEntries(entries.map(([name, field]) => [name, field.schema])) as {
       [Name in keyof Fields]: Fields[Name]["schema"];
     };
     return {
       schema: z.object(shape).strict().optional(),
       append(args: string[], values: Record<string, Parameters<typeof option>[2]> | undefined) {
         if (values === undefined) return;
-        for (const [name, field] of Object.entries(fields)) option(args, field.flag, values[name]);
+        for (const [name, field] of entries) option(args, field.flag, values[name]);
       },
     };
   }
