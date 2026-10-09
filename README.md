@@ -205,6 +205,8 @@ common values at the top level; GitHub-specific options are namespaced, such as
 `forge {op: "pr-view", json: ["number"], github: {jq: ".number"}}`.
 Backend parsers and permission checks remain authoritative; old model-facing
 `args` payloads are rejected rather than translated through a compatibility layer.
+Push refs and forge selectors cannot be CLI flags; the Git backend also terminates
+push options before the explicit ref operand.
 
 ```bash
 just test-pure    # PureScript unit tests

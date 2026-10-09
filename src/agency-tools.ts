@@ -101,6 +101,7 @@ async function executeForge(op: string, args: string[], body: string | undefined
 export default function (pi: ExtensionAPI) {
   const z = pi.zod;
   const text = z.string().min(1);
+  const selector = text.regex(/^[^-]/, "A selector cannot be a CLI flag");
   const strings = z.array(text);
   const step = z.enum(workflowSteps);
   const status = z.enum(["passed", "failed", "skipped"]);
@@ -127,7 +128,7 @@ export default function (pi: ExtensionAPI) {
     parameters: z.union([
       z.object({ op: z.literal("branch"), name: text }).strict(),
       z.object({ op: z.enum(["commit", "fix-commit"]), message: text, files: strings.min(1) }).strict(),
-      z.object({ op: z.literal("push"), ref: text.optional() }).strict(),
+      z.object({ op: z.literal("push"), ref: selector.optional() }).strict(),
     ]),
     async execute(_toolCallId, params) {
       if (params.op === "branch") return executeApi("vcs_write", [params.op, params.name]);
@@ -136,7 +137,6 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  const selector = text.refine(value => !value.startsWith("-"), "A selector cannot be a CLI flag");
   // GitHub's CLI vocabulary is a provider extension, not part of the neutral
   // operation fields. Each option owns its schema and lowering flag together.
   function githubOptions<Fields extends Record<string, { schema: Parameters<typeof z.object>[0][string]; flag: string }>>(fields: Fields) {

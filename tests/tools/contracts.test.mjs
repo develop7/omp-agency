@@ -52,6 +52,27 @@ test("vcs_read rejects paths on operations that do not consume them", () => {
   rejects(schema, { op: "diff-names", paths: ["tracked.txt"], args: ["--all"] });
 });
 
+test("vcs_write rejects option-like push refs", () => {
+  rejects(tool(tools, "vcs_write").parameters, { op: "push", ref: "--force" });
+});
+
+test("push treats backend refs as operands without changing the remote", async () => {
+  await gitRepo(async (cwd) => {
+    git(cwd, "init", "--bare", "remote.git");
+    git(cwd, "remote", "add", "origin", join(cwd, "remote.git"));
+    const registered = await initState(cwd, { noVcs: false });
+    await invoke(registered, "vcs_write", { op: "push", ref: "base" }, cwd);
+    const remoteHead = () => execFileSync("git", ["--git-dir", join(cwd, "remote.git"), "rev-parse", "refs/heads/base"], { encoding: "utf8" });
+    const before = remoteHead();
+    await writeFile(join(cwd, "tracked.txt"), "changed\n");
+    git(cwd, "add", "tracked.txt");
+    git(cwd, "commit", "--quiet", "-m", "change local history");
+    const { runTool } = await import("../../pure/dist/agency-api.js");
+    const result = runTool({ tool: "vcs_write", args: ["push", "--force"], captureOutput: true })();
+    assert.notEqual(result.exit, 0);
+    assert.equal(remoteHead(), before);
+  });
+});
 test("agency_driver rejects invalid operation fields and generated vocabulary values", () => {
   const schema = tool(tools, "agency_driver").parameters;
   rejects(schema, { op: "summary", args: [] });
