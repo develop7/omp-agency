@@ -290,9 +290,9 @@ export default function (pi: ExtensionAPI) {
       z.object({ op: z.enum(["end", "step-end"]), ...completion }).strict(),
       z.object({ op: z.literal("skip"), step, reason: text }).strict(),
       z.object({ op: z.literal("summary") }).strict(),
-      z.object({
-        op: z.literal("sync"), noVcs: z.boolean(), base: text.optional(), stack: z.literal(true).optional(),
-      }).strict().refine(value => !(value.base !== undefined && value.stack) && !(value.noVcs && (value.base !== undefined || value.stack)), "base/stack are mutually exclusive and require VCS"),
+      z.object({ op: z.literal("sync"), noVcs: z.boolean() }).strict(),
+      z.object({ op: z.literal("sync"), noVcs: z.literal(false), base: text }).strict(),
+      z.object({ op: z.literal("sync"), noVcs: z.literal(false), stack: z.literal(true) }).strict(),
       z.object({ op: z.literal("set"), field: z.enum(booleanFields), value: z.boolean() }).strict(),
       z.object({ op: z.literal("set"), field: z.literal("active"), value: z.enum(["idle", "working", "waiting"]) }).strict(),
       z.object({ op: z.literal("set"), field: z.literal("status"), value: z.enum(["idle", "running", "completed", "failed"]) }).strict(),
@@ -325,8 +325,8 @@ export default function (pi: ExtensionAPI) {
         case "summary": break;
         case "sync":
           args.push(String(params.noVcs));
-          option(args, "--base", params.base);
-          option(args, "--stack", params.stack);
+          option(args, "--base", "base" in params ? params.base : undefined);
+          option(args, "--stack", "stack" in params ? params.stack : undefined);
           break;
         case "set":
           args.push(params.field, typeof params.value === "string" ? params.value : JSON.stringify(params.value));
