@@ -42,7 +42,13 @@ and resolves conflicts against both lenses. Only those reconciled fixes are appl
 order; a lens with zero initial findings still cross-validates when the other lens has findings.
 The PR comment uses the final reconciled dispositions, not the raw reviewer recommendations.
 
-Every finding lands as its own commit in the same PR — there is no Defer disposition, no follow-up issue, no "out of scope" exit. The PR's scope expands to absorb each finding, even when the fix grows the diff substantially; the alternative is shipping the complected version and trusting a "broader refactor" follow-up that statistically never happens. Reviewers default to whole-module scope, not just the diff lines — recurring patterns in the same file are in scope even when the trigger pointed only at one symptom. PR history reads as a progression from primary implementation through each structural refinement; the full findings ledger ships as a PR comment. Both reviewers run on the `@task` model role — set `modelRoles.task` in your OMP config to control which model runs reviews.
+Each reconciled **Fix in this PR** lands as its own commit, in dependency order. Overlapping findings
+may share one covering fix; findings reconciled to **No-op** receive no commit and remain in the
+ledger with their rationale. There is no Defer disposition, follow-up issue, or "out of scope" exit:
+reviewers default to whole-module scope, including recurring patterns beyond the diff lines. PR
+history reads as a progression from primary implementation through each structural refinement,
+and the full reconciled ledger ships as a PR comment. Both reviewers run on the `@task` model role;
+set `modelRoles.task` in your OMP config to choose the review model.
 
 Read [**Hickey/Lowy on kolu.dev**](https://kolu.dev/blog/hickey-lowy/) for the full framing — what each lens looks for and why the pair catches what tests miss. Both can be extended with project-specific patterns via `.agency/hickey.md` / `.agency/lowy.md` (see [Project config](#project-config)).
 
