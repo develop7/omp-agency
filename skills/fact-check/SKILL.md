@@ -28,7 +28,7 @@ finding whose fix would make behavior stricter or semantically different must ci
 hunk demonstrating that exact behavior (restoring what the baseline had) or an explicit task
 requirement; otherwise do not raise it as a finding. Restoring a guard the deleted implementation
 demonstrably had is in scope." The cadensight-hub regression was an omitted non-string id guard,
-correctly restored under this rule. For `all` and inline targets there is no baseline: do not
+correctly restored under this rule. For `all`, file-path, and inline targets there is no baseline: do not
 propose new validation unless the task authorizes it.
 
 Do **not** use the `ask` tool. This skill runs in a sub-agent and is routinely invoked autonomously (e.g. from `/do` via
