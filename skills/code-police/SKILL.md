@@ -8,6 +8,8 @@ argument-hint: "[--no-elegance]"
 
 Review the current changes (scoped to the current branch/PR) against the rules below plus any project rules. The three passes — rule checklist, fact-check, elegance — run on fresh sub-agent contexts: the implementer's main context just wrote the diff and is biased to rationalize it. The orchestrator stitches their findings into one summary.
 
+The **baseline contract** is part of the authoritative rules bundle (see below and **Running the passes**): "The diff's deleted side is the behavioral baseline: preserve deleted behavior unless the task explicitly requests a change. Every finding whose fix would make behavior stricter or semantically different must cite a deleted-side hunk demonstrating that exact behavior (restoring what the baseline had) or an explicit task requirement; otherwise do not raise it as a finding. Restoring a guard the deleted implementation demonstrably had is in scope."
+
 ## Arguments
 
 `--no-elegance` — skip Pass 3 entirely and report `Elegance | – | Skipped (--no-elegance)`. Passes 1–2 still run. Use when the `elegance` skill loop already ran over this same tree; otherwise Pass 3 repeats a near-guaranteed no-op.
@@ -18,7 +20,7 @@ Before any reviewer or elegance pass, list the repository root to check for `.ag
 
 Read the project rule file once. Include its inline rules and discover/read each project-rule file it explicitly points to, also once. Resolve and read every applicable pointer before starting a pass; propagate any discovery, read, or permission error instead of silently dropping that rule. Preserve source paths and rule IDs so project rules appear as separate Pass 1 rows.
 
-Build one complete rules bundle containing the Reviewing principles, all built-in rules and Additional principles below, and all applicable project rules and referenced-file contents. Put this bundle in the shared task context for every reviewer and elegance call, including every retry. Pass prompts must make clear that the supplied bundle is authoritative: reviewers must not search for, list, open, or rediscover project-rule files. The orchestrator owns discovery and supplies the same complete applicable rules on every attempt. Do not pass only a summary or pointers in place of rule contents.
+Build one complete rules bundle containing the baseline contract (above), the Reviewing principles, all built-in rules and Additional principles below, and all applicable project rules and referenced-file contents. Put this bundle in the shared task context for every reviewer and elegance call, including every retry. Pass prompts must make clear that the supplied bundle is authoritative: reviewers must not search for, list, open, or rediscover project-rule files. The orchestrator owns discovery and supplies the same complete applicable rules on every attempt. Do not pass only a summary or pointers in place of rule contents.
 
 ## Reviewing principles
 
@@ -60,7 +62,7 @@ At every non-trivial declaration or block, ask whether a reader who did not writ
 
 ## Running the passes
 
-Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff and complete rules bundle in the shared batch context of both scout prompts — scouts never fetch the diff or discover rules themselves. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
+Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff and complete rules bundle in the shared batch context of both scout prompts — scouts never fetch the diff or discover rules themselves. The bundle carries the baseline contract quoted above, and the orchestrator includes it verbatim in every reviewer prompt. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
 
 Each scout starts without the implementer's context. Supply this skill's complete applicable built-in rules and the orchestrator-resolved project rules in its shared task context; it must use that bundle as the rules of record and must not rediscover project rules.
 
@@ -75,7 +77,7 @@ Every "No" requires a **`Checked by:`** field: use a grep-for-absence for purely
 
 ### Pass 2: Fact-check
 
-The Pass 2 scout applies the Reviewing principles and project rules in the complete bundle supplied in shared context; it must not read or discover rule files. Scope its review to **the diff embedded in the prompt**, and perform a logic review rather than a style review. Find where the code lies to itself:
+The Pass 2 scout applies the Reviewing principles and project rules in the complete bundle supplied in shared context; it must not read or discover rule files. Scope its review to **the diff embedded in the prompt**, and perform a logic review rather than a style review. The baseline contract in the bundle governs every proposal, including stricter-validation suggestions. Find where the code lies to itself:
 
 - silent error swallowing and inaccurate fallbacks that mask misconfiguration;
 - unvalidated boundary inputs, code that can fail despite "can't fail" assumptions, and races papered over with comments;

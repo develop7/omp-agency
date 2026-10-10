@@ -283,3 +283,83 @@ if [ "$tool_violations" -gt 0 ]; then
 fi
 
 echo "Reviewer skill tool references are consistent with the effective allowlists."
+
+# ---------------------------------------------------------------------------
+# CHECK_BASELINE_CONTRACT: the reviewer baseline-preservation contract is
+# quoted at three prompt sites and must stay identical everywhere. The
+# canonical text lives in $CANONICAL_FILE (the `- **Baseline
+# contract**:` brief bullet); skills/code-police/SKILL.md and
+# skills/fact-check/SKILL.md must echo it word-for-word (markdown line-wrap
+# normalized). The contract wording changes rarely — drift between sites is
+# the real risk, and this mechanical check makes staying in sync enforceable.
+# ---------------------------------------------------------------------------
+
+CANONICAL_FILE="$SKILLS_DIR/do/nodes/hickey-lowy.md"
+
+# Extract the double-quoted contract text following a marker line: join
+# every line from the marker onward, then match the first double-quoted
+# span (the contract text contains no double quotes, only apostrophes).
+# Markdown line-wrap inside the quote is normalized to single spaces.
+contract_quote() {
+  local file="$1" marker="$2"
+  awk -v marker="$marker" '
+    !capturing {
+      pos = index($0, marker)
+      if (!pos) next
+      $0 = substr($0, pos)
+      capturing = 1
+    }
+    capturing { text = text $0 " " }
+    END {
+      if (!match(text, /"[^"]*"/)) exit 1
+      quote = substr(text, RSTART + 1, RLENGTH - 2)
+      gsub(/[[:space:]]+/, " ", quote)
+      printf "%s", quote
+    }
+  ' "$file"
+}
+
+check_contract_site() {
+  local file="$1" marker="$2" canonical="$3"
+  local actual
+  if [ ! -f "$file" ]; then
+    echo "::error file=$file::Baseline contract site missing." >&2
+    return 1
+  fi
+  if ! actual="$(contract_quote "$file" "$marker")"; then
+    echo "::error file=$file::Could not extract baseline contract quote at marker '$marker' (marker missing or double-quoted span unclosed)." >&2
+    return 1
+  fi
+  if [ "$actual" != "$canonical" ]; then
+    echo "::error file=$file::Baseline contract quote diverges from the canonical text in $CANONICAL_FILE." >&2
+    echo "--- canonical ---" >&2
+    printf '%s\n' "$canonical" >&2
+    echo "--- $file ---" >&2
+    printf '%s\n' "$actual" >&2
+    return 1
+  fi
+  return 0
+}
+
+contract_violations=0
+if [ -f "$CANONICAL_FILE" ]; then
+  if CANONICAL="$(contract_quote "$CANONICAL_FILE" '- **Baseline contract**:')"; then
+    check_contract_site "$SKILLS_DIR/code-police/SKILL.md" 'The **baseline contract** is part of the authoritative rules bundle' "$CANONICAL" \
+      || contract_violations=$((contract_violations + 1))
+    check_contract_site "$SKILLS_DIR/fact-check/SKILL.md" '**Baseline preservation.**' "$CANONICAL" \
+      || contract_violations=$((contract_violations + 1))
+  else
+    echo "::error file=$CANONICAL_FILE::Canonical baseline contract quote not extractable." >&2
+    contract_violations=$((contract_violations + 1))
+  fi
+elif [ "$SKILLS_DIR" = "$REPO_DIR/skills" ]; then
+  echo "::error file=$CANONICAL_FILE::Canonical baseline contract file missing from the default skills tree." >&2
+  contract_violations=$((contract_violations + 1))
+else
+  echo "Baseline contract check skipped: $CANONICAL_FILE absent (fixture layout)." >&2
+fi
+
+if [ "$contract_violations" -gt 0 ]; then
+  echo "Found $contract_violations baseline-contract divergence(s). Update all three sites together; the canonical text lives in $CANONICAL_FILE." >&2
+  exit 1
+fi

@@ -219,3 +219,66 @@ run_lint_agents() {
   run_lint_agents
   [ "$status" -eq 0 ]
 }
+
+# --- CHECK_BASELINE_CONTRACT ------------------------------------------------
+
+# Materialize the canonical bullet plus both echo sites. The first argument
+# is written into the canonical quote (line-wrapped after "alpha"), the
+# second into the echo sites' quotes.
+write_contract_sites() {
+  local canonical_quote="$1" echo_quote="$2"
+  mkdir -p "$FIXTURE_SKILLS/do/nodes" "$FIXTURE_SKILLS/code-police" "$FIXTURE_SKILLS/fact-check"
+  printf -- '- **Baseline contract**: "Contract alpha\n  %s"\n' "$canonical_quote" \
+    > "$FIXTURE_SKILLS/do/nodes/hickey-lowy.md"
+  printf 'The **baseline contract** is part of the authoritative rules bundle: "%s"\n' "$echo_quote" \
+    > "$FIXTURE_SKILLS/code-police/SKILL.md"
+  printf '**Baseline preservation.** Apply verbatim: "%s"\n' "$echo_quote" \
+    > "$FIXTURE_SKILLS/fact-check/SKILL.md"
+}
+
+@test "baseline contract: matching sites pass with line-wrap normalized" {
+  write_contract_sites 'beta."' 'Contract alpha beta.'
+  run_lint
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"::error"* ]]
+}
+
+@test "baseline contract: diverging echo site exits 1" {
+  write_contract_sites 'beta."' 'Contract alpha gamma.'
+  run_lint
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"diverges from the canonical text"* ]]
+}
+
+@test "baseline contract: echo site missing its marker exits 1" {
+  write_contract_sites 'beta."' 'Contract alpha beta.'
+  printf 'No marker and no contract here.\n' > "$FIXTURE_SKILLS/code-police/SKILL.md"
+  run_lint
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Could not extract baseline contract quote at marker"* ]]
+}
+
+@test "baseline contract: missing echo site file exits 1" {
+  write_contract_sites 'beta."' 'Contract alpha beta.'
+  rm "$FIXTURE_SKILLS/fact-check/SKILL.md"
+  run_lint
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Baseline contract site missing"* ]]
+}
+
+@test "baseline contract: canonical quote not extractable exits 1" {
+  mkdir -p "$FIXTURE_SKILLS/do/nodes"
+  printf 'A node file without the contract marker.\n' > "$FIXTURE_SKILLS/do/nodes/hickey-lowy.md"
+  run_lint
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Canonical baseline contract quote not extractable"* ]]
+}
+
+@test "baseline contract: missing canonical on the default skills tree exits 1" {
+  mkdir -p "$TEST_DIR/scripts" "$TEST_DIR/src" "$TEST_DIR/skills"
+  cp "$LINT" "$TEST_DIR/scripts/"
+  cp "$(repo_script src/agency-tools.ts)" "$TEST_DIR/src/"
+  run env -u SKILLS_DIR bash "$TEST_DIR/scripts/lint-vcs-refs.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing from the default skills tree"* ]]
+}
