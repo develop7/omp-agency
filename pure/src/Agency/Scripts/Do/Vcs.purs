@@ -23,7 +23,7 @@ import Prelude
 
 import Agency.Scripts.Do.Args as Args
 import Agency.Scripts.Do.Binaries as Binaries
-import Agency.Scripts.Do.Context (WorkflowContext)
+import Agency.Scripts.Do.Context (WorkflowContext, statePath)
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.State as State
@@ -259,7 +259,7 @@ resolveBase :: WorkflowContext -> Effect Outcome.OpOutcome
 resolveBase context = case context.base of
   Just value -> pure (Outcome.withStdout (value <> "\n"))
   Nothing -> do
-    stateResult <- State.readState (context.stateDir <> "/.do-results.json")
+    stateResult <- State.readState (statePath context)
     pure case stateResult of
       Left error -> failureLines
         [ "vcs-op: base is not set and workflow state could not be read: " <> error
