@@ -14,7 +14,11 @@ Review the current changes (scoped to the current branch/PR) against the rules b
 
 ## Project rules
 
-Before spawning passes, read `.agency/code-police.md` if it exists. Its inline rules or file pointers are additions to the built-in list and appear as separate Pass 1 rows under the project's rule IDs. If missing, use the built-in rules only.
+Before any reviewer or elegance pass, list the repository root to check for `.agency`. If present, list `.agency` to check for `code-police.md`; only then read the confirmed file. A successful listing without the relevant entry confirms optional absence and selects built-in rules only. A failed listing, read, or permission check is an error to report and stop on, never evidence of absence.
+
+Read the project rule file once. Include its inline rules and discover/read each project-rule file it explicitly points to, also once. Resolve and read every applicable pointer before starting a pass; propagate any discovery, read, or permission error instead of silently dropping that rule. Preserve source paths and rule IDs so project rules appear as separate Pass 1 rows.
+
+Build one complete rules bundle containing the Reviewing principles, all built-in rules and Additional principles below, and all applicable project rules and referenced-file contents. Put this bundle in the shared task context for every reviewer and elegance call, including every retry. Pass prompts must make clear that the supplied bundle is authoritative: reviewers must not search for, list, open, or rediscover project-rule files. The orchestrator owns discovery and supplies the same complete applicable rules on every attempt. Do not pass only a summary or pointers in place of rule contents.
 
 ## Reviewing principles
 
@@ -56,13 +60,13 @@ At every non-trivial declaration or block, ask whether a reader who did not writ
 
 ## Running the passes
 
-Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff in the shared batch context of both scout prompts — scouts never fetch the diff themselves. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
+Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff and complete rules bundle in the shared batch context of both scout prompts — scouts never fetch the diff or discover rules themselves. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
 
-Each scout starts without the implementer's context and must use this file as the rules of record.
+Each scout starts without the implementer's context. Supply this skill's complete applicable built-in rules and the orchestrator-resolved project rules in its shared task context; it must use that bundle as the rules of record and must not rediscover project rules.
 
 ### Pass 1: Rule checklist
 
-The Pass 1 scout must read the Reviewing principles and Rules here plus `.agency/code-police.md` if present; scope its review to **the diff embedded in the prompt**; and return one table covering **every** built-in and project rule:
+The Pass 1 scout applies the complete rules bundle supplied in shared context; it must not read or discover rule files. Scope its review to **the diff embedded in the prompt**; return one table covering **every** built-in and project rule:
 
 | Rule ID | Violation found? | What was identified | Action taken |
 | ------- | ---------------- | ------------------- | ------------ |
@@ -71,7 +75,7 @@ Every "No" requires a **`Checked by:`** field: use a grep-for-absence for purely
 
 ### Pass 2: Fact-check
 
-The Pass 2 scout must read and apply the Reviewing principles, scope its review to **the diff embedded in the prompt**, and perform a logic review rather than a style review. Find where the code lies to itself:
+The Pass 2 scout applies the Reviewing principles and project rules in the complete bundle supplied in shared context; it must not read or discover rule files. Scope its review to **the diff embedded in the prompt**, and perform a logic review rather than a style review. Find where the code lies to itself:
 
 - silent error swallowing and inaccurate fallbacks that mask misconfiguration;
 - unvalidated boundary inputs, code that can fail despite "can't fail" assumptions, and races papered over with comments;
@@ -84,7 +88,7 @@ Fail loud over fail silent; every fallback needs a reason for its failure case; 
 
 Skip under `--no-elegance` and report `Elegance | – | Skipped (--no-elegance)`. Otherwise the orchestrator (running this pass in main context after both scouts return) obtains the shortstat itself with `vcs_read {op: "diff-stat"}`. If the diff is under 10 lines, report `Elegance | 0 | Skipped (tiny diff)`; Passes 1–2 still run.
 
-For a larger diff, run the `elegance` skill loop for three iterations. Each iteration: understand the changed files and their unnecessary complexity; research simple, elegant, readable patterns with `web_search`; apply a refactor favoring fewer lines, clearer intent, and idiomatic style without adding abstractions; and verify with tests/CI. Simple beats clever, readable beats terse, idiomatic beats generic, and each iteration builds on the last. The Reviewing principles bind here too.
+For a larger diff, run the `elegance` skill loop for three iterations. Supply the complete rules bundle in the shared context for every elegance call and iteration, including retries; it is authoritative, and elegance must not rediscover rule files. Each iteration: understand the changed files and their unnecessary complexity; research simple, elegant, readable patterns with `web_search`; apply a refactor favoring fewer lines, clearer intent, and idiomatic style without adding abstractions; and verify with tests/CI. Simple beats clever, readable beats terse, idiomatic beats generic, and each iteration builds on the last. The Reviewing principles and project rules bind here too.
 
 ## Output
 

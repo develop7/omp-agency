@@ -26,8 +26,10 @@ import Agency.Scripts.Do.Binaries as Binaries
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Sys as Sys
+import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.VcsKind (VcsKind(..))
 import Agency.Scripts.Do.VcsKind (VcsKind(..)) as VcsKinds
+import Data.Argonaut.Core as Json
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Int (fromString)
@@ -256,11 +258,39 @@ noUpstream result =
 resolveBase :: WorkflowContext -> Effect Outcome.OpOutcome
 resolveBase context = case context.base of
   Just value -> pure (Outcome.withStdout (value <> "\n"))
-  Nothing -> pure (failureLines
-    [ "vcs-op: base is not set. sync must run first to resolve the base"
-    , "        (from --base <branch>, --stack, or the default branch)."
-    , "        If this was a --from re-run, the parent run did not persist base."
-    ])
+  Nothing -> do
+    stateResult <- State.readState (context.stateDir <> "/.do-results.json")
+    pure case stateResult of
+      Left error -> failureLines
+        [ "vcs-op: base is not set and workflow state could not be read: " <> error
+        , "        Restore or repair .do-results.json before choosing a run or base."
+        ]
+      Right Nothing -> failureLines
+        [ "vcs-op: base is not set and there is no initialized workflow run."
+        , "        Choose noVcs=true with agency_driver({ op: \"init\", noVcs: true }) or noVcs=false with agency_driver({ op: \"init\", noVcs: false }), then sync."
+        , "        No base or selector can be inferred here."
+        ]
+      Right (Just state)
+        | state.status /= State.WorkflowRunning -> failureLines
+            [ "vcs-op: base is not set and this workflow run is not running."
+            , "        Choose or resume a run before syncing; no base or run is inferred or written by vcs-op."
+            ]
+        | otherwise -> case State.stateGetJson "noVcs" state >>= Json.toBoolean of
+            Just true -> failureLines
+              [ "vcs-op: base is not set; this run selected noVcs=true."
+              , "        Complete or retry sync with agency_driver({ op: \"sync\", noVcs: true })."
+              ]
+            Just false -> failureLines
+              [ "vcs-op: base is not set; this run selected noVcs=false."
+              , "        Sync did not persist a base. The intended selector (--base, --stack, or default) is not recorded, so choose it rather than assuming the default."
+              , "        Explicit base: agency_driver({ op: \"sync\", noVcs: false, base: \"<branch>\" })"
+              , "        Stack: agency_driver({ op: \"sync\", noVcs: false, stack: true })"
+              , "        Default: agency_driver({ op: \"sync\", noVcs: false })"
+              ]
+            Nothing -> failureLines
+              [ "vcs-op: base is not set and this run has no valid noVcs choice."
+              , "        Choose noVcs=true or false and the intended base selector before syncing; repair the missing or invalid persisted choice."
+              ]
 
 -- | Forge and VCS mutations consume one remote-selection policy: origin when
 -- | present, otherwise exactly one configured remote. Multiple non-origin

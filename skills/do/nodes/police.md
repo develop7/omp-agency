@@ -22,8 +22,9 @@ Use the `vcs_read` tool with `{ op: "diff-names" }` to check if the PR contains 
 changed files are documentation-only (`.md`, `.txt`, README, docs/) — skip this step with reason
 `"docs-only changes"`.
 
-Otherwise, read the `code-police` skill via `read skill://code-police` and invoke it. When it asks about
-scope: **changes in the current branch/PR only**.
+Otherwise, read the `code-police` skill via `read skill://code-police` and invoke it. When it asks about scope: **changes in the current branch/PR only**.
+
+The orchestrator resolves optional project rules once using the skill's **Project rules** protocol before spawning passes. Reuse that complete rules bundle for every reviewer, elegance call, and retry; reviewers must not rediscover project-rule files. Optional absence selects built-in rules only; genuine discovery or read failures stop the review.
 
 **Commit each violation fix individually** — same rule as hickey+lowy: one commit per violation, not a
 lump. For each violation reported across the three passes, in turn:

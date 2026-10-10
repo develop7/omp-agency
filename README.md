@@ -217,6 +217,20 @@ Use `vcs_read {op: "working-copy-status"}` for Git status porcelain (including
 individual untracked files) or the jj diff summary; this listing operation fails
 when no VCS is detected. Intentional no-VCS workflows still use `noVcs: true`.
 
+Missing-base failures inspect workflow state without changing it. An active
+`noVcs: true` run receives its sync invocation; an active VCS run must select
+the explicit base, stack, or default branch because an incomplete sync does not
+persist that intent. Absent or inactive runs and invalid state name the unresolved
+run/mode decision instead of resetting it. Guidance never performs recovery.
+Invalid commit file lists remain rejected in full; unchanged paths are not
+silently removed and commit scope is not expanded.
+
+Police reviews resolve optional `.agency/code-police.md` rules once in the
+orchestrator, checking directory entries before reading contents. Successful
+absence selects built-in rules; discovery and read failures stop the review.
+Every reviewer receives the complete resolved rules in its shared context,
+including referenced rule files and retries, rather than rediscovering them.
+
 Backend parsers and permission checks remain authoritative; old model-facing
 `args` payloads are rejected rather than translated through a compatibility layer.
 Push refs and forge selectors cannot be CLI flags; the Git backend also terminates
