@@ -1,0 +1,16 @@
+{
+  "name": "agency",
+  "version": "1.0.0",
+  "description": "Near-autonomous workflow for coding agents — talk, do, and quality gates",
+  "author": "srid",
+  "license": "MIT",
+  "scripts": {
+    "test:tools": "node --test tests/tools/*.test.mjs"
+  },
+  "devDependencies": {
+    "zod": "4.6.5"
+  },
+  "omp": {
+    "extensions": ["./src/agency-tools.ts"]
+  }
+}
