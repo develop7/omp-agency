@@ -287,8 +287,8 @@ echo "Reviewer skill tool references are consistent with the effective allowlist
 # ---------------------------------------------------------------------------
 # CHECK_BASELINE_CONTRACT: the reviewer baseline-preservation contract is
 # quoted at three prompt sites and must stay identical everywhere. The
-# canonical text lives in skills/do/nodes/hickey-lowy.md (the `- **Baseline
-# contract**:` brief bullet); skills/code-police/SKILL.md and
+# canonical text lives in $CANONICAL_FILE (the `- **Baseline
+# contract**:` brief bullet, defined below); skills/code-police/SKILL.md and
 # skills/fact-check/SKILL.md must echo it word-for-word (markdown line-wrap
 # normalized). The contract wording changes rarely — drift between sites is
 # the real risk, and this mechanical check makes staying in sync enforceable.
@@ -344,7 +344,7 @@ check_contract_site() {
     return 1
   fi
   if [ "$actual" != "$canonical" ]; then
-    echo "::error file=$file::Baseline contract quote diverges from the canonical text in skills/do/nodes/hickey-lowy.md." >&2
+    echo "::error file=$file::Baseline contract quote diverges from the canonical text in $CANONICAL_FILE." >&2
     echo "--- canonical ---" >&2
     printf '%s\n' "$canonical" >&2
     echo "--- $file ---" >&2
@@ -371,6 +371,6 @@ else
 fi
 
 if [ "$contract_violations" -gt 0 ]; then
-  echo "Found $contract_violations baseline-contract divergence(s). Update all three sites together; the canonical text lives in skills/do/nodes/hickey-lowy.md." >&2
+  echo "Found $contract_violations baseline-contract divergence(s). Update all three sites together; the canonical text lives in $CANONICAL_FILE." >&2
   exit 1
 fi
