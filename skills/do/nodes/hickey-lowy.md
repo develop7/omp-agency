@@ -38,6 +38,11 @@ Each sub-agent prompt must be self-contained (sub-agents inherit no context). Br
 
 - The full task prompt plus anything relevant that **research** uncovered
 - Scope: the actual diff from the `vcs_read` tool with `{ op: "diff-range" }`
+- **Baseline contract**: "The diff's deleted side is the behavioral baseline: preserve deleted
+  behavior unless the task explicitly requests a change. Every finding whose fix would make behavior
+  stricter or semantically different must cite a deleted-side hunk demonstrating that exact behavior
+  (restoring what the baseline had) or an explicit task requirement; otherwise do not raise it as a
+  finding. Restoring a guard the deleted implementation demonstrably had is in scope."
 - **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
   `{ op: "new-files" }` and only include the hint if the output is non-empty: survey the codebase
   for the canonical in-repo pattern for the same *kind* of operation and flag it as the headline finding
@@ -66,6 +71,9 @@ batch, even if one lens returned zero findings: that lens must still audit the o
 Each self-contained prompt contains:
 
 - The same unchanged diff used by the first-pass reviews
+- The same baseline contract as the first-pass brief, verbatim — it governs the other reviewer's
+  recommendations too: cross-validation must flag any proposal lacking a deleted-side or
+  task-authorization citation the same way it flags structural problems.
 - Both reviewers' full findings outputs — paste verbatim; the cross-validator must see the
   recommendations being audited, not a summary
 - The question, phrased neutrally: _"Apply your lens to the diff **and** to the other reviewer's

@@ -60,7 +60,7 @@ At every non-trivial declaration or block, ask whether a reader who did not writ
 
 ## Running the passes
 
-Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff and complete rules bundle in the shared batch context of both scout prompts — scouts never fetch the diff or discover rules themselves. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
+Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff and complete rules bundle in the shared batch context of both scout prompts — scouts never fetch the diff or discover rules themselves. The same context also carries the baseline contract, verbatim in the prompt: "The diff's deleted side is the behavioral baseline: preserve deleted behavior unless the task explicitly requests a change. Every proposed fix that would make behavior stricter or semantically different must cite a deleted-side hunk demonstrating that exact behavior (restoring what the baseline had) or an explicit task requirement; otherwise leave it off the findings list entirely. Restoring a guard the deleted implementation demonstrably had is in scope." Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
 
 Each scout starts without the implementer's context. Supply this skill's complete applicable built-in rules and the orchestrator-resolved project rules in its shared task context; it must use that bundle as the rules of record and must not rediscover project rules.
 
@@ -75,7 +75,7 @@ Every "No" requires a **`Checked by:`** field: use a grep-for-absence for purely
 
 ### Pass 2: Fact-check
 
-The Pass 2 scout applies the Reviewing principles and project rules in the complete bundle supplied in shared context; it must not read or discover rule files. Scope its review to **the diff embedded in the prompt**, and perform a logic review rather than a style review. Find where the code lies to itself:
+The Pass 2 scout applies the Reviewing principles and project rules in the complete bundle supplied in shared context; it must not read or discover rule files. Scope its review to **the diff embedded in the prompt**, and perform a logic review rather than a style review. The baseline contract binds every finding: a fix that would make behavior stricter or semantically different must cite a deleted-side hunk or an explicit task requirement, otherwise it stays off the findings list. Find where the code lies to itself:
 
 - silent error swallowing and inaccurate fallbacks that mask misconfiguration;
 - unvalidated boundary inputs, code that can fail despite "can't fail" assumptions, and races papered over with comments;
