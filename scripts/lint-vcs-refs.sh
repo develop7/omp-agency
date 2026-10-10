@@ -294,41 +294,25 @@ echo "Reviewer skill tool references are consistent with the effective allowlist
 # the real risk, and this mechanical check makes staying in sync enforceable.
 # ---------------------------------------------------------------------------
 
-# Extract the double-quoted contract text following a marker line. The quote
-# opens at the first '"' on/after the marker line and closes at the first
-# '"' encountered after the opening quote, even mid-line (the contract text
-# itself contains no double quotes, only apostrophes). Markdown line-wrap
-# inside the quote is normalized: newlines become single spaces.
+# Extract the double-quoted contract text following a marker line: join
+# every line from the marker onward, then match the first double-quoted
+# span (the contract text contains no double quotes, only apostrophes).
+# Markdown line-wrap inside the quote is normalized to single spaces.
 contract_quote() {
   local file="$1" marker="$2"
   awk -v marker="$marker" '
-    index($0, marker) { start = NR }
-    start && NR >= start {
-      line = $0
-      if (!opened) {
-        pos = index(line, "\"")
-        if (!pos) next
-        line = substr(line, pos + 1)
-        opened = 1
-      }
-      end = index(line, "\"")
-      if (end) {
-        buf = buf substr(line, 1, end - 1)
-        done = 1
-        exit 0  # also exits END
-      } else {
-        buf = buf line " "
-      }
+    !capturing {
+      pos = index($0, marker)
+      if (!pos) next
+      $0 = substr($0, pos)
+      capturing = 1
     }
+    capturing { text = text $0 " " }
     END {
-      if (done) {
-        gsub(/[[:space:]]+/, " ", buf)
-        sub(/^ /, "", buf)
-        sub(/ $/, "", buf)
-        printf "%s", buf
-      } else {
-        exit 1
-      }
+      if (!match(text, /"[^"]*"/)) exit 1
+      quote = substr(text, RSTART + 1, RLENGTH - 2)
+      gsub(/[[:space:]]+/, " ", quote)
+      printf "%s", quote
     }
   ' "$file"
 }
