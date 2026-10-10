@@ -33,6 +33,19 @@ booleans, resolves `base`, writes all resolved fields to `.do-results.json`, rec
 and prints `vcs=`, `forge=`, `branch=`, `defaultBranch=`, `base=` on stdout for downstream steps. It
 does not recursively re-enter the model-facing tools.
 
+If a later VCS operation reports a missing base, follow its diagnostic rather
+than trying another diff operation: all base-dependent operations share the same
+prerequisite. A running `noVcs: true` workflow can use
+`agency_driver {op: "sync", noVcs: true}`. For a VCS workflow, recover the
+intended selector from the task context before invoking sync: use
+`{op: "sync", noVcs: false, base: "<branch>"}` for an explicit base,
+`{op: "sync", noVcs: false, stack: true}` for stacking, or
+`{op: "sync", noVcs: false}` only when the default branch is intended.
+Incomplete sync does not persist the selector, so absence of `base` is not
+permission to assume the default. If the run or mode is unresolved, resolve
+that decision first; do not initialize/restart a run just to make a diff work.
+Recovery guidance itself neither syncs nor writes workflow state.
+
 **Only `github` has an active code path today.** Both `bitbucket` and `unknown` yield
 `supportsX = false` for all ops, causing forge-dependent steps (PR creation, PR comments, PR edits,
 CI status) to skip gracefully. Bitbucket support is planned — [srid/agency#10](https://github.com/srid/agency/issues/10).

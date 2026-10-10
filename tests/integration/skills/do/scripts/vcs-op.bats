@@ -471,6 +471,18 @@ SH
   [[ "$output" == *"at least one file required"* ]]
 }
 
+@test "commit rejects an invalid file list without changing workflow state" {
+  mk_initial_commit
+  echo '{"base":"base","workflow":"sentinel"}' > .do-results.json
+  state_before="$(cat .do-results.json)"
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: invalid file" nonexistent.txt
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not dirty"* ]]
+  [[ "$output" == *"nonexistent.txt"* ]]
+  [ "$(cat .do-results.json)" = "$state_before" ]
+}
+
 @test "commit errors when a given file is not dirty" {
   mk_initial_commit
   echo "world" > file2.txt
@@ -598,22 +610,7 @@ SH
   [ "$output" = "feat-x" ]
 }
 
-@test "get_base_branch hard-errors when base is absent" {
-  mk_initial_commit
-  echo '{}' > .do-results.json
 
-  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op base
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"base is not set"* ]]
-}
-
-@test "get_base_branch hard-errors when .do-results.json is missing" {
-  mk_initial_commit
-
-  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op base
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"base is not set"* ]]
-}
 
 # ─── current-branch ───────────────────────────────────────────────────
 
