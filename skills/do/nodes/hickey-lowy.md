@@ -28,8 +28,9 @@ also applies to main-model fallback reviews and `--no-vcs` working-tree fixes.
 
 **Fallback, never skip.** If a sub-agent invocation fails for harness/tooling reasons before producing
 a review, retry that reviewer once; if it still cannot produce a sub-agent review, run that review in
-the main model by loading the reviewer skill against the same diff. Do not replace it with an informal
-review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
+the main model by loading the reviewer skill against the same diff **and the same brief** — the full
+task prompt, research notes, and the baseline contract from the brief list below, verbatim. Do not
+replace it with an informal review. Model selection lives in the agent definitions (`agents/*.md`, `model: "@task"`) — pass no
 model override. The main-model fallback uses the reviewer's declared tool set (the frontmatter
 `tools:` in `agents/{hickey,lowy}.md`) until findings are reported; apply fixes only after the
 reconciliation gate below.
