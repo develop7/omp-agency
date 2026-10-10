@@ -288,11 +288,13 @@ echo "Reviewer skill tool references are consistent with the effective allowlist
 # CHECK_BASELINE_CONTRACT: the reviewer baseline-preservation contract is
 # quoted at three prompt sites and must stay identical everywhere. The
 # canonical text lives in $CANONICAL_FILE (the `- **Baseline
-# contract**:` brief bullet, defined below); skills/code-police/SKILL.md and
+# contract**:` brief bullet); skills/code-police/SKILL.md and
 # skills/fact-check/SKILL.md must echo it word-for-word (markdown line-wrap
 # normalized). The contract wording changes rarely — drift between sites is
 # the real risk, and this mechanical check makes staying in sync enforceable.
 # ---------------------------------------------------------------------------
+
+CANONICAL_FILE="$SKILLS_DIR/do/nodes/hickey-lowy.md"
 
 # Extract the double-quoted contract text following a marker line: join
 # every line from the marker onward, then match the first double-quoted
@@ -339,7 +341,6 @@ check_contract_site() {
   return 0
 }
 
-CANONICAL_FILE="$SKILLS_DIR/do/nodes/hickey-lowy.md"
 contract_violations=0
 if [ -f "$CANONICAL_FILE" ]; then
   if CANONICAL="$(contract_quote "$CANONICAL_FILE" '- **Baseline contract**:')"; then
