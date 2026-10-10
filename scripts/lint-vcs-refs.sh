@@ -352,6 +352,9 @@ if [ -f "$CANONICAL_FILE" ]; then
     echo "::error file=$CANONICAL_FILE::Canonical baseline contract quote not extractable." >&2
     contract_violations=$((contract_violations + 1))
   fi
+elif [ "$SKILLS_DIR" = "$REPO_DIR/skills" ]; then
+  echo "::error file=$CANONICAL_FILE::Canonical baseline contract file missing from the default skills tree." >&2
+  contract_violations=$((contract_violations + 1))
 else
   echo "Baseline contract check skipped: $CANONICAL_FILE absent (fixture layout)." >&2
 fi
