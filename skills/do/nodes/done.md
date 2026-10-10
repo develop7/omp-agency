@@ -47,9 +47,14 @@ generic advice.
 
 #### PR comment & wrap-up
 
-- **Under `--no-vcs`**: print the timing table and suggestions to the terminal only. List files
-  modified in the working tree (the `vcs_read` tool with `{ op: "dirty" }`) and remind the user the
-  changes are uncommitted.
+- **Under `--no-vcs`**: print the timing table and suggestions to the terminal only. First call
+  `vcs_read` with `{ op: "detect" }` to identify the VCS. For Git or jj, call `vcs_read` with
+  `{ op: "working-copy-status" }` and report its summary: Git returns status porcelain including
+  individual untracked files; jj returns the diff summary. For an unknown VCS, list only files
+  known to have been modified during this task and say explicitly that the list may be incomplete.
+  Remind the user the changes are uncommitted. `dirty` is a status, not a file list: it returns
+  `clean`, `dirty`, or `no-vcs` successfully (exit 0); inspection failures remain errors with diagnostics.
+
 - **If `!supportsPrComment`** (read from state): report the branch name (and remote URL via
   `vcs_read` with `{ op: "remote-url" }`) instead of a PR URL. Print to the terminal only; post
   nothing.

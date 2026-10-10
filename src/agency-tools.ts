@@ -110,9 +110,9 @@ export default function (pi: ExtensionAPI) {
     name: "vcs_read",
     label: "VCS Read",
     description:
-      "Read-only VCS operations selected by op. Diff, new-files, and log-range optionally filter paths. head-revision/current-branch return the current branch/bookmark (under jj, on @ or its parent); head-commit-sha returns the feature commit CI will run against. Sync owns fetching. No raw CLI arguments are accepted.",
+      "Read-only VCS operations selected by op. Diff, new-files, and log-range optionally filter paths. dirty reports clean/dirty/no-vcs status, not a file list; these are successful results, while inspection errors fail. working-copy-status reports the working-copy changes for supported Git/jj repositories. head-revision/current-branch return the current branch/bookmark (under jj, on @ or its parent); head-commit-sha returns the feature commit CI will run against. Sync owns fetching. No raw CLI arguments are accepted.",
     parameters: z.union([
-      z.object({ op: z.enum(["detect", "remote-url", "head-revision", "head-commit-sha", "default-branch", "current-branch", "base", "dirty", "log-head"]) }).strict(),
+      z.object({ op: z.enum(["detect", "remote-url", "head-revision", "head-commit-sha", "default-branch", "current-branch", "base", "dirty", "working-copy-status", "log-head"]) }).strict(),
       z.object({ op: z.enum(["diff-range", "diff-names", "diff-stat", "new-files", "log-range"]), paths: strings.optional() }).strict(),
     ]),
     async execute(_toolCallId, params) {

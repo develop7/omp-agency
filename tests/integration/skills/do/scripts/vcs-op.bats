@@ -45,19 +45,71 @@ teardown() {
 
 # ─── dirty ────────────────────────────────────────────────────────────
 
-@test "dirty: exit 1 on clean tree" {
+@test "dirty reports clean for a clean Git tree" {
   mk_initial_commit
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op dirty
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 0 ]
+  [ "$output" = "clean" ]
 }
 
-@test "dirty: exit 0 on uncommitted changes" {
+@test "dirty reports dirty for uncommitted Git changes" {
   mk_initial_commit
   echo "changed" > file.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op dirty
   [ "$status" -eq 0 ]
+  [ "$output" = "dirty" ]
+}
+
+@test "dirty reports no-vcs outside a repository" {
+  mkdir "$TEST_DIR/no-vcs"
+  cd "$TEST_DIR/no-vcs"
+  VCS_OVERRIDE= run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op dirty
+  [ "$status" -eq 0 ]
+  [ "$output" = "no-vcs" ]
+}
+@test "dirty preserves inspection failure for forced Git outside any repository" {
+  no_vcs_dir="$(mktemp -d)"
+  cd "$no_vcs_dir"
+  run env VCS_OVERRIDE=git node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op dirty
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"fatal"* || "$output" == *"not a git repository"* ]]
+  cd "$TEST_DIR"
+  rmdir "$no_vcs_dir"
+}
+
+
+@test "working-copy-status reports Git staged, untracked, and deleted files without a base" {
+  mk_initial_commit
+  echo "deleted" > deleted.txt
+  git add deleted.txt
+  git commit -q -m "add deletion fixture"
+  echo "staged" > staged.txt
+  git add staged.txt
+  echo "untracked" > untracked.txt
+  mkdir nested
+  echo "nested" > nested/untracked.txt
+  rm deleted.txt
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op working-copy-status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"staged.txt"* ]]
+  [[ "$output" == *"untracked.txt"* ]]
+  [[ "$output" == *"nested/untracked.txt"* ]]
+  [[ "$output" == *"deleted.txt"* ]]
+}
+
+@test "jj: working-copy-status detects dirty files in @ without a base" {
+  jj git init
+
+  run env VCS_OVERRIDE=jj node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op working-copy-status
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  echo "changed" > jj-change.txt
+  run env VCS_OVERRIDE=jj node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op working-copy-status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"jj-change.txt"* ]]
 }
 
 @test "fast-forward-if-safe propagates a rev-list probe failure" {
