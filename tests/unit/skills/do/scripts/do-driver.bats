@@ -34,14 +34,14 @@ run_api_driver() {
   [ "$output" = "my task" ]
 }
 
-@test "init refuses corrupt state and explains recovery" {
+@test "init refuses corrupt state without replacing it" {
   printf 'not json' > .do-results.json
+  cp .do-results.json corrupt-before.json
 
   run_driver init "recovered task"
 
   [ "$status" -eq 1 ]
-  [[ "$output" == *"corrupt or unreadable"* ]]
-  [[ "$output" == *"init --restart"* ]]
+  cmp .do-results.json corrupt-before.json
 }
 
 @test "init --restart replaces corrupt state with clean initialization" {
@@ -50,7 +50,6 @@ run_api_driver() {
   run_driver init --restart "recovered task"
 
   [ "$status" -eq 0 ]
-  [[ "$output" != *"corrupt or unreadable"* ]]
   run jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []' .do-results.json
   [ "$status" -eq 0 ]
 }
@@ -60,14 +59,14 @@ run_api_driver() {
 
   AGENCY_DRIVER_ARGS='["init","--restart","recovered task"]' run_api_driver
   [ "$status" -eq 0 ]
-  [[ "$output" == *'"exit":0'* ]]
   run jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []' .do-results.json
   [ "$status" -eq 0 ]
 
   printf 'not json' > .do-results.json
+  cp .do-results.json corrupt-before.json
   AGENCY_DRIVER_ARGS='["summary"]' run_api_driver
   [ "$status" -eq 1 ]
-  [[ "$output" == *"corrupt or unreadable"* ]]
+  cmp .do-results.json corrupt-before.json
 }
 
 @test "init --review sets review=true" {

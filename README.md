@@ -222,6 +222,8 @@ Missing-base failures inspect workflow state without changing it. An active
 the explicit base, stack, or default branch because an incomplete sync does not
 persist that intent. Absent or inactive runs and invalid state name the unresolved
 run/mode decision instead of resetting it. Guidance never performs recovery.
+State-read errors retain their underlying cause; resolve that error before
+choosing a run or base rather than assuming the state needs replacement.
 Invalid commit file lists remain rejected in full; unchanged paths are not
 silently removed and commit scope is not expanded.
 
