@@ -36,6 +36,12 @@ Type-checkers, tests, and CI catch correctness; they don't catch design. An LLM-
 - **`hickey`** — accidental complexity, after Rich Hickey's [*Simple Made Easy*](https://www.infoq.com/presentations/Simple-Made-Easy/).
 - **`lowy`** — volatility-based decomposition, after Juval Lowy's [*Righting Software*](https://rightingsoftware.org/) (building on [Parnas 1972](https://www.win.tue.nl/~wstomv/edu/2ip30/references/criteria_for_modularization.pdf)).
 
+Both lenses review the same unchanged diff, then cross-validate each other's recommendations. Before
+any review-driven edit, `/do` reconciles all findings into one ledger, combines overlapping fixes,
+and resolves conflicts against both lenses. Only those reconciled fixes are applied, in dependency
+order; a lens with zero initial findings still cross-validates when the other lens has findings.
+The PR comment uses the final reconciled dispositions, not the raw reviewer recommendations.
+
 Every finding lands as its own commit in the same PR — there is no Defer disposition, no follow-up issue, no "out of scope" exit. The PR's scope expands to absorb each finding, even when the fix grows the diff substantially; the alternative is shipping the complected version and trusting a "broader refactor" follow-up that statistically never happens. Reviewers default to whole-module scope, not just the diff lines — recurring patterns in the same file are in scope even when the trigger pointed only at one symptom. PR history reads as a progression from primary implementation through each structural refinement; the full findings ledger ships as a PR comment. Both reviewers run on the `@task` model role — set `modelRoles.task` in your OMP config to control which model runs reviews.
 
 Read [**Hickey/Lowy on kolu.dev**](https://kolu.dev/blog/hickey-lowy/) for the full framing — what each lens looks for and why the pair catches what tests miss. Both can be extended with project-specific patterns via `.agency/hickey.md` / `.agency/lowy.md` (see [Project config](#project-config)).
