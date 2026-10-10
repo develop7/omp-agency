@@ -208,6 +208,15 @@ The model-facing contracts use named operands rather than CLI argument arrays:
 `agency_driver {op: "start", step: "implement"}`. Forge operations keep their
 common values at the top level; GitHub-specific options are namespaced, such as
 `forge {op: "pr-view", json: ["number"], github: {jq: ".number"}}`.
+
+The `vcs_read {op: "dirty"}` operation returns `clean`, `dirty`, or `no-vcs`
+with exit 0. `no-vcs` means no VCS was detected, not that the tree was inspected
+and found clean. `dirty` is a status, not a file list; genuine VCS inspection
+errors remain nonzero failures. CLI `vcs-op dirty` uses the same output contract.
+Use `vcs_read {op: "working-copy-status"}` for Git status porcelain (including
+individual untracked files) or the jj diff summary; this listing operation fails
+when no VCS is detected. Intentional no-VCS workflows still use `noVcs: true`.
+
 Backend parsers and permission checks remain authoritative; old model-facing
 `args` payloads are rejected rather than translated through a compatibility layer.
 Push refs and forge selectors cannot be CLI flags; the Git backend also terminates

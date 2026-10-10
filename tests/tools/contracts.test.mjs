@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import {
@@ -139,9 +139,108 @@ test("real PureScript lifecycle retains a failed step's reason", async () => {
 test("real no-VCS sync succeeds only through the explicit noVcs contract", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", { op: "sync", noVcs: true }, cwd);
+    const synced = await invoke(registered, "agency_driver", { op: "sync", noVcs: true }, cwd);
+    assert.equal(synced.details.exit, 0);
+    assert.equal((await readState(cwd)).noVcs, true);
     rejects(tool(registered, "agency_driver").parameters, { op: "sync", stack: true });
     rejects(tool(registered, "agency_driver").parameters, { op: "sync", noVcs: true, stack: true });
+  });
+});
+test("registered dirty reports Git and jj working-copy status tokens", async () => {
+  await gitRepo(async (cwd) => {
+    const registered = registerTools();
+    const result = async () => (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details.stdout.trim();
+    assert.equal(await result(), "clean");
+
+    await writeFile(join(cwd, "tracked.txt"), "staged change\n");
+    git(cwd, "add", "tracked.txt");
+    assert.equal(await result(), "dirty");
+    git(cwd, "reset", "--hard", "--quiet");
+    await writeFile(join(cwd, "untracked.txt"), "untracked\n");
+    assert.equal(await result(), "dirty");
+  });
+
+  await withIsolatedRepo(async (cwd) => {
+    execFileSync("jj", ["git", "init"], { cwd, stdio: "ignore" });
+    process.env.VCS_OVERRIDE = "jj";
+    const registered = registerTools();
+    const result = async () => (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details.stdout.trim();
+    assert.equal(await result(), "clean");
+    await writeFile(join(cwd, "jj-change.txt"), "changed\n");
+    assert.equal(await result(), "dirty");
+  });
+});
+
+test("registered dirty distinguishes Git and jj inspection failures from no VCS", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = registerTools();
+    process.env.VCS_OVERRIDE = "git";
+    await assert.rejects(
+      invoke(registered, "vcs_read", { op: "dirty" }, cwd),
+      /fatal|not a git repository/i,
+    );
+    process.env.VCS_OVERRIDE = "jj";
+    await assert.rejects(
+      invoke(registered, "vcs_read", { op: "dirty" }, cwd),
+      /jj.*repo/i,
+    );
+    process.env.VCS_OVERRIDE = "";
+    const noVcs = await invoke(registered, "vcs_read", { op: "dirty" }, cwd);
+    assert.equal(noVcs.details.stdout.trim(), "no-vcs");
+  });
+});
+
+test("registered working-copy-status reports clean and Git staged, untracked, and deleted paths", async () => {
+  await gitRepo(async (cwd) => {
+    const registered = registerTools();
+    const clean = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
+    assert.equal(clean.details.stdout, "");
+
+    await writeFile(join(cwd, "deleted.txt"), "to delete\n");
+    git(cwd, "add", "deleted.txt");
+    git(cwd, "commit", "--quiet", "-m", "add deleted fixture");
+    await writeFile(join(cwd, "staged.txt"), "staged\n");
+    await mkdir(join(cwd, "nested"));
+    await writeFile(join(cwd, "nested", "untracked.txt"), "nested\n");
+    git(cwd, "add", "staged.txt");
+    await writeFile(join(cwd, "untracked.txt"), "new\n");
+    await (await import("node:fs/promises")).unlink(join(cwd, "deleted.txt"));
+
+    const dirty = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
+    const status = dirty.content.map((part) => part.text).join("\n");
+    assert.match(status, /staged\.txt/);
+    assert.match(status, /untracked\.txt/);
+    assert.match(status, /nested\/untracked\.txt/);
+    assert.match(status, /deleted\.txt/);
+  });
+});
+
+test("registered working-copy-status reports jj working-copy changes without a base", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    execFileSync("jj", ["git", "init"], { cwd, stdio: "ignore" });
+    process.env.VCS_OVERRIDE = "jj";
+    const registered = registerTools();
+    const clean = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
+    assert.equal(clean.details.stdout, "");
+    await writeFile(join(cwd, "jj-change.txt"), "changed\n");
+    const dirty = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
+    assert.match(dirty.content.map((part) => part.text).join("\n"), /jj-change\.txt/);
+  });
+});
+
+test("registered working-copy-status distinguishes inspection failure from no VCS", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = registerTools();
+    process.env.VCS_OVERRIDE = "git";
+    await assert.rejects(
+      invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd),
+      /fatal|not a git repository/i,
+    );
+    process.env.VCS_OVERRIDE = "";
+    await assert.rejects(
+      invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd),
+      /no VCS/i,
+    );
   });
 });
 

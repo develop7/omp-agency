@@ -102,6 +102,7 @@ isReadOperation operation = case operation of
   Vcs.CurrentBranch -> true
   Vcs.Base -> true
   Vcs.Dirty -> true
+  Vcs.WorkingCopyStatus -> true
   Vcs.DiffRange _ -> true
   Vcs.DiffNames _ -> true
   Vcs.DiffStat _ -> true
@@ -127,6 +128,7 @@ isWriteOperation operation = case operation of
   Vcs.CurrentBranch -> false
   Vcs.Base -> false
   Vcs.Dirty -> false
+  Vcs.WorkingCopyStatus -> false
   Vcs.DiffRange _ -> false
   Vcs.DiffNames _ -> false
   Vcs.DiffStat _ -> false

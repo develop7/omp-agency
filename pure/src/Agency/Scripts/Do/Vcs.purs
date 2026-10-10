@@ -45,11 +45,11 @@ type VcsValue =
   , stderr :: String
   }
 
--- | Result of working-copy inspection. Clean is distinct from an inspection
--- | failure so sync cannot mistake a broken VCS query for a clean tree.
+-- | Clean requires a successful inspection of a detected VCS.
 data DirtyState
   = Clean
   | DirtyDetected
+  | NoVcsDetected
   | InspectionFailed Outcome.OpOutcome
 
 -- | The complete vcs-op command algebra. Arguments that are paths are kept
@@ -64,6 +64,7 @@ data VcsOp
   | CurrentBranch
   | Base
   | Dirty
+  | WorkingCopyStatus
   | DiffRange (Array String)
   | DiffNames (Array String)
   | DiffStat (Array String)
@@ -88,6 +89,7 @@ operationNames =
   , "current-branch"
   , "base"
   , "dirty"
+  , "working-copy-status"
   , "diff-range"
   , "diff-names"
   , "diff-stat"
@@ -142,6 +144,7 @@ parseVcsOp args =
           "current-branch" -> Right CurrentBranch
           "base" -> Right Base
           "dirty" -> Right Dirty
+          "working-copy-status" -> Right WorkingCopyStatus
           "diff-range" -> Right (DiffRange rest)
           "diff-names" -> Right (DiffNames rest)
           "diff-stat" -> Right (DiffStat rest)
@@ -182,6 +185,7 @@ runVcsOp context operation = case operation of
   CurrentBranch -> renderValue <$> currentBranchValue context
   Base -> resolveBase context
   Dirty -> dirty context
+  WorkingCopyStatus -> Outcome.captured <$> workingCopyResult context
   DiffRange paths -> diffRange context paths
   DiffNames paths -> diffNames context paths
   DiffStat paths -> diffStat context paths
@@ -384,24 +388,30 @@ validateBase context base
 -- | inspection. The sync operation propagates InspectionFailed unchanged.
 inspectDirty :: WorkflowContext -> Effect DirtyState
 inspectDirty context = case context.vcs of
-  Git -> do
-    result <- Sys.exec Binaries.git [ "status", "--porcelain" ]
-    if result.code /= 0 then
-      pure (InspectionFailed
-        (if result.stderr == "" then failureLine "vcs-op: unable to inspect git working copy" else Outcome.captured result))
-    else if trim result.stdout /= "" then pure DirtyDetected else pure Clean
-  Jj -> do
-    result <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--summary" ]
-    if result.code /= 0 then pure (InspectionFailed (failureLine "vcs-op: unable to inspect jj working copy"))
-    else if trim result.stdout /= "" then pure DirtyDetected else pure Clean
-  Unknown -> pure Clean
+  Unknown -> pure NoVcsDetected
+  _ -> do
+    result <- workingCopyResult context
+    pure if result.code /= 0 then InspectionFailed (Outcome.captured result)
+    else if trim result.stdout /= "" then DirtyDetected else Clean
+
+-- | Share the inspection and listing query, retaining subprocess diagnostics.
+workingCopyResult :: WorkflowContext -> Effect Sys.ExecResult
+workingCopyResult context = do
+  result <- case context.vcs of
+    Git -> Sys.exec Binaries.git [ "status", "--porcelain", "--untracked-files=all" ]
+    Jj -> Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--summary" ]
+    Unknown -> pure { code: 1, stdout: "", stderr: "vcs-op: no VCS detected\n" }
+  pure if result.code /= 0 && trim result.stderr == "" then
+    result { stderr = "vcs-op: unable to inspect " <> vcsName context.vcs <> " working copy\n" }
+  else result
 
 dirty :: WorkflowContext -> Effect Outcome.OpOutcome
 dirty context = do
   state <- inspectDirty context
   pure case state of
-    Clean -> Outcome.failure 1 ""
-    DirtyDetected -> Outcome.success
+    Clean -> Outcome.withStdout "clean\n"
+    DirtyDetected -> Outcome.withStdout "dirty\n"
+    NoVcsDetected -> Outcome.withStdout "no-vcs\n"
     InspectionFailed outcome -> outcome
 
 diffRange :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome

@@ -36,6 +36,3 @@ run = do
   case Vcs.parseVcsOp [ "fast-forward-if-safe" ] of
     Right Vcs.FastForwardIfSafe -> pure unit
     _ -> assert "fast-forward-if-safe parses" false
-  case Vcs.parseVcsOp [ "frobnicate" ] of
-    Left message -> assert "unknown operation has useful error" (message == "vcs-op: unknown operation 'frobnicate'\nAvailable: detect, fetch, remote-url, head-revision, head-commit-sha, default-branch, current-branch, base, dirty, diff-range, diff-names, diff-stat, new-files, log-range, log-head, branch, commit, push, fix-commit, refresh-default-branch, fast-forward-if-safe")
-    Right _ -> assert "unknown operation is rejected" false

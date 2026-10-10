@@ -28,7 +28,7 @@ run context options = do
   case fetched of
     Left outcome -> failSync context outcome
     Right phases -> do
-      inspected <- if options.noVcs then pure Vcs.Clean else Vcs.inspectDirty context
+      inspected <- if options.noVcs then pure Vcs.NoVcsDetected else Vcs.inspectDirty context
       case inspected of
         Vcs.InspectionFailed outcome -> failSync context (Outcome.append (phaseOutput phases) outcome)
         _ -> do
