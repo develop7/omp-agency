@@ -27,7 +27,8 @@ behavioral baseline: preserve deleted behavior unless the task explicitly reques
 finding whose fix would make behavior stricter or semantically different must cite a deleted-side
 hunk demonstrating that exact behavior (restoring what the baseline had) or an explicit task
 requirement; otherwise do not raise it as a finding. Restoring a guard the deleted implementation
-demonstrably had is in scope." The cadensight-hub regression was an omitted non-string id guard,
+demonstrably had is in scope." The cadensight-hub regression
+([develop7/omp-agency#56](https://github.com/develop7/omp-agency/issues/56)) was an omitted non-string id guard,
 correctly restored under this rule. For `all`, file-path, and inline targets there is no baseline: do not
 propose new validation unless the task authorizes it.
 
