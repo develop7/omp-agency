@@ -263,7 +263,7 @@ resolveBase context = case context.base of
     pure case stateResult of
       Left error -> failureLines
         [ "vcs-op: base is not set and workflow state could not be read: " <> error
-        , "        Restore or repair .do-results.json before choosing a run or base."
+        , "        Resolve the reported state-read error before choosing a run or base."
         ]
       Right Nothing -> failureLines
         [ "vcs-op: base is not set and there is no initialized workflow run."
