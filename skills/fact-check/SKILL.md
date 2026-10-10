@@ -21,12 +21,14 @@ Scope comes from `$ARGUMENTS`:
   inline text/output to audit, e.g. when invoked by `hickey` to audit its own evaluation). Limit the audit to that
   target.
 
-**Baseline preservation.** When the target is a diff (branch or a `range...range` argument), the deleted side is
-the behavioral baseline: preserve deleted behavior unless the task explicitly requests a change. Every finding
-whose fix would make behavior stricter or semantically different must cite a deleted-side hunk demonstrating that
-exact behavior (restoring what the baseline had) or an explicit task requirement; otherwise do not report it as a
-finding. Restoring a guard the deleted implementation demonstrably had is in scope — the cadensight-hub regression
-was an omitted non-string id guard, correctly restored. For `all` and inline targets there is no baseline: do not
+**Baseline preservation.** The deleted side of a diff is the behavioral baseline. Apply this contract
+verbatim to every diff target (branch or a `range...range` argument): "The diff's deleted side is the
+behavioral baseline: preserve deleted behavior unless the task explicitly requests a change. Every
+finding whose fix would make behavior stricter or semantically different must cite a deleted-side
+hunk demonstrating that exact behavior (restoring what the baseline had) or an explicit task
+requirement; otherwise do not raise it as a finding. Restoring a guard the deleted implementation
+demonstrably had is in scope." The cadensight-hub regression was an omitted non-string id guard,
+correctly restored under this rule. For `all` and inline targets there is no baseline: do not
 propose new validation unless the task authorizes it.
 
 Do **not** use the `ask` tool. This skill runs in a sub-agent and is routinely invoked autonomously (e.g. from `/do` via

@@ -73,8 +73,9 @@ Each self-contained prompt contains:
 
 - The same unchanged diff used by the first-pass reviews
 - The same baseline contract as the first-pass brief, verbatim — it governs the other reviewer's
-  recommendations too: cross-validation must flag any proposal lacking a deleted-side or
-  task-authorization citation the same way it flags structural problems.
+  recommendations too: cross-validation must flag any recommendation whose fix would make behavior
+  stricter or semantically different without citing a deleted-side hunk or an explicit task
+  requirement, the same way it flags structural problems.
 - Both reviewers' full findings outputs — paste verbatim; the cross-validator must see the
   recommendations being audited, not a summary
 - The question, phrased neutrally: _"Apply your lens to the diff **and** to the other reviewer's
