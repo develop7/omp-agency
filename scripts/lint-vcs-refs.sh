@@ -296,8 +296,9 @@ echo "Reviewer skill tool references are consistent with the effective allowlist
 
 # Extract the double-quoted contract text following a marker line. The quote
 # opens at the first '"' on/after the marker line and closes at the first
-# line that ends with '"'. Markdown line-wrap inside the quote is
-# normalized: newlines become single spaces.
+# '"' encountered after the opening quote, even mid-line (the contract text
+# itself contains no double quotes, only apostrophes). Markdown line-wrap
+# inside the quote is normalized: newlines become single spaces.
 contract_quote() {
   local file="$1" marker="$2"
   awk -v marker="$marker" '
