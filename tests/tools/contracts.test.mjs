@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import {
@@ -204,7 +204,7 @@ test("registered working-copy-status reports clean and Git staged, untracked, an
     await writeFile(join(cwd, "nested", "untracked.txt"), "nested\n");
     git(cwd, "add", "staged.txt");
     await writeFile(join(cwd, "untracked.txt"), "new\n");
-    await (await import("node:fs/promises")).unlink(join(cwd, "deleted.txt"));
+    await unlink(join(cwd, "deleted.txt"));
 
     const dirty = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
     const status = dirty.content.map((part) => part.text).join("\n");
