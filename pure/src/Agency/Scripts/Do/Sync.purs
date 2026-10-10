@@ -28,9 +28,9 @@ run context options = do
   case fetched of
     Left outcome -> failSync context outcome
     Right phases -> do
-      inspected <- if options.noVcs then pure Vcs.NoVcsDetected else Vcs.inspectDirty context
+      inspected <- if options.noVcs then pure Nothing else Just <$> Vcs.inspectDirty context
       case inspected of
-        Vcs.InspectionFailed outcome -> failSync context (Outcome.append (phaseOutput phases) outcome)
+        Just (Vcs.InspectionFailed outcome) -> failSync context (Outcome.append (phaseOutput phases) outcome)
         _ -> do
           resolvedContext <- resolveContext context options startedAt
           case resolvedContext of
@@ -41,7 +41,7 @@ run context options = do
                 Left outcome -> failSync context outcome
                 Right base -> do
                   let dirtyWarning = case inspected of
-                        Vcs.DirtyDetected ->
+                        Just Vcs.DirtyDetected ->
                           Outcome.failure 0 "Dirty tree detected. Continuing will create a fresh branch on top of these changes. If you wanted the agent to extend your WIP in place without touching git, re-run with --no-vcs.\n"
                         _ -> Outcome.success
                   protocol <- recordPhase context options startedAt base
