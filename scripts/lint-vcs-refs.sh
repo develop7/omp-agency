@@ -341,7 +341,7 @@ check_contract_site() {
     return 1
   fi
   if ! actual="$(contract_quote "$file" "$marker")"; then
-    echo "::error file=$file::Marker '$marker' not found; baseline contract quote absent." >&2
+    echo "::error file=$file::Could not extract baseline contract quote at marker '$marker' (marker missing or double-quoted span unclosed)." >&2
     return 1
   fi
   if [ "$actual" != "$canonical" ]; then
