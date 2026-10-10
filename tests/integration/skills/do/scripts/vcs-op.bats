@@ -8,7 +8,7 @@ setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
   load "$REPO_ROOT/tests/helpers/git-fixtures.bash"
   setup_test_dir
-
+  no_vcs_dir=""
 
   # Create a real git fixture repo
   git init -q
@@ -19,6 +19,9 @@ setup() {
 
 teardown() {
   teardown_test_dir
+  if [ -n "$no_vcs_dir" ]; then
+    rmdir "$no_vcs_dir"
+  fi
 }
 
 # ─── detect ───────────────────────────────────────────────────────────
@@ -63,22 +66,20 @@ teardown() {
 }
 
 @test "dirty reports no-vcs outside a repository" {
-  mkdir "$TEST_DIR/no-vcs"
-  cd "$TEST_DIR/no-vcs"
+  no_vcs_dir="$(mktemp -d)"
+  cd "$no_vcs_dir"
   VCS_OVERRIDE= run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op dirty
   [ "$status" -eq 0 ]
   [ "$output" = "no-vcs" ]
 }
+
 @test "dirty preserves inspection failure for forced Git outside any repository" {
   no_vcs_dir="$(mktemp -d)"
   cd "$no_vcs_dir"
   run env VCS_OVERRIDE=git node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op dirty
   [ "$status" -ne 0 ]
   [[ "$output" == *"fatal"* || "$output" == *"not a git repository"* ]]
-  cd "$TEST_DIR"
-  rmdir "$no_vcs_dir"
 }
-
 
 @test "working-copy-status reports Git staged, untracked, and deleted files without a base" {
   mk_initial_commit
