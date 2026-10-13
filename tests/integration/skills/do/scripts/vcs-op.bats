@@ -1011,7 +1011,7 @@ SH
   [ "$(jj log --revision main --no-graph --template commit_id)" = "$main_before" ]
 }
 
-@test "jj: commit without a resolved base names the missing state field and the fix" {
+@test "jj: commit without a resolved base reports it and names the fix" {
   # Regression (#87): entry points that skip sync leave workflow state without
   # a base; commit used to surface only the raw jj guard, which reads like a
   # repository problem rather than a missing workflow-state field.
@@ -1023,6 +1023,10 @@ SH
   jj bookmark create main -r @
   jj new main
   jj bookmark create feature -r @
+
+  # The #87 shape: an initialized followup run with no prior base to inherit.
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init --from=followup "follow-up run"
+
   echo feature > feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt
@@ -1043,7 +1047,8 @@ SH
   jj new main
   jj bookmark create feature -r @
 
-  # A finished run whose sync resolved base=main, then a followup on top of it.
+  # A finished run whose base was resolved to main (hand-set via `set base`
+  # here; sync persists the same 'base' field), then a followup on top of it.
   node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init "first run"
   node "$REPO_ROOT/pure/dist/agency-do.js" do-driver set base main
   node "$REPO_ROOT/pure/dist/agency-do.js" do-driver start done
