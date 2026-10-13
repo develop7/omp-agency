@@ -237,8 +237,8 @@ Missing-base failures inspect workflow state without changing it. Entry points
 that skip sync (`followup`, `post-implement`, `polish`, `ci-only`) inherit the
 prior run's resolved `base` at init — the follow-up's PR target — and the
 `no-vcs` sentinel never crosses into a VCS-backed run; a jj commit that still
-finds no `base` names the missing state field and the
-`agency_driver { op: "set", field: "base", value: "<target>" }` remedy instead
+finds no `base` reports the unresolved base and names the
+`agency_driver({ op: "set", field: "base", value: "<target>" })` remedy instead
 of surfacing raw jj internals. An active
 `noVcs: true` run receives its sync invocation; an active VCS run must select
 the explicit base, stack, or default branch because an incomplete sync does not
