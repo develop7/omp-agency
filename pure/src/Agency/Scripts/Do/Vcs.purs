@@ -254,6 +254,15 @@ noUpstream result =
     && (contains (Pattern "no upstream") message
       || contains (Pattern "does not point to a branch") message)
 
+-- | The sync invocations that resolve a base. One owner: both missing-base
+-- | diagnostics render their remediation from these forms.
+baseSyncForms :: { explicit :: String, stack :: String, default :: String }
+baseSyncForms =
+  { explicit: "agency_driver({ op: \"sync\", noVcs: false, base: \"<target>\" })"
+  , stack: "agency_driver({ op: \"sync\", noVcs: false, stack: true })"
+  , default: "agency_driver({ op: \"sync\", noVcs: false })"
+  }
+
 -- | Read the persisted base from the context resolved by the adapter.
 resolveBase :: WorkflowContext -> Effect Outcome.OpOutcome
 resolveBase context = case context.base of
@@ -283,9 +292,9 @@ resolveBase context = case context.base of
             Just false -> failureLines
               [ "vcs-op: base is not set; this run selected noVcs=false."
               , "        Sync did not persist a base. The intended selector (--base, --stack, or default) is not recorded, so choose it rather than assuming the default."
-              , "        Explicit base: agency_driver({ op: \"sync\", noVcs: false, base: \"<branch>\" })"
-              , "        Stack: agency_driver({ op: \"sync\", noVcs: false, stack: true })"
-              , "        Default: agency_driver({ op: \"sync\", noVcs: false })"
+              , "        Explicit base: " <> baseSyncForms.explicit
+              , "        Stack: " <> baseSyncForms.stack
+              , "        Default: " <> baseSyncForms.default
               ]
             Nothing -> failureLines
               [ "vcs-op: base is not set and this run has no valid noVcs choice."
@@ -659,9 +668,9 @@ featureBookmark :: WorkflowContext -> Effect (Either Outcome.OpOutcome String)
 featureBookmark context = case context.base of
   Nothing -> pure (Left (failureLines
     [ "vcs-op commit: jj requires a resolved base to protect the trunk bookmark; workflow state has no 'base' field."
-    , "        Entry points that skip sync (followup, post-implement, polish, ci-only) leave base unresolved — set it to the branch's PR target."
+    , "        This run resolved no base (sync has not persisted one and no prior run's base was inherited) — set it to the branch's PR target."
     , "        Explicit base: agency_driver({ op: \"set\", field: \"base\", value: \"<target>\" })"
-    , "        Or resolve it via sync: agency_driver({ op: \"sync\", noVcs: false, base: \"<target>\" }), { stack: true }, or { noVcs: false } for the default."
+    , "        Or resolve it via sync: " <> baseSyncForms.explicit <> ", " <> baseSyncForms.stack <> ", or " <> baseSyncForms.default <> " for the default."
     ]))
   Just base -> do
     found <- jjFeatureBookmark
