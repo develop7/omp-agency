@@ -101,6 +101,69 @@ run_api_driver() {
   [ "$output" = "ci-only" ]
 }
 
+@test "init --from=followup carries base forward from the finished run" {
+  # Regression (#87): entry points that skip sync never resolve base, so the
+  # first commit failed with the raw jj guard. Init carries the finished run's
+  # base forward.
+  run_driver init "first task"
+  [ "$status" -eq 0 ]
+  run_driver set base main
+  [ "$status" -eq 0 ]
+  run_driver start done
+  run_driver end passed "verified"
+
+  run_driver init --from=followup "follow-up task"
+  [ "$status" -eq 0 ]
+  run jq -r '.base' .do-results.json
+  [ "$output" = "main" ]
+  run jq -r '.from' .do-results.json
+  [ "$output" = "followup" ]
+}
+
+@test "API init --from=followup carries base forward (typed tool path)" {
+  # Regression (#87) on the exact consumer path from the report: the typed
+  # agency_driver tool, not just the do-driver CLI bundle.
+  AGENCY_DRIVER_ARGS='["init","first task"]' run_api_driver
+  [ "$status" -eq 0 ]
+  AGENCY_DRIVER_ARGS='["set","base","main"]' run_api_driver
+  [ "$status" -eq 0 ]
+  AGENCY_DRIVER_ARGS='["start","done"]' run_api_driver
+  AGENCY_DRIVER_ARGS='["end","passed","verified"]' run_api_driver
+
+  AGENCY_DRIVER_ARGS='["init","--from=followup","follow-up task"]' run_api_driver
+  [ "$status" -eq 0 ]
+  run jq -r '.base' .do-results.json
+  [ "$output" = "main" ]
+}
+
+@test "init does not carry the no-vcs base sentinel into a vcs run" {
+  run_driver init --no-vcs "first task"
+  [ "$status" -eq 0 ]
+  run_driver set base no-vcs
+  [ "$status" -eq 0 ]
+  run_driver start done
+  run_driver end passed "verified"
+
+  run_driver init "vcs task"
+  [ "$status" -eq 0 ]
+  run jq -r 'has("base")' .do-results.json
+  [ "$output" = "false" ]
+}
+
+@test "init --no-vcs leaves base unset even when the prior run had one" {
+  run_driver init "first task"
+  [ "$status" -eq 0 ]
+  run_driver set base main
+  [ "$status" -eq 0 ]
+  run_driver start done
+  run_driver end passed "verified"
+
+  run_driver init --no-vcs --from=followup "no-vcs follow-up"
+  [ "$status" -eq 0 ]
+  run jq -r 'has("base")' .do-results.json
+  [ "$output" = "false" ]
+}
+
 @test "init --review incompatible with --from (non-default)" {
   run_driver init --review --from=followup "my task"
   [ "$status" -eq 2 ]

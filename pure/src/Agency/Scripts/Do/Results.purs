@@ -101,7 +101,14 @@ runDriverInit context options = do
             withVcs <- if Vcs.vcsName context.vcs == "unknown" then Right withMinimal else State.setField "vcs" (fromString (Vcs.vcsName context.vcs)) withMinimal
             withForge <- State.setField "forge" (fromString (Forge.forgeName context.forge)) withVcs
             withCapabilities <- putCapabilities context.forge withForge
-            withFrom <- if options.from == "" then Right withCapabilities else State.setField "from" (fromString options.from) withCapabilities
+            -- Entry points that skip sync (followup, post-implement, polish,
+            -- ci-only) never resolve base; carry the prior run's resolved base
+            -- forward so downstream VCS ops can protect the trunk (#87). The
+            -- no-vcs sentinel names no ref and stays behind with --no-vcs runs.
+            withBase <- if options.noVcs then Right withCapabilities else case context.base of
+              Just prior | prior /= State.noVcsBaseValue -> State.setField "base" (fromString prior) withCapabilities
+              _ -> Right withCapabilities
+            withFrom <- if options.from == "" then Right withBase else State.setField "from" (fromString options.from) withBase
             if options.task == "" then Right withFrom else State.setField "task" (fromString options.task) withFrom
       case initialized of
         Left error -> pure (failText error)

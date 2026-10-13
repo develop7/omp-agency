@@ -13,6 +13,7 @@ module Agency.Scripts.Do.State
   , renderStepStatus
   , emptyState
   , initState
+  , noVcsBaseValue
   , parseState
   , stringifyState
   , readState
@@ -183,6 +184,11 @@ boundedStepValues values =
 
 knownKeys :: Array String
 knownKeys = [ "workflow", "startedAt", "active", "status", "steps", "pendingStep" ]
+
+-- | Sentinel `base` for --no-vcs runs: non-empty so workflow gates pass, but
+-- | it names no ref and must never be carried into a VCS-backed run.
+noVcsBaseValue :: String
+noVcsBaseValue = "no-vcs"
 
 emptyState :: State
 emptyState =
