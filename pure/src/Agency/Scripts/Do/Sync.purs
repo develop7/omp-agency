@@ -109,9 +109,9 @@ type SyncBase =
 -- | --no-vcs has no branch or revision to resolve, but downstream workflow
 -- | gates require sync to persist a non-empty base before they skip VCS work.
 noVcsBase :: State.State -> Either Outcome.OpOutcome SyncBase
-noVcsBase state1 = case State.setField "base" (fromString "no-vcs") state1 of
+noVcsBase state1 = case State.setField "base" (fromString State.noVcsBaseValue) state1 of
   Left error -> Left (failText ("sync: " <> error))
-  Right state2 -> Right { state: state2, branch: "no-vcs", defaultRef: "no-vcs", base: "no-vcs" }
+  Right state2 -> Right { state: state2, branch: State.noVcsBaseValue, defaultRef: State.noVcsBaseValue, base: State.noVcsBaseValue }
 
 basePhase :: WorkflowContext -> { noVcs :: Boolean, base :: Maybe String, stack :: Boolean } -> State.State -> Effect (Either Outcome.OpOutcome SyncBase)
 basePhase context options state1 =

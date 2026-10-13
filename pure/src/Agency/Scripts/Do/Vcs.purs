@@ -657,7 +657,12 @@ jjCommit context message files = do
 -- | bookmark on its parent. Either revision is safe unless it is the base.
 featureBookmark :: WorkflowContext -> Effect (Either Outcome.OpOutcome String)
 featureBookmark context = case context.base of
-  Nothing -> pure (Left (failureLine "vcs-op commit: jj requires a resolved base to protect the trunk bookmark"))
+  Nothing -> pure (Left (failureLines
+    [ "vcs-op commit: jj requires a resolved base to protect the trunk bookmark; workflow state has no 'base' field."
+    , "        Entry points that skip sync (followup, post-implement, polish, ci-only) leave base unresolved — set it to the branch's PR target."
+    , "        Explicit base: agency_driver({ op: \"set\", field: \"base\", value: \"<target>\" })"
+    , "        Or resolve it via sync: agency_driver({ op: \"sync\", noVcs: false, base: \"<target>\" }), { stack: true }, or { noVcs: false } for the default."
+    ]))
   Just base -> do
     found <- jjFeatureBookmark
     pure (protect base found)

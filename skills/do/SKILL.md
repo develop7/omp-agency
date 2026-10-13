@@ -60,6 +60,8 @@ capability table). Today only GitHub has an active code path; other forges skip 
 Without `--base`/`--stack`, `base` is the default branch (origin HEAD). Every review/diff op reads `base` from state
 (`vcs_read` with `{ op: "base" }`), so a stacked PR's review covers just that PR's changes, not the cumulative
 stack. Deep stacks (>2) need a fresh `/do` per level; `/do` does not auto-restack when a parent merges.
+Entry points that skip `sync` (`followup`, `post-implement`, `polish`, `ci-only`) inherit `base` from the prior run's
+state at `init`; for a different PR target set it explicitly with `agency_driver { op: "set", field: "base", value: "<branch>" }`.
 
 ## Results Tracking
 

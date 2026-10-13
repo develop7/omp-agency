@@ -1011,6 +1011,53 @@ SH
   [ "$(jj log --revision main --no-graph --template commit_id)" = "$main_before" ]
 }
 
+@test "jj: commit without a resolved base names the missing state field and the fix" {
+  # Regression (#87): entry points that skip sync leave workflow state without
+  # a base; commit used to surface only the raw jj guard, which reads like a
+  # repository problem rather than a missing workflow-state field.
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > README.md
+  jj describe -m "base"
+  jj bookmark create main -r @
+  jj new main
+  jj bookmark create feature -r @
+  echo feature > feature.txt
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no 'base' field"* ]]
+  [[ "$output" == *'op: "set", field: "base"'* ]]
+}
+
+@test "jj: driver init --from=followup keeps the prior base so commit succeeds" {
+  # Regression (#87): the followup entry point skips sync, so init must carry
+  # the finished run's base forward for the commit guard to accept the commit.
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > README.md
+  jj describe -m "base"
+  jj bookmark create main -r @
+  jj new main
+  jj bookmark create feature -r @
+
+  # A finished run whose sync resolved base=main, then a followup on top of it.
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init "first run"
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver set base main
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver start done
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver end passed "verified"
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init --from=followup "follow-up run"
+
+  run jq -r '.base' .do-results.json
+  [ "$output" = "main" ]
+
+  echo feature > feature.txt
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: follow-up" feature.txt
+  [ "$status" -eq 0 ]
+}
+
 @test "jj: push and fix-commit target only the current feature bookmark" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"

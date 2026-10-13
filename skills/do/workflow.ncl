@@ -27,7 +27,9 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
         noVcs | Bool,
         # `base` is the resolved branch to branch from, diff against, and
         # target the PR at (enables stacked PRs via --base / --stack).
-        # Written by sync; read by vcs_read. Empty until sync runs.
+        # Written by sync; carried forward from the prior run by init for
+        # entry points that skip sync. Read by vcs_read. Empty until sync
+        # runs or init inherits a resolved base.
         base | String | default = "",
         minimal | Bool,
         review | Bool | default = false,
@@ -251,7 +253,6 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
       instructions = "nodes/done.md",
     },
   },
-
 
   # ── Minimal skips (omitted from todo list entirely) ────────────────────────
 
