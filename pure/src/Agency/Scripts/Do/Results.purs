@@ -94,7 +94,8 @@ runDriverInit context options = do
     _ -> do
       timestamp <- Sys.nowIso
       let base = State.initState timestamp
-          vcsBacked = Vcs.vcsName context.vcs /= "unknown"
+          vcsDetected = Vcs.vcsName context.vcs /= "unknown"
+          isDefaultEntry = options.from == "" || options.from == "default"
           -- A prior base is inherited only when it names a ref. Absent, empty,
           -- or non-string values (hand-corrupted state) stay unset deliberately:
           -- the run proceeds and the missing-base diagnostic names the remedy
@@ -106,7 +107,7 @@ runDriverInit context options = do
             withNoVcs <- State.setField "noVcs" (fromBoolean options.noVcs) base
             withReview <- State.setField "review" (fromBoolean options.review) withNoVcs
             withMinimal <- State.setField "minimal" (fromBoolean options.minimal) withReview
-            withVcs <- if Vcs.vcsName context.vcs == "unknown" then Right withMinimal else State.setField "vcs" (fromString (Vcs.vcsName context.vcs)) withMinimal
+            withVcs <- if not vcsDetected then Right withMinimal else State.setField "vcs" (fromString (Vcs.vcsName context.vcs)) withMinimal
             withForge <- State.setField "forge" (fromString (Forge.forgeName context.forge)) withVcs
             withCapabilities <- putCapabilities context.forge withForge
             -- Runs that never persist a base (their entry point starts past
@@ -114,7 +115,7 @@ runDriverInit context options = do
             -- VCS ops can protect the trunk (#87). The no-vcs sentinel names
             -- no ref and stays behind with --no-vcs runs.
             withBase <-
-              if options.noVcs || not vcsBacked || options.from == "" || options.from == "default" then Right withCapabilities
+              if options.noVcs || not vcsDetected || isDefaultEntry then Right withCapabilities
               else case priorBase of
                 Just prior | prior /= State.noVcsBaseValue -> State.setField "base" (fromString prior) withCapabilities
                 _ -> Right withCapabilities
@@ -124,7 +125,7 @@ runDriverInit context options = do
         Left error -> pure (failText error)
         Right final -> do
           State.writeState (Context.statePath context) final
-          let fromText = if options.from == "" then "default" else options.from
+          let fromText = if isDefaultEntry then "default" else options.from
           pure (Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n"))
 
 runDriverSkip :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
