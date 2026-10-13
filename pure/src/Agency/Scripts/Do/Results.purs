@@ -22,7 +22,7 @@ import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.Vcs as Vcs
-import Data.Argonaut.Core (Json, fromBoolean, fromString)
+import Data.Argonaut.Core (Json, fromBoolean, fromString, toString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Either (Either(..))
@@ -95,8 +95,12 @@ runDriverInit context options = do
       timestamp <- Sys.nowIso
       let base = State.initState timestamp
           vcsBacked = Vcs.vcsName context.vcs /= "unknown"
+          -- A prior base is inherited only when it names a ref. Absent, empty,
+          -- or non-string values (hand-corrupted state) stay unset deliberately:
+          -- the run proceeds and the missing-base diagnostic names the remedy
+          -- rather than failing init over state it can continue without.
           priorBase = case existing of
-            Right (Just prior) -> Args.nonEmpty (State.stateGet "base" prior)
+            Right (Just prior) -> State.stateGetJson "base" prior >>= toString >>= Args.nonEmpty
             _ -> Nothing
           initialized = do
             withNoVcs <- State.setField "noVcs" (fromBoolean options.noVcs) base
