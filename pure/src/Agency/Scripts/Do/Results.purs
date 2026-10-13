@@ -94,6 +94,7 @@ runDriverInit context options = do
     _ -> do
       timestamp <- Sys.nowIso
       let base = State.initState timestamp
+          vcsBacked = Vcs.vcsName context.vcs /= "unknown"
           priorBase = case existing of
             Right (Just prior) -> Args.nonEmpty (State.stateGet "base" prior)
             _ -> Nothing
@@ -109,7 +110,7 @@ runDriverInit context options = do
             -- VCS ops can protect the trunk (#87). The no-vcs sentinel names
             -- no ref and stays behind with --no-vcs runs.
             withBase <-
-              if options.noVcs || options.from == "" || options.from == "default" then Right withCapabilities
+              if options.noVcs || not vcsBacked || options.from == "" || options.from == "default" then Right withCapabilities
               else case priorBase of
                 Just prior | prior /= State.noVcsBaseValue -> State.setField "base" (fromString prior) withCapabilities
                 _ -> Right withCapabilities

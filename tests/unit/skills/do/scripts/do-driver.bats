@@ -104,7 +104,9 @@ run_api_driver() {
 @test "init --from=followup carries base forward from the finished run" {
   # Regression (#87): entry points that skip sync never resolve base, so the
   # first commit failed with the raw jj guard. Init carries the finished run's
-  # base forward.
+  # base forward. The non-repo fixture declares the run VCS-backed so the
+  # carry path is reached.
+  export VCS_OVERRIDE=jj
   run_driver init "first task"
   [ "$status" -eq 0 ]
   run_driver set base main
@@ -123,6 +125,7 @@ run_api_driver() {
 @test "API init --from=followup carries base forward (typed tool path)" {
   # Regression (#87) on the exact consumer path from the report: the typed
   # agency_driver tool, not just the do-driver CLI bundle.
+  export VCS_OVERRIDE=jj
   AGENCY_DRIVER_ARGS='["init","first task"]' run_api_driver
   [ "$status" -eq 0 ]
   AGENCY_DRIVER_ARGS='["set","base","main"]' run_api_driver
@@ -137,6 +140,8 @@ run_api_driver() {
 }
 
 @test "init does not carry the no-vcs base sentinel into a vcs run" {
+  # VCS-backed fixture so the sentinel guard, not the VCS gate, excludes.
+  export VCS_OVERRIDE=jj
   run_driver init --no-vcs "first task"
   [ "$status" -eq 0 ]
   run_driver set base no-vcs
@@ -154,6 +159,8 @@ run_api_driver() {
   # Regression (#87): carry is scoped to entries that skip sync. The default
   # entry runs sync, and a failed sync must fall back to the missing-base
   # diagnostics rather than a stale carried value. Both CLI spellings pinned.
+  # VCS-backed fixture so the default-entry gate, not the VCS gate, excludes.
+  export VCS_OVERRIDE=jj
   run_driver init "first task"
   [ "$status" -eq 0 ]
   run_driver set base main
@@ -175,6 +182,8 @@ run_api_driver() {
 }
 
 @test "init --no-vcs leaves base unset even when the prior run had one" {
+  # VCS-backed fixture so the --no-vcs gate, not the VCS gate, excludes.
+  export VCS_OVERRIDE=jj
   run_driver init "first task"
   [ "$status" -eq 0 ]
   run_driver set base main
