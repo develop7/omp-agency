@@ -144,7 +144,31 @@ run_api_driver() {
   run_driver start done
   run_driver end passed "verified"
 
-  run_driver init "vcs task"
+  run_driver init --from=followup "vcs task"
+  [ "$status" -eq 0 ]
+  run jq -r 'has("base")' .do-results.json
+  [ "$output" = "false" ]
+}
+
+@test "init on the default entry leaves base for sync to resolve" {
+  # Regression (#87): carry is scoped to entries that skip sync. The default
+  # entry runs sync, and a failed sync must fall back to the missing-base
+  # diagnostics rather than a stale carried value. Both CLI spellings pinned.
+  run_driver init "first task"
+  [ "$status" -eq 0 ]
+  run_driver set base main
+  [ "$status" -eq 0 ]
+  run_driver start done
+  run_driver end passed "verified"
+
+  run_driver init "default entry"
+  [ "$status" -eq 0 ]
+  run jq -r 'has("base")' .do-results.json
+  [ "$output" = "false" ]
+
+  run_driver start done
+  run_driver end passed "verified"
+  run_driver init --from=default "explicit default entry"
   [ "$status" -eq 0 ]
   run jq -r 'has("base")' .do-results.json
   [ "$output" = "false" ]
