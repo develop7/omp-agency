@@ -667,8 +667,8 @@ jjCommit context message files = do
 featureBookmark :: WorkflowContext -> Effect (Either Outcome.OpOutcome String)
 featureBookmark context = case context.base of
   Nothing -> pure (Left (failureLines
-    [ "vcs-op commit: jj requires a resolved base to protect the trunk bookmark; workflow state has no 'base' field."
-    , "        This run resolved no base (sync has not persisted one and no prior run's base was inherited) — set it to the branch's PR target."
+    [ "vcs-op commit: jj requires a resolved base to protect the trunk bookmark; workflow state resolved no base."
+    , "        Sync has not persisted one and none was inherited from a prior run — set it to the branch's PR target."
     , "        Explicit base: agency_driver({ op: \"set\", field: \"base\", value: \"<target>\" })"
     , "        Or resolve it via sync: " <> baseSyncForms.explicit <> ", " <> baseSyncForms.stack <> ", or " <> baseSyncForms.default <> " for the default."
     ]))
