@@ -94,6 +94,9 @@ runDriverInit context options = do
     _ -> do
       timestamp <- Sys.nowIso
       let base = State.initState timestamp
+          priorBase = case existing of
+            Right (Just prior) -> Args.nonEmpty (State.stateGet "base" prior)
+            _ -> Nothing
           initialized = do
             withNoVcs <- State.setField "noVcs" (fromBoolean options.noVcs) base
             withReview <- State.setField "review" (fromBoolean options.review) withNoVcs
@@ -101,13 +104,15 @@ runDriverInit context options = do
             withVcs <- if Vcs.vcsName context.vcs == "unknown" then Right withMinimal else State.setField "vcs" (fromString (Vcs.vcsName context.vcs)) withMinimal
             withForge <- State.setField "forge" (fromString (Forge.forgeName context.forge)) withVcs
             withCapabilities <- putCapabilities context.forge withForge
-            -- Entry points that skip sync (followup, post-implement, polish,
-            -- ci-only) never resolve base; carry the prior run's resolved base
-            -- forward so downstream VCS ops can protect the trunk (#87). The
-            -- no-vcs sentinel names no ref and stays behind with --no-vcs runs.
-            withBase <- if options.noVcs then Right withCapabilities else case context.base of
-              Just prior | prior /= State.noVcsBaseValue -> State.setField "base" (fromString prior) withCapabilities
-              _ -> Right withCapabilities
+            -- Runs that never persist a base (their entry point starts past
+            -- sync) carry the prior run's resolved base forward so downstream
+            -- VCS ops can protect the trunk (#87). The no-vcs sentinel names
+            -- no ref and stays behind with --no-vcs runs.
+            withBase <-
+              if options.noVcs || options.from == "" || options.from == "default" then Right withCapabilities
+              else case priorBase of
+                Just prior | prior /= State.noVcsBaseValue -> State.setField "base" (fromString prior) withCapabilities
+                _ -> Right withCapabilities
             withFrom <- if options.from == "" then Right withBase else State.setField "from" (fromString options.from) withBase
             if options.task == "" then Right withFrom else State.setField "task" (fromString options.task) withFrom
       case initialized of
