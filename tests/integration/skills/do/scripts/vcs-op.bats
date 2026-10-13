@@ -1027,7 +1027,7 @@ SH
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt
   [ "$status" -ne 0 ]
-  [[ "$output" == *"no 'base' field"* ]]
+  [[ "$output" == *"workflow state resolved no base"* ]]
   [[ "$output" == *'op: "set", field: "base"'* ]]
 }
 
