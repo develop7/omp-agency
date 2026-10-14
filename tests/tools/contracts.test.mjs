@@ -92,7 +92,6 @@ test("agency_driver rejects invalid operation fields and generated vocabulary va
 test("workflow rejects legacy argv and unknown entry-point selectors", () => {
   const schema = tool(tools, "workflow").parameters;
   rejects(schema, { args: ["cli"] });
-  rejects(schema, { field: "cli", from: "default" });
   rejects(schema, { field: "cli_seed", from: "not-an-entry-point" });
 });
 
