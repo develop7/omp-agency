@@ -107,6 +107,12 @@ test("workflow cli + from rejection names the sibling cli_seed arm", () => {
     // Guidance, not exact prose: the error must point at the cli_seed arm.
     assert.match(issue.message, /cli_seed/);
   }
+  // The hint keeps enumerating any other unrecognized keys, as the deleted
+  // strict-object prose did.
+  const mixed = schema.safeParse({ field: "cli", from: "default", junk: 1 });
+  assert.equal(mixed.success, false);
+  assert.match(mixed.error.issues[0].message, /cli_seed/);
+  assert.match(mixed.error.issues[0].message, /junk/);
   // Both valid forms keep parsing unchanged.
   assert.equal(schema.safeParse({ field: "cli" }).success, true);
   assert.equal(schema.safeParse({ field: "cli_seed", from: "default" }).success, true);
