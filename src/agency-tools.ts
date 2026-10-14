@@ -286,7 +286,7 @@ export default function (pi: ExtensionAPI) {
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const request = params.field === cliField
-        ? { operation: "cli" as const, cwd: ctx.cwd }
+        ? { operation: cliField, cwd: ctx.cwd }
         : { operation: cliSeedField, seed: params.from, cwd: ctx.cwd };
       const result = await evaluateWorkflow(request);
       if (result.exit !== 0) {
