@@ -285,7 +285,15 @@ export default function (pi: ExtensionAPI) {
     description:
       "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared entry point to seed/resume.",
     parameters: z.union([
-      z.object({ field: z.literal("cli") }).strict(),
+      // zod promotes a lone soft-failing arm's issues, so this arm's bare key
+      // error is what a caller sees for `from` alongside `cli`. Name the
+      // sibling cli_seed arm there instead of the default prose.
+      z.object({ field: z.literal("cli") }, {
+        error: issue =>
+          issue.code === "unrecognized_keys" && issue.keys.includes("from") && issue.input?.field === "cli"
+            ? `cli takes no "from"; use the sibling arm { field: "cli_seed", from: <entry point> } to supply one`
+            : undefined,
+      }).strict(),
       z.object({ field: z.literal("cli_seed"), from: z.enum(workflowEntryPoints) }).strict(),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {

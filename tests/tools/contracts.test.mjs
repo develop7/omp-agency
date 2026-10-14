@@ -96,6 +96,22 @@ test("workflow rejects legacy argv and unknown entry-point selectors", () => {
   rejects(schema, { field: "cli_seed", from: "not-an-entry-point" });
 });
 
+test("workflow cli + from rejection names the sibling cli_seed arm", () => {
+  const schema = tool(tools, "workflow").parameters;
+  for (const from of ["default", "not-an-entry-point"]) {
+    const result = schema.safeParse({ field: "cli", from });
+    assert.equal(result.success, false);
+    const [issue] = result.error.issues;
+    assert.equal(issue.code, "unrecognized_keys");
+    assert.deepEqual(issue.keys, ["from"]);
+    // Guidance, not exact prose: the error must point at the cli_seed arm.
+    assert.match(issue.message, /cli_seed/);
+  }
+  // Both valid forms keep parsing unchanged.
+  assert.equal(schema.safeParse({ field: "cli" }).success, true);
+  assert.equal(schema.safeParse({ field: "cli_seed", from: "default" }).success, true);
+});
+
 test("forge rejects injected selectors, arbitrary argv, and conflicting bodies", () => {
   const schema = tool(tools, "forge").parameters;
   rejects(schema, { op: "pr-view", pr: "--repo=evil" });
