@@ -279,6 +279,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  const cliField = "cli";
   pi.registerTool({
     name: "workflow",
     label: "Workflow",
@@ -288,9 +289,9 @@ export default function (pi: ExtensionAPI) {
       // zod promotes a lone soft-failing arm's issues, so this arm's bare key
       // error is what a caller sees for `from` alongside `cli`. Name the
       // sibling cli_seed arm there instead of the default prose.
-      z.object({ field: z.literal("cli") }, {
+      z.object({ field: z.literal(cliField) }, {
         error: issue => {
-          if (issue.code !== "unrecognized_keys" || !issue.keys.includes("from") || issue.input?.field !== "cli") {
+          if (issue.code !== "unrecognized_keys" || !issue.keys.includes("from") || issue.input?.field !== cliField) {
             return undefined;
           }
           const others = issue.keys.filter(key => key !== "from");
