@@ -259,7 +259,9 @@ including referenced rule files and retries, rather than rediscovering them.
 Backend parsers and permission checks remain authoritative; old model-facing
 `args` payloads are rejected rather than translated through a compatibility layer.
 Push refs and forge selectors cannot be CLI flags; the Git backend also terminates
-push options before the explicit ref operand.
+push options before the explicit ref operand. The `workflow` schema stays strict
+at the `cli`/`cli_seed` boundary: `from` alongside `cli` is rejected, and the
+error names the sibling `cli_seed` arm instead of surfacing a bare key error.
 
 Consumers only need `node`; development requires nothing beyond Nix.
 
