@@ -289,10 +289,14 @@ export default function (pi: ExtensionAPI) {
       // error is what a caller sees for `from` alongside `cli`. Name the
       // sibling cli_seed arm there instead of the default prose.
       z.object({ field: z.literal("cli") }, {
-        error: issue =>
-          issue.code === "unrecognized_keys" && issue.keys.includes("from") && issue.input?.field === "cli"
-            ? `cli takes no "from"; use the sibling arm { field: "cli_seed", from: <entry point> } to supply one`
-            : undefined,
+        error: issue => {
+          if (issue.code !== "unrecognized_keys" || !issue.keys.includes("from") || issue.input?.field !== "cli") {
+            return undefined;
+          }
+          const others = issue.keys.filter(key => key !== "from");
+          return `cli takes no "from"; use the sibling arm { field: "cli_seed", from: <entry point> } to supply one`
+            + (others.length ? `; also unrecognized keys: ${others.map(JSON.stringify).join(", ")}` : "");
+        },
       }).strict(),
       z.object({ field: z.literal("cli_seed"), from: z.enum(workflowEntryPoints) }).strict(),
     ]),
