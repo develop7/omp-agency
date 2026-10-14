@@ -274,6 +274,9 @@ export default function (pi: ExtensionAPI) {
       // sibling cli_seed arm there instead of the default prose.
       z.object({ field: z.literal(cliField) }, {
         error: issue => {
+          // This map also finalizes issues nested under invalid_union when
+          // `field` is misspelled; input.field keeps the hint scoped to a
+          // genuine cli selection so it cannot mislabel foreign payloads.
           if (issue.code !== "unrecognized_keys" || !issue.keys.includes("from") || issue.input?.field !== cliField) {
             return undefined;
           }
