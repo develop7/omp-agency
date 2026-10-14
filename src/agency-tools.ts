@@ -30,25 +30,7 @@ async function loadApi(): Promise<AgencyApi> {
   apiPromise ??= import("../pure/dist/agency-api.js") as unknown as Promise<AgencyApi>;
   return apiPromise;
 }
-async function executeWorkflow(
-  params: { field: "cli" } | { field: "cli_seed"; from: string },
-  ctx: ToolContext,
-): Promise<{
-  content: Array<{ type: "text"; text: string }>;
-  details: ApiResult;
-}> {
-  const request = params.field === "cli"
-    ? { operation: "cli" as const, cwd: ctx.cwd }
-    : { operation: "cli_seed" as const, seed: params.from, cwd: ctx.cwd };
-  const result = await evaluateWorkflow(request);
-  if (result.exit !== 0) {
-    throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
-  }
-  return {
-    content: [{ type: "text", text: result.stdout || "ok" }],
-    details: result,
-  };
-}
+
 async function executeApi(tool: string, args: string[]): Promise<{
   content: Array<{ type: "text"; text: string }>;
   details: ApiResult;
@@ -302,7 +284,17 @@ export default function (pi: ExtensionAPI) {
       z.object({ field: z.literal("cli_seed"), from: z.enum(workflowEntryPoints) }).strict(),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      return executeWorkflow(params, ctx);
+      const request = params.field === cliField
+        ? { operation: "cli" as const, cwd: ctx.cwd }
+        : { operation: "cli_seed" as const, seed: params.from, cwd: ctx.cwd };
+      const result = await evaluateWorkflow(request);
+      if (result.exit !== 0) {
+        throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
+      }
+      return {
+        content: [{ type: "text", text: result.stdout || "ok" }],
+        details: result,
+      };
     },
   });
 
