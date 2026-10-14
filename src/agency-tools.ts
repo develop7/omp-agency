@@ -262,6 +262,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   const cliField = "cli";
+  const cliSeedField = "cli_seed";
   pi.registerTool({
     name: "workflow",
     label: "Workflow",
@@ -277,16 +278,16 @@ export default function (pi: ExtensionAPI) {
             return undefined;
           }
           const others = issue.keys.filter(key => key !== "from");
-          return `cli takes no "from"; use the sibling arm { field: "cli_seed", from: <entry point> } to supply one`
+          return `cli takes no "from"; use the sibling arm { field: "${cliSeedField}", from: <entry point> } to supply one`
             + (others.length ? `; also unrecognized keys: ${others.map(JSON.stringify).join(", ")}` : "");
         },
       }).strict(),
-      z.object({ field: z.literal("cli_seed"), from: z.enum(workflowEntryPoints) }).strict(),
+      z.object({ field: z.literal(cliSeedField), from: z.enum(workflowEntryPoints) }).strict(),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const request = params.field === cliField
         ? { operation: "cli" as const, cwd: ctx.cwd }
-        : { operation: "cli_seed" as const, seed: params.from, cwd: ctx.cwd };
+        : { operation: cliSeedField, seed: params.from, cwd: ctx.cwd };
       const result = await evaluateWorkflow(request);
       if (result.exit !== 0) {
         throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
