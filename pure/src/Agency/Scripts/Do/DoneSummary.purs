@@ -18,7 +18,7 @@ import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Data.Array as Array
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.String (Pattern(..), Replacement(..), joinWith, replaceAll)
 import Data.String.CodeUnits (drop)
@@ -39,25 +39,17 @@ run context = do
           Right value -> pure (Outcome.withStdout (renderMarkdown value <> renderFacts value))
       jobs -> do
         now <- Sys.nowIso
-        current <- Sys.isoToEpoch now
+        -- An unparsable current time leaves every job unstalled.
+        current <- either (const Nothing) Just <$> Sys.isoToEpoch now
         described <- traverse (describeUnfinished current) jobs
         pure (failText ("done: unfinished job(s): " <> joinWith ", " described <> " — resolve with job-end before summary"))
 
 -- | An unfinished job blocks summary; jobs past their deadline are
 -- | additionally reported as stalled so liveness failures stay visible.
-describeUnfinished :: Either String Int -> State.Job -> Effect String
+describeUnfinished :: Maybe Int -> State.Job -> Effect String
 describeUnfinished current job = do
-  stalled <- pastDeadline current job.deadline
+  stalled <- maybe (pure false) (\epoch -> State.jobStalled epoch job) current
   pure ("'" <> job.id <> "'" <> (if stalled then " (stalled past deadline " <> fromMaybe "" job.deadline <> ")" else ""))
-
-pastDeadline :: Either String Int -> Maybe String -> Effect Boolean
-pastDeadline current deadline = case deadline of
-  Nothing -> pure false
-  Just limit -> do
-    parsed <- Sys.isoToEpoch limit
-    pure case parsed, current of
-      Right limitEpoch, Right nowEpoch -> limitEpoch < nowEpoch
-      _, _ -> false
 
 -- | A row contains facts needed by both markdown and machine-readable output.
 type DoneRow =

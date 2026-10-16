@@ -31,6 +31,7 @@ module Agency.Scripts.Do.State
   , appendStep
   , jobFinished
   , unfinishedJobs
+  , jobStalled
   , appendJob
   , resolveJob
   , startPending
@@ -569,6 +570,17 @@ jobFinished job = case job.outcome of
 
 unfinishedJobs :: State -> Array Job
 unfinishedJobs state = Array.filter (not <<< jobFinished) state.jobs
+
+-- | A job whose persisted deadline has already passed at `nowEpoch`.
+-- | An unparsable deadline never counts as stalled.
+jobStalled :: Int -> Job -> Effect Boolean
+jobStalled nowEpoch job = case job.deadline of
+  Nothing -> pure false
+  Just limit -> do
+    parsed <- Sys.isoToEpoch limit
+    pure case parsed of
+      Right limitEpoch -> limitEpoch < nowEpoch
+      Left _ -> false
 
 -- | Append a new unfinished job under the ledger's bounds and id rules.
 appendJob :: Job -> State -> Either String State
