@@ -196,10 +196,16 @@ allJobOutcomes = [ JobCompleted, JobFailed, JobCancelled, JobEscalated ]
 jobOutcomeNames :: Array String
 jobOutcomeNames = map renderJobOutcome allJobOutcomes
 
+-- | Resolve a persisted outcome name through `allJobOutcomes`, so accepted
+-- | and rendered spellings come from one list; anything else stays visible
+-- | as `JobUnknown` for the validators to reject.
 parseJobOutcome :: String -> JobOutcome
 parseJobOutcome value =
   fromMaybe (JobUnknown value) (Array.find (\outcome -> renderJobOutcome outcome == value) allJobOutcomes)
 
+-- | The canonical persisted name of an outcome, the inverse of
+-- | `parseJobOutcome`. `JobUnknown` renders its own text so a rejected value
+-- | can be echoed back unchanged.
 renderJobOutcome :: JobOutcome -> String
 renderJobOutcome outcome = case outcome of
   JobCompleted -> "completed"
@@ -607,11 +613,16 @@ appendStep step state = do
     Left (stepHistoryLimitError "reached")
   else Right (state { steps = state.steps <> [ step ] })
 
+-- | Whether the job carries its finish component. The typed pairing makes
+-- | this the one "is it done" question — there is no half-finished state.
 jobFinished :: Job -> Boolean
 jobFinished job = case job.finished of
   Just _ -> true
   Nothing -> false
 
+-- | The open jobs in ledger order. Every gate that must not yield with
+-- | incomplete worker work — step-end, the corrective step record, summary,
+-- | and restart carry-over — filters through this one definition.
 unfinishedJobs :: State -> Array Job
 unfinishedJobs state = Array.filter (not <<< jobFinished) state.jobs
 

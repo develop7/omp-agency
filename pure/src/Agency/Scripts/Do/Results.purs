@@ -96,6 +96,9 @@ runStep context name status verification startedAt completedAt reason = withLoad
               State.writeState (Context.statePath context) updated
               pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
 
+-- | Append a worker-owned job under a fresh id with a driver-computed
+-- | startedAt and optional deadline (startedAt + budgetMinutes). Callers
+-- | supply no timestamps, so the ledger's time fields stay trustworthy.
 runJobStart :: WorkflowContext -> { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int } -> Effect Outcome.OpOutcome
 runJobStart context input = withLoadedState context \state -> do
   started <- Sys.nowIso
@@ -131,6 +134,10 @@ deadlineAfter started budget = case budget of
       Left error -> Left error
       Right epoch -> Right (Just (Sys.formatEpochIso (epoch + minutes * 60)))
 
+-- | Resolve the named unfinished job with the parsed outcome. The reason
+-- | requirement for non-completed outcomes is enforced inside
+-- | `State.resolveJob`, so every path that ends a job carries it; the
+-- | finish timestamp is driver-computed here.
 runJobEnd :: WorkflowContext -> { id :: String, outcome :: State.JobOutcome, verification :: Maybe String } -> Effect Outcome.OpOutcome
 runJobEnd context input = withLoadedState context \state -> do
   completed <- Sys.nowIso
