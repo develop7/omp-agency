@@ -229,12 +229,30 @@ parseJobStart values = do
     Nothing -> Left (parseError 1 message)
     Just operand -> Right operand
 
+-- | Job budget bounds accepted by `job-start`, named so the range check and
+-- | its error text derive from one source. The zod `.min(1).max(120)` in
+-- | src/agency-tools.ts is the TS-side boundary anchor for the same numbers.
+minJobBudgetMinutes :: Int
+minJobBudgetMinutes = 1
+
+maxJobBudgetMinutes :: Int
+maxJobBudgetMinutes = 120
+
 parseBudget :: Array String -> Either ParseError (Maybe Int)
 parseBudget remaining = case Array.head remaining of
   Nothing -> Right Nothing
   Just text -> case Int.fromString text of
-    Just minutes | minutes >= 1 && minutes <= 120 -> Right (Just minutes)
-    _ -> Left (parseError 1 "job-start: budgetMinutes must be an integer between 1 and 120")
+    Just minutes
+      | minutes >= minJobBudgetMinutes && minutes <= maxJobBudgetMinutes -> Right (Just minutes)
+    _ ->
+      Left
+        ( parseError 1
+            ( "job-start: budgetMinutes must be an integer between "
+                <> show minJobBudgetMinutes
+                <> " and "
+                <> show maxJobBudgetMinutes
+            )
+        )
 
 parseJobEnd :: Array String -> Either ParseError DriverOp
 parseJobEnd values = do
@@ -242,7 +260,7 @@ parseJobEnd values = do
     Nothing -> Left (parseError 1 "id required")
     Just operand -> Right operand
   outcomeValue <- case Args.requiredNonEmpty jobId.rest of
-    Nothing -> Left (parseError 1 "outcome required (completed|failed|cancelled|escalated)")
+    Nothing -> Left (parseError 1 ("outcome required (" <> joinWith "|" State.jobOutcomeNames <> ")"))
     Just operand -> Right operand
   outcome <- validJobOutcome outcomeValue.value
   pure (DriverJobEnd { id: jobId.value, outcome, verification: Array.head outcomeValue.rest >>= Args.nonEmpty })
@@ -317,7 +335,8 @@ validStepStatus status =
 
 validJobOutcome :: String -> Either ParseError State.JobOutcome
 validJobOutcome value = case State.parseJobOutcome value of
-  State.JobUnknown _ -> Left (parseError 1 ("do-driver: invalid outcome '" <> value <> "' (completed|failed|cancelled|escalated)"))
+  State.JobUnknown _ ->
+    Left (parseError 1 ("do-driver: invalid outcome '" <> value <> "' (" <> joinWith "|" State.jobOutcomeNames <> ")"))
   outcome -> Right outcome
 
 parseError :: Int -> String -> ParseError

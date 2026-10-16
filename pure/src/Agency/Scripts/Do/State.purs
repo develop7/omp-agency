@@ -15,6 +15,8 @@ module Agency.Scripts.Do.State
   , renderStepStatus
   , parseJobOutcome
   , renderJobOutcome
+  , allJobOutcomes
+  , jobOutcomeNames
   , emptyState
   , initState
   , noVcsBaseValue
@@ -180,13 +182,21 @@ data JobOutcome
 
 derive instance eqJobOutcome :: Eq JobOutcome
 
+-- | Every terminal job outcome. This list is the single home for the
+-- | vocabulary; parsers and message builders derive from it instead of
+-- | re-spelling the names, so a new outcome cannot be added in one place
+-- | and missed in another.
+allJobOutcomes :: Array JobOutcome
+allJobOutcomes = [ JobCompleted, JobFailed, JobCancelled, JobEscalated ]
+
+-- | The rendered names of every job outcome, for hints and error messages
+-- | that must stay in sync with what `parseJobOutcome` accepts.
+jobOutcomeNames :: Array String
+jobOutcomeNames = map renderJobOutcome allJobOutcomes
+
 parseJobOutcome :: String -> JobOutcome
-parseJobOutcome value = case value of
-  "completed" -> JobCompleted
-  "failed" -> JobFailed
-  "cancelled" -> JobCancelled
-  "escalated" -> JobEscalated
-  _ -> JobUnknown value
+parseJobOutcome value =
+  fromMaybe (JobUnknown value) (Array.find (\outcome -> renderJobOutcome outcome == value) allJobOutcomes)
 
 renderJobOutcome :: JobOutcome -> String
 renderJobOutcome outcome = case outcome of
