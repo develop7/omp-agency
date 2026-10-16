@@ -223,6 +223,28 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
   });
 });
 
+test("the corrective step record is blocked by unfinished jobs", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
+    }, cwd);
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", {
+        op: "step", step: "police", status: "passed", verification: "recorded directly",
+        startedAt: "now", completedAt: "now",
+      }, cwd),
+      (error) => {
+        assert.match(error.message, /unfinished job/);
+        assert.match(error.message, /police-pass1/);
+        return true;
+      },
+    );
+    assert.equal(await snapshot(cwd), before, "step record guard must not mutate state");
+  });
+});
+
 test("restart init carries unfinished jobs forward; plain init discards them", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });

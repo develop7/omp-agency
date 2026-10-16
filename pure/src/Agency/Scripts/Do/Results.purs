@@ -46,20 +46,27 @@ runStepStart context name = withLoadedState context \state -> case state.pending
     State.writeState (Context.statePath context) (State.startPending { name, startedAt: timestamp } state)
     pure (Outcome.withStdout ("pending: " <> name <> "\n"))
 
+-- | Unfinished jobs owned by a step block every path that records the step as
+-- | complete — step-end and the corrective `step` record alike — so neither
+-- | can yield while the step's jobs are still open. Both callers surface this
+-- | one message verbatim.
+unfinishedJobBlocker :: String -> State.State -> Maybe String
+unfinishedJobBlocker stepName state =
+  let blocking = Array.filter (\job -> job.step == stepName) (State.unfinishedJobs state)
+  in if Array.null blocking then Nothing
+    else
+      Just
+        ( "do-results: unfinished job(s) block step-end for '" <> stepName <> "': "
+            <> joinWith ", " (map (\job -> "'" <> job.id <> "'") blocking)
+            <> " — resolve with job-end first"
+        )
+
 runStepEnd :: WorkflowContext -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStepEnd context status verification reason = withLoadedState context \state -> case state.pendingStep of
   Nothing -> pure (failText "do-results: no pendingStep — call step-start first")
-  Just pending ->
-    let blocking = Array.filter (\job -> job.step == pending.name) (State.unfinishedJobs state)
-    in if not (Array.null blocking) then
-      pure
-        ( failText
-            ( "do-results: unfinished job(s) block step-end for '" <> pending.name <> "': "
-                <> joinWith ", " (map (\job -> "'" <> job.id <> "'") blocking)
-                <> " — resolve with job-end first"
-            )
-        )
-    else do
+  Just pending -> case unfinishedJobBlocker pending.name state of
+    Just blocker -> pure (failText blocker)
+    Nothing -> do
       completed <- Sys.nowIso
       timing <- validInterval pending.startedAt completed
       let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
@@ -71,20 +78,23 @@ runStepEnd context status verification reason = withLoadedState context \state -
           pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
 
 runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
-runStep context name status verification startedAt completedAt reason = withLoadedState context \state -> do
-  actualStart <- resolveNow startedAt
-  actualEnd <- resolveNow completedAt
-  timing <- validInterval actualStart actualEnd
-  case timing of
-    Left error -> pure (failText error)
-    Right _ -> do
-      let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
-      case State.appendStep step state of
+runStep context name status verification startedAt completedAt reason = withLoadedState context \state ->
+  case unfinishedJobBlocker name state of
+    Just blocker -> pure (failText blocker)
+    Nothing -> do
+      actualStart <- resolveNow startedAt
+      actualEnd <- resolveNow completedAt
+      timing <- validInterval actualStart actualEnd
+      case timing of
         Left error -> pure (failText error)
-        Right appended -> do
-          let updated = terminalize name status appended
-          State.writeState (Context.statePath context) updated
-          pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
+        Right _ -> do
+          let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
+          case State.appendStep step state of
+            Left error -> pure (failText error)
+            Right appended -> do
+              let updated = terminalize name status appended
+              State.writeState (Context.statePath context) updated
+              pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
 
 runJobStart :: WorkflowContext -> { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int } -> Effect Outcome.OpOutcome
 runJobStart context input = withLoadedState context \state -> do
