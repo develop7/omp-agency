@@ -154,7 +154,14 @@ runJobEnd context input = withLoadedState context \state -> do
     Left error -> pure (failText error)
     Right resolved -> do
       State.writeState (Context.statePath context) resolved
-      pure (Outcome.withStdout ("job-end: " <> input.id <> " " <> State.renderJobOutcome input.outcome <> "\n"))
+      -- A rolled-back finish was clamped up to the job's start inside
+      -- `resolveJob`; surface that loudly so a clock problem is visible
+      -- instead of silently rewriting the recorded duration.
+      let clamped = case Array.find (\job -> not (State.jobFinished job) && job.id == input.id) state.jobs of
+            Just job -> State.finishNeedsClamp job completed
+            Nothing -> false
+          clampNote = if clamped then " (clock rollback: finish clamped to start)" else ""
+      pure (Outcome.withStdout ("job-end: " <> input.id <> " " <> State.renderJobOutcome input.outcome <> clampNote <> "\n"))
 
 runSet :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runSet context field value = withLoadedState context \state -> do
