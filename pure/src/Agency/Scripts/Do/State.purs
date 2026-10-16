@@ -729,7 +729,8 @@ makeJobRoom jobs =
     Just index -> makeJobRoom (fromMaybe jobs (Array.deleteAt index jobs))
 
 -- | Whether a driver-computed finish lands before the job's canonical start
--- | — a clock rollback. Canonical UTC strings compare chronologically as
+-- | — the clamp condition; its cause (clock rollback, hand-edited state) is
+-- | not knowable here. Canonical UTC strings compare chronologically as
 -- | text, so this lexicographic test is exact. `resolveJob` clamps such a
 -- | finish up to `startedAt` (keeping the record loadable under `validJob`'s
 -- | interval rule) and `runJobEnd` announces the clamp from this same rule
