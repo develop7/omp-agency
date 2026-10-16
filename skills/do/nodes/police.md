@@ -22,7 +22,7 @@ Use the `vcs_read` tool with `{ op: "diff-names" }` to check if the PR contains 
 changed files are documentation-only (`.md`, `.txt`, README, docs/) — skip this step with reason
 `"docs-only changes"`.
 
-**Resolve leftover jobs first.** At step start, before spawning any work, read the `jobs` array in `.do-results.json` and resolve every unfinished entry with `step == "police"` (a crash leaves these behind): `agency_driver { op: "job-end", id, outcome: "escalated" }` — stale, its process died — and spawn a replacement worker under a fresh id, or `outcome: "cancelled"` to drop that work. Never spawn while a stale police job is unfinished.
+**Resolve leftover jobs first.** At step start, before spawning any work, read the `jobs` array in `.do-results.json` and resolve every unfinished entry with `step == "police"` (a crash leaves these behind): `agency_driver { op: "job-end", id, outcome: "escalated", verification: "stale — worker process died in a previous run" }` — stale, its process died — and spawn a replacement worker under a fresh id, or `agency_driver { op: "job-end", id, outcome: "cancelled", verification: "stale — worker process died; dropping this work" }` to drop that work. Never spawn while a stale police job is unfinished.
 
 Otherwise, read the `code-police` skill via `read skill://code-police` and invoke it. When it asks about scope: **changes in the current branch/PR only**. Its worker budgets come from this step's `pattern_config` as surfaced by `workflow cli`: `worker_budget_minutes` per worker, `worker_retries` fallback attempt, `police_budget_minutes` for the whole step.
 
