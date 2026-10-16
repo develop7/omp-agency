@@ -195,6 +195,7 @@ booleanFields :: Array String
 booleanFields =
   [ "review", "noVcs", "minimal", "hasEvidence"
   , "supportsPrCreate", "supportsPrComment", "supportsIssueView", "supportsPrChecks"
+  , "requireRemote"
   ]
 
 failText :: String -> Outcome.OpOutcome
