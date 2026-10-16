@@ -26,5 +26,5 @@ export function uniqueTempPath(path) {
 export function isCanonicalIso(value) {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) return false;
   const date = new Date(value);
-  return !Number.isNaN(date.valueOf()) && date.toISOString().replace(/\.\d{3}Z$/, "Z") === value;
+  return !Number.isNaN(date.valueOf()) && canonicalIso(date) === value;
 }
