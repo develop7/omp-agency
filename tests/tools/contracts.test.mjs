@@ -315,6 +315,27 @@ test("job-end requires a recorded reason for non-completed outcomes", async () =
   });
 });
 
+test("job-end refuses a finish that precedes the job start", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
+    }, cwd);
+    // Clock rollback equivalent: the persisted start is in the future, so the
+    // driver-computed finish would land before it.
+    const state = await readState(cwd);
+    state.jobs[0].startedAt = "2030-01-01T00:00:00Z";
+    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd),
+      /precedes/,
+    );
+    const after = await readState(cwd);
+    assert.equal(after.jobs[0].finishedAt, undefined, "rejected end must leave the job unfinished");
+  });
+});
+
 test("the jobs ledger is bounded at 32 entries end to end", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
