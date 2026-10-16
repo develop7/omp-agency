@@ -3,10 +3,12 @@ module Agency.Scripts.Do.StateTest (run) where
 import Prelude
 
 import Data.Array as Array
-import Data.Argonaut.Core (fromBoolean, fromString, toBoolean, toString)
+import Data.Argonaut.Core (fromArray, fromBoolean, fromString, toBoolean, toString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Data.String (Pattern(..), joinWith)
+import Data.String.CodeUnits (contains)
 import Effect (Effect)
 import Effect.Exception (try)
 import Effect.Console as Console
@@ -232,3 +234,194 @@ run = do
       case failedRelease of
         Left _ -> assert "state lock releases after a failing action" (not releasedAfterFailure)
         Right _ -> assert "state lock rethrows a failing action" false
+  let fullJob =
+        { id: "police-pass1"
+        , name: "Pass 1 structure review"
+        , step: "police"
+        , startedAt: "2026-10-16T12:00:00Z"
+        , deadline: Just "2026-10-16T12:10:00Z"
+        , finishedAt: Just "2026-10-16T12:07:41Z"
+        , outcome: Just State.JobCompleted
+        , verification: Just "reviewed 12 files"
+        }
+      openJob =
+        fullJob
+          { id = "police-pass2"
+          , name = "Pass 2 detail review"
+          , finishedAt = Nothing
+          , outcome = Nothing
+          , verification = Nothing
+          }
+      ledgerState = (State.initState "2026-10-16T12:00:00Z") { jobs = [ fullJob, openJob ] }
+  assert
+    "job entries survive stringify with driver-owned fields"
+    ( contains
+        ( Pattern
+            "\"jobs\":[{\"id\":\"police-pass1\",\"name\":\"Pass 1 structure review\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"deadline\":\"2026-10-16T12:10:00Z\",\"finishedAt\":\"2026-10-16T12:07:41Z\",\"outcome\":\"completed\",\"verification\":\"reviewed 12 files\"}"
+        )
+        (State.stringifyState ledgerState)
+    )
+  case State.parseState (State.stringifyState ledgerState) of
+    Left error -> do
+      Console.error ("FAIL: parse job ledger: " <> error)
+      Sys.exit 1
+    Right roundTripped -> assert "job ledger round-trips" (roundTripped.jobs == ledgerState.jobs)
+  assert "empty job ledger stays absent" (not (contains (Pattern "\"jobs\"") (State.stringifyState State.emptyState)))
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}]}" of
+    Left error -> do
+      Console.error ("FAIL: minimal job parse: " <> error)
+      Sys.exit 1
+    Right parsed -> assert "minimal unfinished job parses" (map _.outcome parsed.jobs == [ Nothing ])
+  case State.parseState "{\"jobs\":[{\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}]}" of
+    Left error -> assert "job id is required" (error == "state: field 'id' must be a string")
+    Right _ -> assert "job id is required" false
+  case State.parseState "{\"jobs\":[{\"id\":\"\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}]}" of
+    Left error -> assert "empty job id is rejected" (error == "state: job id must be non-empty")
+    Right _ -> assert "empty job id is rejected" false
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}]}" of
+    Left error -> assert "empty job name is rejected" (error == "state: job name must be non-empty")
+    Right _ -> assert "empty job name is rejected" false
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"reserch\",\"startedAt\":\"2026-10-16T12:00:00Z\"}]}" of
+    Left error -> assert "job step must come from the workflow vocabulary" (error == "state: unknown step 'reserch'")
+    Right _ -> assert "job step must come from the workflow vocabulary" false
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\"}]}" of
+    Left error -> assert "finishedAt without outcome is rejected" (error == "state: job 'a' must record finishedAt and outcome together")
+    Right _ -> assert "finishedAt without outcome is rejected" false
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"outcome\":\"completed\"}]}" of
+    Left error -> assert "outcome without finishedAt is rejected" (error == "state: job 'a' must record finishedAt and outcome together")
+    Right _ -> assert "outcome without finishedAt is rejected" false
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"bananas\"}]}" of
+    Left error -> assert "unknown job outcome is rejected" (error == "state: invalid job outcome 'bananas'")
+    Right _ -> assert "unknown job outcome is rejected" false
+  let jobEntry index =
+        "{\"id\":\"job" <> show index <> "\",\"name\":\"Job " <> show index
+          <> "\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"completed\"}"
+      jobsJson indexes = "{\"jobs\":[" <> joinWith "," (map jobEntry indexes) <> "]}"
+  case State.parseState (jobsJson (Array.range 0 31)) of
+    Left error -> do
+      Console.error ("FAIL: ledger at limit: " <> error)
+      Sys.exit 1
+    Right atLimit -> assert "ledger accepts up to the limit" (Array.length atLimit.jobs == State.maxPersistedJobs)
+  case State.parseState (jobsJson (Array.range 0 32)) of
+    Left error -> assert "parse rejects a ledger beyond the limit" (error == "state: job ledger limit (32) exceeded")
+    Right _ -> assert "parse rejects a ledger beyond the limit" false
+  let minimalJob = "{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}"
+      finishedJob = "{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"completed\"}"
+  case State.parseState ("{\"jobs\":[" <> minimalJob <> "," <> minimalJob <> "]}") of
+    Left error -> assert "duplicate unfinished job ids are rejected at parse" (error == "state: duplicate unfinished job id 'a'")
+    Right _ -> assert "duplicate unfinished job ids are rejected at parse" false
+  case State.parseState ("{\"jobs\":[" <> finishedJob <> "," <> finishedJob <> "]}") of
+    Left error -> do
+      Console.error ("FAIL: finished jobs may share an id: " <> error)
+      Sys.exit 1
+    Right shared -> assert "finished jobs may share an id" (Array.length shared.jobs == 2)
+  case State.setField "jobs" (fromArray []) State.emptyState of
+    Left error -> assert "set rejects a structured jobs value" (error == "state: field 'jobs' is read-only — use job-start and job-end")
+    Right _ -> assert "set rejects a structured jobs value" false
+  case State.setField "jobs" (fromString "implement") State.emptyState of
+    Left error -> assert "set rejects a string jobs value" (error == "state: field 'jobs' is read-only — use job-start and job-end")
+    Right _ -> assert "set rejects a string jobs value" false
+  case Results.jsonValueFor "jobs" "implement" of
+    Left _ -> pure unit
+    Right _ -> assert "jobs values are parsed as structured JSON, never stored as strings" false
+  case Results.jsonValueFor "jobs" "[]" of
+    Left error -> do
+      Console.error ("FAIL: jobs structured value parses: " <> error)
+      Sys.exit 1
+    Right _ -> assert "jobs structured values reach the reserved-field guard" true
+  case State.appendJob openJob State.emptyState of
+    Left error -> do
+      Console.error ("FAIL: append open job: " <> error)
+      Sys.exit 1
+    Right withOpen -> do
+      assert "job appends to the ledger" (Array.length withOpen.jobs == 1)
+      case State.appendJob openJob withOpen of
+        Left error -> assert "duplicate unfinished job start is rejected" (error == "state: job 'police-pass2' already running")
+        Right _ -> assert "duplicate unfinished job start is rejected" false
+      case State.appendJob (openJob { id = "police-pass3" }) withOpen of
+        Left error -> do
+          Console.error ("FAIL: append distinct job: " <> error)
+          Sys.exit 1
+        Right two -> do
+          assert "distinct ids append" (Array.length two.jobs == 2)
+          let finishedFiller = openJob { id = "done-filler", finishedAt = Just "2026-10-16T12:05:00Z", outcome = Just State.JobCompleted }
+              atLimit = two { jobs = two.jobs <> Array.replicate (State.maxPersistedJobs - Array.length two.jobs) finishedFiller }
+          assert "limit fixture reaches the bound" (Array.length atLimit.jobs == State.maxPersistedJobs)
+          case State.appendJob (openJob { id = "one-too-many" }) atLimit of
+            Left error -> assert "append rejects a full ledger" (error == "state: job ledger limit (32) reached")
+            Right _ -> assert "append rejects a full ledger" false
+      case State.resolveJob "ghost" State.JobFailed Nothing "2026-10-16T12:05:00Z" withOpen of
+        Left error -> assert "ending an unknown job is rejected" (error == "state: no unfinished job 'ghost'")
+        Right _ -> assert "ending an unknown job is rejected" false
+      case State.resolveJob "police-pass2" State.JobEscalated (Just "escalated to owner") "2026-10-16T12:05:00Z" withOpen of
+        Left error -> do
+          Console.error ("FAIL: resolve open job: " <> error)
+          Sys.exit 1
+        Right resolved -> do
+          case Array.head resolved.jobs of
+            Just ended ->
+              assert
+                "resolve records the finish pair with verification"
+                ( ended.finishedAt == Just "2026-10-16T12:05:00Z"
+                    && ended.outcome == Just State.JobEscalated
+                    && ended.verification == Just "escalated to owner"
+                )
+            Nothing -> assert "resolve records the finish pair with verification" false
+          case State.resolveJob "police-pass2" State.JobCompleted Nothing "2026-10-16T12:06:00Z" resolved of
+            Left error -> assert "finished job cannot end twice" (error == "state: no unfinished job 'police-pass2'")
+            Right _ -> assert "finished job cannot end twice" false
+  case Ops.parseDriverOp [ "job-start", "p1", "Pass 1", "police" ] of
+    Left error -> do
+      Console.error ("FAIL: job-start rejected: " <> error.message)
+      Sys.exit 1
+    Right (Ops.DriverJobStart options) ->
+      assert "job-start parses without a budget" (options.id == "p1" && options.name == "Pass 1" && options.step == "police" && options.budgetMinutes == Nothing)
+    Right _ -> assert "job-start parses without a budget" false
+  case Ops.parseDriverOp [ "job-start", "p1", "Pass 1", "police", "10" ] of
+    Left error -> do
+      Console.error ("FAIL: job-start budget rejected: " <> error.message)
+      Sys.exit 1
+    Right (Ops.DriverJobStart options) -> assert "budgetMinutes parses" (options.budgetMinutes == Just 10)
+    Right _ -> assert "budgetMinutes parses" false
+  let budgetCase text = case Ops.parseDriverOp [ "job-start", "p1", "Pass", "police", text ] of
+        Left error -> assert ("budgetMinutes rejects " <> text) (error.message == "job-start: budgetMinutes must be an integer between 1 and 120")
+        Right _ -> assert ("budgetMinutes rejects " <> text) false
+  budgetCase "0"
+  budgetCase "121"
+  budgetCase "12.5"
+  budgetCase "abc"
+  case Ops.parseDriverOp [ "job-start", "", "Pass", "police" ] of
+    Left error -> assert "job-start requires an id" (error.message == "id required")
+    Right _ -> assert "job-start requires an id" false
+  case Ops.parseDriverOp [ "job-start", "p1", "", "police" ] of
+    Left error -> assert "job-start requires a name" (error.message == "name required")
+    Right _ -> assert "job-start requires a name" false
+  case Ops.parseDriverOp [ "job-start", "p1", "Pass", "reserch" ] of
+    Left error -> assert "job-start validates the step vocabulary" (error.code == 2)
+    Right _ -> assert "job-start validates the step vocabulary" false
+  case Ops.parseDriverOp [ "job-end", "p1", "completed" ] of
+    Left error -> do
+      Console.error ("FAIL: job-end rejected: " <> error.message)
+      Sys.exit 1
+    Right (Ops.DriverJobEnd options) ->
+      assert "job-end parses a bare outcome" (options.id == "p1" && options.outcome == State.JobCompleted && options.verification == Nothing)
+    Right _ -> assert "job-end parses a bare outcome" false
+  case Ops.parseDriverOp [ "job-end", "p1", "escalated", "specs verified" ] of
+    Left error -> do
+      Console.error ("FAIL: job-end verification rejected: " <> error.message)
+      Sys.exit 1
+    Right (Ops.DriverJobEnd options) ->
+      assert "job-end keeps the verification" (options.outcome == State.JobEscalated && options.verification == Just "specs verified")
+    Right _ -> assert "job-end keeps the verification" false
+  case Ops.parseDriverOp [ "job-end", "p1", "cancelled" ] of
+    Right (Ops.DriverJobEnd options) -> assert "job-end accepts cancelled" (options.outcome == State.JobCancelled)
+    _ -> assert "job-end accepts cancelled" false
+  case Ops.parseDriverOp [ "job-end", "p1", "failed" ] of
+    Right (Ops.DriverJobEnd options) -> assert "job-end accepts failed" (options.outcome == State.JobFailed)
+    _ -> assert "job-end accepts failed" false
+  case Ops.parseDriverOp [ "job-end", "p1", "finished" ] of
+    Left error -> assert "job-end validates the outcome" (error.message == "do-driver: invalid outcome 'finished' (completed|failed|cancelled|escalated)")
+    Right _ -> assert "job-end validates the outcome" false
+  case Ops.parseDriverOp [ "job-end", "p1" ] of
+    Left error -> assert "job-end requires an outcome" (error.message == "outcome required (completed|failed|cancelled|escalated)")
+    Right _ -> assert "job-end requires an outcome" false

@@ -76,10 +76,10 @@ resultsOperationNames :: Array String
 resultsOperationNames = ["step-start", "step-end", "step"]
 
 driverOperationNames :: Array String
-driverOperationNames = ["init", "start", "end", "skip", "set", "summary"]
+driverOperationNames = ["init", "start", "end", "skip", "set", "summary", "job-start", "job-end"]
 
 agencyDriverUsage :: String
-agencyDriverUsage = "agency_driver: operation required (init|start|end|skip|set|summary|sync|step-start|step-end|step)"
+agencyDriverUsage = "agency_driver: operation required (init|start|end|skip|set|summary|job-start|job-end|sync|step-start|step-end|step)"
 
 parseVcsRead :: Array String -> Either String Vcs.VcsOp
 parseVcsRead args = case Vcs.parseVcsOp args of

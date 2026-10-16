@@ -316,13 +316,16 @@ export default function (pi: ExtensionAPI) {
     active: z.enum(["idle", "working", "waiting"]),
     status: z.enum(["idle", "running", "completed", "failed"]),
     from: z.enum(workflowEntryPoints), steps: z.array(recordedStep), pendingStep: pendingStep.nullable(),
+    // The jobs ledger is driver-owned (job-start/job-end only): never() keeps
+    // it out of custom string fields and makes every set spelling unparseable.
+    jobs: z.never(),
   };
 
   pi.registerTool({
     name: "agency_driver",
     label: "Agency Driver",
     description:
-      "Advance/inspect /do state with operation-specific named fields. init accepts task/review/noVcs/minimal/restart/from; base and stack belong to sync and are mutually exclusive. start/skip use step; end uses status/verification/reason. set takes typed value: booleans for capability/options, structured values for steps/pendingStep, strings for custom fields. Step names and entry points come from the workflow manifest. No raw CLI args.",
+      "Advance/inspect /do state with operation-specific named fields. init accepts task/review/noVcs/minimal/restart/from; base and stack belong to sync and are mutually exclusive. start/skip use step; end uses status/verification/reason. job-start records a bounded worker job (id/name/step, optional budgetMinutes 1-120, driver-computed timestamps); job-end resolves it with an outcome plus optional verification. set takes typed value: booleans for capability/options, structured values for steps/pendingStep, strings for custom fields; the jobs ledger itself is never set directly. Step names and entry points come from the workflow manifest. No raw CLI args.",
     parameters: z.union([
       z.object({
         op: z.literal("init"), task: text.refine(value => !value.startsWith("--"), "Task must not be a CLI flag").optional(),
@@ -332,6 +335,15 @@ export default function (pi: ExtensionAPI) {
       z.object({ op: z.enum(["start", "step-start"]), step }).strict(),
       z.object({ op: z.enum(["end", "step-end"]), ...completion }).strict(),
       z.object({ op: z.literal("skip"), step, reason: text }).strict(),
+      z.object({
+        op: z.literal("job-start"), id: text, name: text, step,
+        budgetMinutes: z.number().int().min(1).max(120).optional(),
+      }).strict(),
+      z.object({
+        op: z.literal("job-end"), id: text,
+        outcome: z.enum(["completed", "failed", "cancelled", "escalated"]),
+        verification: z.string().optional(),
+      }).strict(),
       z.object({ op: z.literal("summary") }).strict(),
       z.object({ op: z.literal("sync"), noVcs: z.boolean() }).strict(),
       z.object({ op: z.literal("sync"), noVcs: z.literal(false), base: text }).strict(),
@@ -361,6 +373,14 @@ export default function (pi: ExtensionAPI) {
           if (params.reason !== undefined) args.push(params.reason);
           break;
         case "skip": args.push(params.step, params.reason); break;
+        case "job-start":
+          args.push(params.id, params.name, params.step);
+          if (params.budgetMinutes !== undefined) args.push(String(params.budgetMinutes));
+          break;
+        case "job-end":
+          args.push(params.id, params.outcome);
+          if (params.verification !== undefined) args.push(params.verification);
+          break;
         case "summary": break;
         case "sync":
           args.push(String(params.noVcs));

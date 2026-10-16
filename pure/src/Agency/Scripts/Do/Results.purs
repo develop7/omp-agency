@@ -3,6 +3,8 @@ module Agency.Scripts.Do.Results
   , runStepStart
   , runStepEnd
   , runStep
+  , runJobStart
+  , runJobEnd
   , runSet
   , runDriverInit
   , runDriverSkip
@@ -27,6 +29,7 @@ import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Data.String (joinWith)
 import Effect (Effect)
 
 runInit :: WorkflowContext -> Effect Outcome.OpOutcome
@@ -46,16 +49,26 @@ runStepStart context name = withLoadedState context \state -> case state.pending
 runStepEnd :: WorkflowContext -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStepEnd context status verification reason = withLoadedState context \state -> case state.pendingStep of
   Nothing -> pure (failText "do-results: no pendingStep — call step-start first")
-  Just pending -> do
-    completed <- Sys.nowIso
-    timing <- validInterval pending.startedAt completed
-    let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
-    case timing >>= \_ -> State.appendStep step state of
-      Left error -> pure (failText error)
-      Right appended -> do
-        let updated = terminalize pending.name status (State.finishPending appended)
-        State.writeState (Context.statePath context) updated
-        pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
+  Just pending ->
+    let blocking = Array.filter (\job -> job.step == pending.name) (State.unfinishedJobs state)
+    in if not (Array.null blocking) then
+      pure
+        ( failText
+            ( "do-results: unfinished job(s) block step-end for '" <> pending.name <> "': "
+                <> joinWith ", " (map (\job -> "'" <> job.id <> "'") blocking)
+                <> " — resolve with job-end first"
+            )
+        )
+    else do
+      completed <- Sys.nowIso
+      timing <- validInterval pending.startedAt completed
+      let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
+      case timing >>= \_ -> State.appendStep step state of
+        Left error -> pure (failText error)
+        Right appended -> do
+          let updated = terminalize pending.name status (State.finishPending appended)
+          State.writeState (Context.statePath context) updated
+          pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
 
 runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStep context name status verification startedAt completedAt reason = withLoadedState context \state -> do
@@ -72,6 +85,52 @@ runStep context name status verification startedAt completedAt reason = withLoad
           let updated = terminalize name status appended
           State.writeState (Context.statePath context) updated
           pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
+
+runJobStart :: WorkflowContext -> { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int } -> Effect Outcome.OpOutcome
+runJobStart context input = withLoadedState context \state -> do
+  started <- Sys.nowIso
+  deadline <- deadlineAfter started input.budgetMinutes
+  case deadline of
+    Left error -> pure (failText ("do-driver: " <> error))
+    Right limit -> do
+      let job =
+            { id: input.id
+            , name: input.name
+            , step: input.step
+            , startedAt: started
+            , deadline: limit
+            , finishedAt: Nothing
+            , outcome: Nothing
+            , verification: Nothing
+            }
+          deadlineText = case limit of
+            Nothing -> ""
+            Just value -> " deadline=" <> value
+      case State.appendJob job state of
+        Left error -> pure (failText error)
+        Right appended -> do
+          State.writeState (Context.statePath context) appended
+          pure (Outcome.withStdout ("job-start: " <> input.id <> " step=" <> input.step <> deadlineText <> "\n"))
+
+-- | A job's deadline is driver-computed as startedAt + budgetMinutes and is
+-- | persisted in the same canonical UTC format as every other timestamp.
+deadlineAfter :: String -> Maybe Int -> Effect (Either String (Maybe String))
+deadlineAfter started budget = case budget of
+  Nothing -> pure (Right Nothing)
+  Just minutes -> do
+    startedEpoch <- Sys.isoToEpoch started
+    pure case startedEpoch of
+      Left error -> Left error
+      Right epoch -> Right (Just (Sys.formatEpochIso (epoch + minutes * 60)))
+
+runJobEnd :: WorkflowContext -> { id :: String, outcome :: State.JobOutcome, verification :: Maybe String } -> Effect Outcome.OpOutcome
+runJobEnd context input = withLoadedState context \state -> do
+  completed <- Sys.nowIso
+  case State.resolveJob input.id input.outcome input.verification completed state of
+    Left error -> pure (failText error)
+    Right resolved -> do
+      State.writeState (Context.statePath context) resolved
+      pure (Outcome.withStdout ("job-end: " <> input.id <> " " <> State.renderJobOutcome input.outcome <> "\n"))
 
 runSet :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runSet context field value = withLoadedState context \state -> do
@@ -93,7 +152,13 @@ runDriverInit context options = do
       pure (failWithCode 2 ("do-driver: a /do run is already active (task: '" <> State.stateGet "task" state <> "', steps: " <> show (Array.length state.steps) <> ") — finish it or run init --restart to discard it"))
     _ -> do
       timestamp <- Sys.nowIso
-      let base = State.initState timestamp
+      -- --restart keeps unfinished worker jobs so a recovered run resumes the
+      -- same liveness ledger; a plain init discards them with everything else
+      -- from the prior run.
+      let carriedJobs = case existing of
+            Right (Just prior) | options.restart -> State.unfinishedJobs prior
+            _ -> []
+          base = (State.initState timestamp) { jobs = carriedJobs }
           vcsDetected = Vcs.vcsName context.vcs /= "unknown"
           isDefaultEntry = options.from == "" || options.from == "default"
           -- A prior base is inherited only when it names a ref. Absent, empty,
@@ -150,7 +215,7 @@ validInterval startedAt completedAt = do
 
 jsonValueFor :: String -> String -> Either String Json
 jsonValueFor field value
-  | field == "steps" || field == "pendingStep" = jsonParser value
+  | field == "steps" || field == "pendingStep" || field == "jobs" = jsonParser value
   | Array.elem field booleanFields = case value of
       "true" -> Right (fromBoolean true)
       "false" -> Right (fromBoolean false)

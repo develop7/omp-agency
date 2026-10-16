@@ -23,7 +23,7 @@ The autonomous loop is only as good as the feedback signal it gets. If the agent
 
 ### State, within and across PRs
 
-**Within a PR**, `/do` writes per-step lifecycle, status, and timing to `.do-results.json` at the repo root.
+**Within a PR**, `/do` writes per-step lifecycle, status, and timing to `.do-results.json` at the repo root, along with an owned-jobs ledger for spawned review workers — unfinished jobs block step-end and the final summary, so a run cannot yield while work it started is still live.
 
 **Across PRs**, there is no built-in memory, by design. Scope each PR small enough to land end-to-end in a day or two; branches that linger longer are a smell. When a piece of work genuinely doesn't fit in one PR, have `/talk` produce a GitHub issue with explicit phases, then run `/do` against each phase as its own PR — the issue is the cross-PR memory. See [juspay/kolu#514](https://github.com/juspay/kolu/issues/514) for the shape.
 

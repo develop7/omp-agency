@@ -46,6 +46,7 @@ import Agency.Scripts.Do.WorkflowVocabulary as Vocabulary
 import Data.Argonaut.Core (Json)
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Int as Int
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (joinWith)
 import Data.String.CodeUnits (drop)
@@ -80,6 +81,8 @@ data DriverOp
   | DriverSkip String String
   | DriverSet String String
   | DriverSummary
+  | DriverJobStart { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int }
+  | DriverJobEnd { id :: String, outcome :: State.JobOutcome, verification :: Maybe String }
 -- | Parsed sync options. The parser enforces that noVcs, base, and stack
 -- | combinations are valid; callers constructing this type directly bypass
 -- | that boundary by design.
@@ -145,7 +148,7 @@ takeFive values = do
 parseDriverOp :: Array String -> Either ParseError DriverOp
 parseDriverOp args =
   case Args.requiredNonEmpty args of
-    Nothing -> Left (parseError 1 "Usage: do-driver <init|start|end|skip|set|summary> ...")
+    Nothing -> Left (parseError 1 "Usage: do-driver <init|start|end|skip|set|summary|job-start|job-end> ...")
     Just { value: command, rest } -> case command of
       "init" -> parseDriverInit rest
       "start" -> requiredWorkflowStep "step required" DriverStart rest
@@ -167,7 +170,9 @@ parseDriverOp args =
           Nothing -> Left (parseError 1 "value required")
           Just { value } -> Right (DriverSet field value)
       "summary" -> Right DriverSummary
-      _ -> Left (parseError 1 ("Unknown command: " <> command <> "\nUsage: do-driver <init|start|end|skip|set|summary> ..."))
+      "job-start" -> parseJobStart rest
+      "job-end" -> parseJobEnd rest
+      _ -> Left (parseError 1 ("Unknown command: " <> command <> "\nUsage: do-driver <init|start|end|skip|set|summary|job-start|job-end> ..."))
   where
   requiredWorkflowStep message constructor values = case Args.requiredNonEmpty values of
     Just { value } -> do
@@ -201,6 +206,39 @@ parseDriverInit args = go args { review: false, noVcs: false, minimal: false, re
       _ | Args.startsWith "--" arg -> Left (parseError 2 ("do-driver: unknown flag: " <> arg))
       _ | state.task /= "" -> Left (parseError 2 ("do-driver: multiple task arguments given (already have '" <> state.task <> "')"))
         | otherwise -> go after (state { task = arg })
+
+parseJobStart :: Array String -> Either ParseError DriverOp
+parseJobStart values = do
+  jobId <- requiredOperand "id required" values
+  jobName <- requiredOperand "name required" jobId.rest
+  jobStep <- requiredOperand "step required" jobName.rest
+  validWorkflowStep jobStep.value
+  budget <- parseBudget jobStep.rest
+  pure (DriverJobStart { id: jobId.value, name: jobName.value, step: jobStep.value, budgetMinutes: budget })
+  where
+  requiredOperand message remaining = case Args.requiredNonEmpty remaining of
+    Nothing -> Left (parseError 1 message)
+    Just operand -> Right operand
+
+parseBudget :: Array String -> Either ParseError (Maybe Int)
+parseBudget remaining = case Array.head remaining of
+  Nothing -> Right Nothing
+  Just text -> case Int.fromString text of
+    Just minutes | minutes >= 1 && minutes <= 120 -> Right (Just minutes)
+    _ -> Left (parseError 1 "job-start: budgetMinutes must be an integer between 1 and 120")
+
+parseJobEnd :: Array String -> Either ParseError DriverOp
+parseJobEnd values = do
+  jobId <- case Args.requiredNonEmpty values of
+    Nothing -> Left (parseError 1 "id required")
+    Just operand -> Right operand
+  outcomeValue <- case Args.requiredNonEmpty jobId.rest of
+    Nothing -> Left (parseError 1 "outcome required (completed|failed|cancelled|escalated)")
+    Just operand -> Right operand
+  outcome <- case State.parseJobOutcome outcomeValue.value of
+    State.JobUnknown _ -> Left (parseError 1 ("do-driver: invalid outcome '" <> outcomeValue.value <> "' (completed|failed|cancelled|escalated)"))
+    parsed -> Right parsed
+  pure (DriverJobEnd { id: jobId.value, outcome, verification: Array.head outcomeValue.rest >>= Args.nonEmpty })
 
 parseSyncOp :: Array String -> Either ParseError SyncOp
 parseSyncOp args = do
@@ -332,6 +370,8 @@ runDriverOp context operation = case operation of
   DriverSkip step reason -> withMutationLock context (Results.runDriverSkip context step reason)
   DriverSet field value -> withMutationLock context (Results.runSet context field value)
   DriverSummary -> DoneReport.run context
+  DriverJobStart options -> withMutationLock context (Results.runJobStart context options)
+  DriverJobEnd options -> withMutationLock context (Results.runJobEnd context options)
 
 -- | Delegate the ordered sync transaction under the same exclusive lock.
 runSyncOp :: WorkflowContext -> SyncOp -> Effect Outcome.OpOutcome

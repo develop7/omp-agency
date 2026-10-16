@@ -4,6 +4,8 @@ module Agency.Scripts.Do.State
   , WorkflowStatus(..)
   , StepStatus(..)
   , Step
+  , JobOutcome(..)
+  , Job
   , State
   , parseActiveStatus
   , renderActiveStatus
@@ -11,6 +13,8 @@ module Agency.Scripts.Do.State
   , renderWorkflowStatus
   , parseStepStatus
   , renderStepStatus
+  , parseJobOutcome
+  , renderJobOutcome
   , emptyState
   , initState
   , noVcsBaseValue
@@ -23,7 +27,12 @@ module Agency.Scripts.Do.State
   , stateGetJson
   , setField
   , maxPersistedSteps
+  , maxPersistedJobs
   , appendStep
+  , jobFinished
+  , unfinishedJobs
+  , appendJob
+  , resolveJob
   , startPending
   , finishPending
   , finishWorkflow
@@ -155,6 +164,47 @@ type Step =
   , reason :: Maybe String
   }
 
+-- | Terminal results recorded by job-end.
+data JobOutcome
+  = JobCompleted
+  | JobFailed
+  | JobCancelled
+  | JobEscalated
+  | JobUnknown String
+
+derive instance eqJobOutcome :: Eq JobOutcome
+
+parseJobOutcome :: String -> JobOutcome
+parseJobOutcome value = case value of
+  "completed" -> JobCompleted
+  "failed" -> JobFailed
+  "cancelled" -> JobCancelled
+  "escalated" -> JobEscalated
+  _ -> JobUnknown value
+
+renderJobOutcome :: JobOutcome -> String
+renderJobOutcome outcome = case outcome of
+  JobCompleted -> "completed"
+  JobFailed -> "failed"
+  JobCancelled -> "cancelled"
+  JobEscalated -> "escalated"
+  JobUnknown value -> value
+
+-- | A worker-owned job. Only `job-start`/`job-end` write these fields, so
+-- | timestamps are always driver-computed and never caller-supplied.
+-- | `finishedAt` and `outcome` are present together or absent together;
+-- | absent means the job is unfinished.
+type Job =
+  { id :: String
+  , name :: String
+  , step :: String
+  , startedAt :: String
+  , deadline :: Maybe String
+  , finishedAt :: Maybe String
+  , outcome :: Maybe JobOutcome
+  , verification :: Maybe String
+  }
+
 -- | Workflow state. Fields written by other workflow layers live in `extras`.
 -- | Keeping them as Json preserves unknown values exactly across a load/save.
 type State =
@@ -164,6 +214,7 @@ type State =
   , status :: WorkflowStatus
   , steps :: Array Step
   , pendingStep :: Maybe PendingStep
+  , jobs :: Array Job
   , extras :: Map String Json
   }
 
@@ -182,8 +233,22 @@ boundedStepValues values =
     Left (stepHistoryLimitError "exceeded")
   else Right values
 
+-- | The jobs ledger is bounded so worker bookkeeping cannot grow without end.
+maxPersistedJobs :: Int
+maxPersistedJobs = 32
+
+jobLimitError :: String -> String
+jobLimitError condition =
+  "state: job ledger limit (" <> show maxPersistedJobs <> ") " <> condition
+
+boundedJobValues :: Array Json -> Either String (Array Json)
+boundedJobValues values =
+  if Array.length values > maxPersistedJobs then
+    Left (jobLimitError "exceeded")
+  else Right values
+
 knownKeys :: Array String
-knownKeys = [ "workflow", "startedAt", "active", "status", "steps", "pendingStep" ]
+knownKeys = [ "workflow", "startedAt", "active", "status", "steps", "pendingStep", "jobs" ]
 
 -- | Sentinel `base` for --no-vcs runs: non-empty so workflow gates pass, but
 -- | it names no ref and must never be carried into a VCS-backed run.
@@ -198,6 +263,7 @@ emptyState =
   , status: WorkflowIdle
   , steps: []
   , pendingStep: Nothing
+  , jobs: []
   , extras: Map.empty
   }
 
@@ -254,6 +320,55 @@ parsePending value = do
   startedAt <- requiredString "startedAt" object
   pure { name, startedAt }
 
+parseJob :: Json -> Either String Job
+parseJob value = do
+  object <- case toObject value of
+    Just result -> Right result
+    Nothing -> Left "state: each job must be an object"
+  id <- requiredString "id" object
+  name <- requiredString "name" object
+  step <- requiredString "step" object
+  startedAt <- requiredString "startedAt" object
+  deadline <- stringValue "deadline" object
+  finishedAt <- stringValue "finishedAt" object
+  outcomeValue <- stringValue "outcome" object
+  verification <- stringValue "verification" object
+  outcome <- case outcomeValue of
+    Nothing -> Right Nothing
+    Just text -> case parseJobOutcome text of
+      JobUnknown _ -> Left ("state: invalid job outcome '" <> text <> "'")
+      parsed -> Right (Just parsed)
+  let job = { id, name, step, startedAt, deadline, finishedAt, outcome, verification }
+  validJob job
+  pure job
+
+-- | Structural invariants shared by parse and append.
+validJob :: Job -> Either String Unit
+validJob job = do
+  if job.id == "" then Left "state: job id must be non-empty" else Right unit
+  if job.name == "" then Left "state: job name must be non-empty" else Right unit
+  validStepName job.step
+  case job.finishedAt, job.outcome of
+    Nothing, Nothing -> Right unit
+    Just _, Just _ -> Right unit
+    _, _ -> Left ("state: job '" <> job.id <> "' must record finishedAt and outcome together")
+
+-- | The contract only constrains id uniqueness among unfinished jobs, so a
+-- | finished job's id may be reused by a later run.
+validateUnfinishedIds :: Array Job -> Either String Unit
+validateUnfinishedIds jobs =
+  case firstDuplicate (map _.id (Array.filter (not <<< jobFinished) jobs)) of
+    Nothing -> Right unit
+    Just jobId -> Left ("state: duplicate unfinished job id '" <> jobId <> "'")
+
+firstDuplicate :: Array String -> Maybe String
+firstDuplicate values = go values []
+  where
+  go remaining seen = case Array.uncons remaining of
+    Nothing -> Nothing
+    Just { head, tail } ->
+      if Array.elem head seen then Just head else go tail (seen <> [ head ])
+
 parseState :: String -> Either String State
 parseState source = do
   json <- jsonParser source
@@ -274,6 +389,15 @@ parseState source = do
   pendingStep <- case Obj.lookup "pendingStep" object of
     Nothing -> Right Nothing
     Just value -> if Json.isNull value then Right Nothing else Just <$> parsePending value
+  jobs <- case Obj.lookup "jobs" object of
+    Nothing -> Right []
+    Just value -> case toArray value of
+      Nothing -> Left "state: field 'jobs' must be an array"
+      Just values -> do
+        boundedValues <- boundedJobValues values
+        parsedJobs <- traverse parseJob boundedValues
+        validateUnfinishedIds parsedJobs
+        pure parsedJobs
   let extras =
         foldl
           (\acc key ->
@@ -290,6 +414,7 @@ parseState source = do
     , status
     , steps
     , pendingStep
+    , jobs
     , extras
     }
 
@@ -316,6 +441,29 @@ pendingJson pending =
       , Tuple "startedAt" (fromString pending.startedAt)
       ])
 
+jobJson :: Job -> Json
+jobJson job =
+  let
+    base =
+      Obj.fromFoldable
+        [ Tuple "id" (fromString job.id)
+        , Tuple "name" (fromString job.name)
+        , Tuple "step" (fromString job.step)
+        , Tuple "startedAt" (fromString job.startedAt)
+        ]
+    withDeadline = case job.deadline of
+      Nothing -> base
+      Just deadline -> Obj.insert "deadline" (fromString deadline) base
+    withFinishedAt = case job.finishedAt of
+      Nothing -> withDeadline
+      Just finishedAt -> Obj.insert "finishedAt" (fromString finishedAt) withDeadline
+    withOutcome = case job.outcome of
+      Nothing -> withFinishedAt
+      Just outcome -> Obj.insert "outcome" (fromString (renderJobOutcome outcome)) withFinishedAt
+  in case job.verification of
+    Nothing -> fromObject withOutcome
+    Just verification -> fromObject (Obj.insert "verification" (fromString verification) withOutcome)
+
 -- | Encode known fields in the historical order and unknown fields sorted by key.
 stringifyState :: State -> String
 stringifyState state =
@@ -330,9 +478,14 @@ stringifyState state =
     withPending = case state.pendingStep of
       Nothing -> known
       Just pending -> known <> [ Tuple "pendingStep" (pendingJson pending) ]
+    -- An empty ledger stays absent, mirroring pendingStep, so state files
+    -- without jobs keep their historical shape.
+    withJobs =
+      if Array.null state.jobs then withPending
+      else withPending <> [ Tuple "jobs" (fromArray (map jobJson state.jobs)) ]
     extras =
       Array.sortWith fst (Map.toUnfoldable state.extras :: Array (Tuple String Json))
-  in Json.stringify (fromObject (Obj.fromFoldable (withPending <> extras)))
+  in Json.stringify (fromObject (Obj.fromFoldable (withJobs <> extras)))
 
 stateGetJson :: String -> State -> Maybe Json
 stateGetJson key state =
@@ -343,6 +496,7 @@ stateGetJson key state =
     "status" -> Just (fromString (renderWorkflowStatus state.status))
     "steps" -> Just (fromArray (map stepJson state.steps))
     "pendingStep" -> pendingJson <$> state.pendingStep
+    "jobs" -> if Array.null state.jobs then Nothing else Just (fromArray (map jobJson state.jobs))
     _ -> Map.lookup key state.extras
 
 -- | The shell helper's string projection: absent/non-string fields are empty.
@@ -378,6 +532,7 @@ setField key value state =
       else do
         pending <- parsePending value
         pure (state { pendingStep = Just pending })
+    "jobs" -> Left "state: field 'jobs' is read-only — use job-start and job-end"
     _ -> Right (state { extras = Map.insert key value state.extras })
   where
   stringField field =
@@ -403,6 +558,36 @@ appendStep step state = do
   if Array.length state.steps >= maxPersistedSteps then
     Left (stepHistoryLimitError "reached")
   else Right (state { steps = state.steps <> [ step ] })
+
+jobFinished :: Job -> Boolean
+jobFinished job = case job.outcome of
+  Just _ -> true
+  Nothing -> false
+
+unfinishedJobs :: State -> Array Job
+unfinishedJobs state = Array.filter (not <<< jobFinished) state.jobs
+
+-- | Append a new unfinished job under the ledger's bounds and id rules.
+appendJob :: Job -> State -> Either String State
+appendJob job state = do
+  validJob job
+  if Array.length state.jobs >= maxPersistedJobs then
+    Left (jobLimitError "reached")
+  else if any (\existing -> not (jobFinished existing) && existing.id == job.id) state.jobs then
+    Left ("state: job '" <> job.id <> "' already running")
+  else Right (state { jobs = state.jobs <> [ job ] })
+
+-- | Resolve the unfinished job with this id, recording the driver-computed
+-- | finish timestamp alongside its outcome.
+resolveJob :: String -> JobOutcome -> Maybe String -> String -> State -> Either String State
+resolveJob jobId outcome verification completedAt state =
+  case Array.findIndex (\job -> not (jobFinished job) && job.id == jobId) state.jobs of
+    Nothing -> Left ("state: no unfinished job '" <> jobId <> "'")
+    Just index ->
+      let
+        resolve job =
+          job { finishedAt = Just completedAt, outcome = Just outcome, verification = verification }
+      in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
 
 startPending :: PendingStep -> State -> State
 startPending pending state = state { pendingStep = Just pending }

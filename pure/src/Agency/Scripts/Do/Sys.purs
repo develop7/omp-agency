@@ -14,6 +14,7 @@ module Agency.Scripts.Do.Sys
   , exists
   , isDir
   , nowIso
+  , formatEpochIso
   , getEnv
   , argv
   , exit
@@ -147,6 +148,9 @@ isDir path = do
 
 -- | Format current time exactly as the legacy shell protocol requires.
 foreign import nowIso :: Effect String
+
+-- | Render epoch seconds in the same canonical UTC format as nowIso.
+foreign import formatEpochIso :: Int -> String
 
 getEnv :: String -> Effect String
 getEnv key = fromMaybe "" <$> Process.lookupEnv key

@@ -232,6 +232,11 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
         loop_artifacts = 'commit-per-fix,
         coverage_check = false,
         rerun_on_new_commit = false,
+        # Worker liveness budgets; surfaced verbatim through cli
+        # and consumed by nodes/police.md + the code-police skill.
+        worker_budget_minutes = 10,
+        worker_retries = 1,
+        police_budget_minutes = 30,
       },
       next = "test",
       skip_when | not_exported = fun state => state.minimal,
