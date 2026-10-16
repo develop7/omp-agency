@@ -361,6 +361,36 @@ test("summary marks jobs without a deadline as unbounded", async () => {
   });
 });
 
+test("summary escapes every job cell so a hand-edited deadline cannot break the table", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
+    }, cwd);
+    const state = await readState(cwd);
+    state.jobs[0].deadline = "a|b";
+    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+
+    // The rejection path never builds the table and still names the job.
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "summary" }, cwd),
+      (error) => {
+        assert.match(error.message, /unfinished job/);
+        assert.match(error.message, /police-pass1/);
+        return true;
+      },
+    );
+
+    await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
+    const summary = await invoke(registered, "agency_driver", { op: "summary" }, cwd);
+    assert.equal(summary.details.exit, 0);
+    const row = summary.details.stdout.split("\n").find((line) => line.includes("police-pass1"));
+    assert.ok(row, "the jobs table must render the job row");
+    assert.ok(row.includes("a\\|b"), "the deadline cell must be escaped");
+    assert.ok(!row.includes("a|b"), "an unescaped pipe must not reach the table");
+  });
+});
+
 test("restart init carries unfinished jobs forward; plain init discards them", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });

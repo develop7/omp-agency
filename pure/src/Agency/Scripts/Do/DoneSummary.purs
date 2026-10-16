@@ -138,14 +138,17 @@ renderMarkdown summary =
           <> "\n"
   in table <> slowLine <> jobsSection <> "\n"
 
--- | One ledger row; caller-supplied cells are escaped like verifications.
+-- | One ledger row; every caller-supplied cell (id, name, startedAt,
+-- | deadline, verification) is escaped like verifications, so a hand-edited
+-- | value containing `|` cannot break the markdown table. Step names and
+-- | outcomes come from fixed vocabularies and need no escaping.
 jobRow :: State.Job -> String
 jobRow job =
   "| " <> escapeVerification job.id
     <> " | " <> escapeVerification job.name
     <> " | " <> job.step
-    <> " | " <> job.startedAt
-    <> " | " <> fromMaybe "—" job.deadline
+    <> " | " <> escapeVerification job.startedAt
+    <> " | " <> escapeVerification (fromMaybe "—" job.deadline)
     <> " | " <> maybe "—" (\finished -> State.renderJobOutcome finished.outcome) job.finished
     <> " | " <> maybe "" (\finished -> maybe "" escapeVerification finished.verification) job.finished
     <> " |"
