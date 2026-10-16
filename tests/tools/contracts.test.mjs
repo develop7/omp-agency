@@ -295,6 +295,26 @@ test("restart init carries unfinished jobs forward; plain init discards them", a
   });
 });
 
+test("job-end requires a recorded reason for non-completed outcomes", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
+    }, cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "cancelled" }, cwd),
+      /recorded reason/,
+    );
+    assert.equal((await readState(cwd)).jobs[0].outcome, undefined, "rejected end must not resolve the job");
+    await invoke(registered, "agency_driver", {
+      op: "job-end", id: "police-pass1", outcome: "cancelled", verification: "worker stalled and was killed",
+    }, cwd);
+    const ended = await readState(cwd);
+    assert.equal(ended.jobs[0].outcome, "cancelled");
+    assert.equal(ended.jobs[0].verification, "worker stalled and was killed");
+  });
+});
+
 test("the jobs ledger is bounded at 32 entries end to end", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
