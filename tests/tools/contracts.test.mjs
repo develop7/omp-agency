@@ -256,6 +256,7 @@ test("the corrective step record is blocked by unfinished jobs", async () => {
       (error) => {
         assert.match(error.message, /unfinished job/);
         assert.match(error.message, /police-pass1/);
+        assert.match(error.message, /block step for 'police'/);
         return true;
       },
     );
