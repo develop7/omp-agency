@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import { initState, invoke, readState, registerTools, tool, withIsolatedRepo } from "./helpers.mjs";
+import { initState, invoke, readState, registerTools, snapshot, tool, withIsolatedRepo } from "./helpers.mjs";
 
 // Execute the suggested calls rather than pinning the surrounding error prose.
 async function recoveryChoices(cwd, registered, op = "diff-range") {
@@ -44,8 +44,6 @@ async function recoveryRepo(run) {
     await run(cwd);
   });
 }
-
-const snapshot = (cwd) => readFile(join(cwd, ".do-results.json"), "utf8");
 
 test("absent-run recovery offers runnable init choices without creating state", async () => {
   for (const noVcs of [true, false]) {
