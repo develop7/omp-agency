@@ -370,9 +370,27 @@ run = do
                   }
               atLimit = two { jobs = two.jobs <> Array.replicate (State.maxPersistedJobs - Array.length two.jobs) finishedFiller }
           assert "limit fixture reaches the bound" (Array.length atLimit.jobs == State.maxPersistedJobs)
+          -- A full ledger of finished history yields its oldest entry so
+          -- job-start keeps working; live unfinished jobs are never pruned.
           case State.appendJob (openJob { id = "one-too-many" }) atLimit of
-            Left error -> assert "append rejects a full ledger" (error == "state: job ledger limit (32) reached")
-            Right _ -> assert "append rejects a full ledger" false
+            Left error -> do
+              Console.error ("FAIL: append prunes finished jobs: " <> error)
+              Sys.exit 1
+            Right pruned -> do
+              assert "append keeps a full ledger bounded" (Array.length pruned.jobs == State.maxPersistedJobs)
+              assert "append keeps every unfinished job while pruning"
+                (Array.length (Array.filter (not <<< State.jobFinished) pruned.jobs) == 2)
+              assert "append drops only the oldest finished entry"
+                ( Array.length (Array.filter (\job -> job.id == "done-filler") pruned.jobs)
+                    == State.maxPersistedJobs - 3
+                )
+              assert "append places the new job last" (map _.id (Array.takeEnd 1 pruned.jobs) == [ "one-too-many" ])
+          -- All 32 entries unfinished: nothing may be pruned, so the bound holds.
+          let fullOpen = two { jobs = Array.replicate State.maxPersistedJobs (openJob { id = "still-open" }) }
+          case State.appendJob (openJob { id = "one-too-many" }) fullOpen of
+            Left error ->
+              assert "append refuses a full ledger of unfinished jobs" (error == "state: job ledger limit (32) reached")
+            Right _ -> assert "append refuses a full ledger of unfinished jobs" false
       case State.resolveJob "ghost" State.JobFailed Nothing "2026-10-16T12:05:00Z" withOpen of
         Left error -> assert "ending an unknown job is rejected" (error == "state: no unfinished job 'ghost'")
         Right _ -> assert "ending an unknown job is rejected" false

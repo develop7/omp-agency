@@ -686,14 +686,32 @@ unparsableDeadline job = do
     _ -> Nothing
 
 -- | Append a new unfinished job under the ledger's bounds and id rules.
+-- | A ledger at capacity first yields its OLDEST finished entries: closed
+-- | history makes room for new work, so a long run can never wedge
+-- | `job-start` behind finished jobs that nothing is ever allowed to prune.
+-- | Unfinished jobs are live worker work and are never dropped; only a
+-- | ledger whose `maxPersistedJobs` entries are all unfinished refuses.
 appendJob :: Job -> State -> Either String State
 appendJob job state = do
   validJob job
-  if Array.length state.jobs >= maxPersistedJobs then
-    Left (jobLimitError "reached")
-  else if any (\existing -> not (jobFinished existing) && existing.id == job.id) state.jobs then
+  if any (\existing -> not (jobFinished existing) && existing.id == job.id) state.jobs then
     Left ("state: job '" <> job.id <> "' already running")
+  else if Array.length state.jobs >= maxPersistedJobs then
+    let room = makeJobRoom state.jobs in
+    if Array.length room >= maxPersistedJobs then
+      Left (jobLimitError "reached")
+    else Right (state { jobs = room <> [ job ] })
   else Right (state { jobs = state.jobs <> [ job ] })
+
+-- | The ledger with its oldest finished entries dropped until it fits below
+-- | `maxPersistedJobs` — room for exactly one append. An entry array that is
+-- | all unfinished comes back unchanged so the caller can report `reached`.
+makeJobRoom :: Array Job -> Array Job
+makeJobRoom jobs =
+  if Array.length jobs < maxPersistedJobs then jobs
+  else case Array.findIndex jobFinished jobs of
+    Nothing -> jobs
+    Just index -> makeJobRoom (fromMaybe jobs (Array.deleteAt index jobs))
 
 -- | Whether a driver-computed finish lands before the job's canonical start
 -- | — a clock rollback. Canonical UTC strings compare chronologically as

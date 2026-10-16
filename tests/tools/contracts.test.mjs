@@ -452,11 +452,33 @@ test("the jobs ledger is bounded at 32 entries end to end", async () => {
       outcome: "completed",
     }));
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+
+    // Finished history yields: the oldest finished entry is pruned so the
+    // append succeeds and the ledger stays at the bound.
+    const started = await invoke(registered, "agency_driver", {
+      op: "job-start", id: "one-more", name: "Overflow", step: "police",
+    }, cwd);
+    assert.equal(started.details.exit, 0, "a full ledger of finished jobs must not wedge job-start");
+    const pruned = await readState(cwd);
+    assert.equal(pruned.jobs.length, 32, "the ledger stays at the bound");
+    assert.equal(pruned.jobs[0].id, "job-1", "the oldest finished entry is pruned");
+    assert.equal(pruned.jobs.some((job) => job.id === "job-0"), false, "the pruned entry is gone");
+    assert.equal(pruned.jobs.at(-1).id, "one-more", "the new job appends last");
+
+    // Live work is never pruned: a full ledger of unfinished jobs refuses.
+    state.jobs = Array.from({ length: 32 }, (_, index) => ({
+      id: `open-${index}`,
+      name: `Open ${index}`,
+      step: "police",
+      startedAt: "2026-10-16T12:00:00Z",
+    }));
+    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
     await assert.rejects(
       invoke(registered, "agency_driver", { op: "job-start", id: "one-more", name: "Overflow", step: "police" }, cwd),
       /job ledger limit/,
     );
 
+    // The parse-side bound for oversized files is unchanged.
     state.jobs.push({
       id: "job-32", name: "Job 32", step: "police",
       startedAt: "2026-10-16T12:00:00Z", finishedAt: "2026-10-16T12:01:00Z", outcome: "completed",
