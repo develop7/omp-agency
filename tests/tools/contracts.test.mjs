@@ -245,6 +245,28 @@ test("the corrective step record is blocked by unfinished jobs", async () => {
   });
 });
 
+test("summary surfaces an unparsable job deadline instead of silently unstalling", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
+    }, cwd);
+    const state = await readState(cwd);
+    state.jobs[0].deadline = "not-a-time";
+    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "summary" }, cwd),
+      (error) => {
+        assert.match(error.message, /unfinished job/);
+        assert.match(error.message, /deadline unparsable/);
+        return true;
+      },
+    );
+    assert.equal(await snapshot(cwd), before, "unparsable-deadline summary must not mutate state");
+  });
+});
+
 test("restart init carries unfinished jobs forward; plain init discards them", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });

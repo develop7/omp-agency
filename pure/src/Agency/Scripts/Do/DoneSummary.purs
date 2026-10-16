@@ -18,7 +18,7 @@ import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Data.Array as Array
-import Data.Either (Either(..), either)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.String (Pattern(..), Replacement(..), joinWith, replaceAll)
 import Data.String.CodeUnits (drop)
@@ -39,17 +39,26 @@ run context = do
           Right value -> pure (Outcome.withStdout (renderMarkdown value <> renderFacts value))
       jobs -> do
         now <- Sys.nowIso
-        -- An unparsable current time leaves every job unstalled.
-        current <- either (const Nothing) Just <$> Sys.isoToEpoch now
-        described <- traverse (describeUnfinished current) jobs
-        pure (failText ("done: unfinished job(s): " <> joinWith ", " described <> " — resolve with job-end before summary"))
+        current <- Sys.isoToEpoch now
+        case current of
+          Left error -> pure (failText ("done: invalid current time: " <> error))
+          Right nowEpoch -> do
+            described <- traverse (describeUnfinished nowEpoch) jobs
+            pure (failText ("done: unfinished job(s): " <> joinWith ", " described <> " — resolve with job-end before summary"))
 
 -- | An unfinished job blocks summary; jobs past their deadline are
--- | additionally reported as stalled so liveness failures stay visible.
-describeUnfinished :: Maybe Int -> State.Job -> Effect String
-describeUnfinished current job = do
-  stalled <- maybe (pure false) (\epoch -> State.jobStalled epoch job) current
-  pure ("'" <> job.id <> "'" <> (if stalled then " (stalled past deadline " <> fromMaybe "" job.deadline <> ")" else ""))
+-- | additionally reported as stalled so liveness failures stay visible,
+-- | and an unparsable deadline is marked instead of silently counting as
+-- | unstalled.
+describeUnfinished :: Int -> State.Job -> Effect String
+describeUnfinished nowEpoch job = do
+  stalled <- State.jobStalled nowEpoch job
+  broken <- State.unparsableDeadline job
+  pure
+    ( "'" <> job.id <> "'"
+        <> (if stalled then " (stalled past deadline " <> fromMaybe "" job.deadline <> ")" else "")
+        <> maybe "" (\raw -> " (deadline unparsable \"" <> raw <> "\")") broken
+    )
 
 -- | A row contains facts needed by both markdown and machine-readable output.
 type DoneRow =

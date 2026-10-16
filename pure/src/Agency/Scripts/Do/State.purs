@@ -35,6 +35,7 @@ module Agency.Scripts.Do.State
   , jobFinished
   , unfinishedJobs
   , jobStalled
+  , unparsableDeadline
   , appendJob
   , resolveJob
   , startPending
@@ -595,16 +596,37 @@ jobFinished job = case job.finished of
 unfinishedJobs :: State -> Array Job
 unfinishedJobs state = Array.filter (not <<< jobFinished) state.jobs
 
--- | A job whose persisted deadline has already passed at `nowEpoch`.
--- | An unparsable deadline never counts as stalled.
-jobStalled :: Int -> Job -> Effect Boolean
-jobStalled nowEpoch job = case job.deadline of
-  Nothing -> pure false
-  Just limit -> do
-    parsed <- Sys.isoToEpoch limit
+-- | Parse the stored deadline once for stall evaluation and diagnostics.
+-- | `Nothing` means the job has no deadline; `Left` carries the raw text
+-- | when the stored value cannot be parsed.
+deadlineEpoch :: Job -> Effect (Maybe (Either String Int))
+deadlineEpoch job = case job.deadline of
+  Nothing -> pure Nothing
+  Just raw -> do
+    parsed <- Sys.isoToEpoch raw
     pure case parsed of
-      Right limitEpoch -> limitEpoch < nowEpoch
-      Left _ -> false
+      Left _ -> Just (Left raw)
+      Right epoch -> Just (Right epoch)
+
+-- | A job whose persisted deadline has already passed at `nowEpoch`.
+-- | An unparsable deadline never counts as stalled; callers that must not
+-- | swallow that anomaly report it through `unparsableDeadline`.
+jobStalled :: Int -> Job -> Effect Boolean
+jobStalled nowEpoch job = do
+  parsed <- deadlineEpoch job
+  pure case parsed of
+    Just (Right limitEpoch) -> limitEpoch < nowEpoch
+    _ -> false
+
+-- | The raw stored deadline when it cannot be parsed. Absent when the job
+-- | has no deadline or the value parses, so the summary can mark the
+-- | contract breakage that `jobStalled` deliberately treats as unstalled.
+unparsableDeadline :: Job -> Effect (Maybe String)
+unparsableDeadline job = do
+  parsed <- deadlineEpoch job
+  pure case parsed of
+    Just (Left raw) -> Just raw
+    _ -> Nothing
 
 -- | Append a new unfinished job under the ledger's bounds and id rules.
 appendJob :: Job -> State -> Either String State
