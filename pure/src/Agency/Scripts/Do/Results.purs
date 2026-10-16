@@ -31,11 +31,24 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 
+-- | The legacy reset primitive: it still resets whatever it finds — no
+-- | prior run, stale extras, even corrupt state — EXCEPT for one
+-- | invariant it must never destroy: live worker jobs. A stray init would
+-- | delete the jobs ledger, and every later `job-end` would then fail
+-- | `no unfinished job`, defeating the liveness guarantee. Unfinished
+-- | jobs block init with the same blocker shape the other gates use.
 runInit :: WorkflowContext -> Effect Outcome.OpOutcome
 runInit context = do
-  timestamp <- Sys.nowIso
-  State.writeState (Context.statePath context) (State.initState timestamp)
-  pure (Outcome.withStdout ("init: startedAt=" <> timestamp <> "\n"))
+  existing <- State.readState (Context.statePath context)
+  let blocking = case existing of
+        Right (Just state) -> State.unfinishedJobs state
+        _ -> []
+  case blocking of
+    [] -> do
+      timestamp <- Sys.nowIso
+      State.writeState (Context.statePath context) (State.initState timestamp)
+      pure (Outcome.withStdout ("init: startedAt=" <> timestamp <> "\n"))
+    open -> pure (failText ("do-results: unfinished job(s) block init: " <> State.jobIdList open <> " — resolve with job-end first"))
 
 runStepStart :: WorkflowContext -> String -> Effect Outcome.OpOutcome
 runStepStart context name = withLoadedState context \state -> case state.pendingStep of
