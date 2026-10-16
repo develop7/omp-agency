@@ -365,11 +365,15 @@ test("restart init carries unfinished jobs forward; plain init discards them", a
     assert.equal((await readState(cwd)).jobs, undefined);
 
     // A non-restarting init on a terminal run discards unfinished jobs too.
+    // The driver refuses to terminalize over an open job, so the fixture
+    // writes the terminal run the ops can no longer produce.
     await invoke(registered, "agency_driver", {
       op: "job-start", id: "dropped", name: "Dropped job", step: "implement",
     }, cwd);
-    await invoke(registered, "agency_driver", { op: "start", step: "done" }, cwd);
-    await invoke(registered, "agency_driver", { op: "end", status: "passed", verification: "ok" }, cwd);
+    const terminal = await readState(cwd);
+    terminal.status = "completed";
+    terminal.active = "idle";
+    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(terminal));
     await invoke(registered, "agency_driver", { op: "init", task: "fresh run" }, cwd);
     assert.equal((await readState(cwd)).jobs, undefined);
   });
