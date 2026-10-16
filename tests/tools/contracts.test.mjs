@@ -269,6 +269,38 @@ test("the done step blocks on unfinished jobs from any step", async () => {
   });
 });
 
+test("set cannot claim completion while jobs are unfinished", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
+    }, cwd);
+
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "set", field: "status", value: "completed" }, cwd),
+      (error) => {
+        assert.match(error.message, /unfinished job/);
+        assert.match(error.message, /police-pass1/);
+        return true;
+      },
+    );
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "set", field: "active", value: "idle" }, cwd),
+      /unfinished job/,
+    );
+    assert.equal((await readState(cwd)).status, "running", "rejected set must not mutate state");
+
+    // Honest abort stays available while jobs are open.
+    const failed = await invoke(registered, "agency_driver", { op: "set", field: "status", value: "failed" }, cwd);
+    assert.equal(failed.details.exit, 0);
+
+    await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
+    const completed = await invoke(registered, "agency_driver", { op: "set", field: "status", value: "completed" }, cwd);
+    assert.equal(completed.details.exit, 0);
+    assert.equal((await readState(cwd)).status, "completed");
+  });
+});
+
 test("summary surfaces an unparsable job deadline instead of silently unstalling", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
