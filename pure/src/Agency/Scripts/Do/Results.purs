@@ -215,7 +215,7 @@ validInterval startedAt completedAt = do
 
 jsonValueFor :: String -> String -> Either String Json
 jsonValueFor field value
-  | field == "steps" || field == "pendingStep" || field == "jobs" = jsonParser value
+  | field == "steps" || field == "pendingStep" = jsonParser value
   | Array.elem field booleanFields = case value of
       "true" -> Right (fromBoolean true)
       "false" -> Right (fromBoolean false)

@@ -321,9 +321,9 @@ run = do
   case State.setField "jobs" (fromString "implement") State.emptyState of
     Left error -> assert "set rejects a string jobs value" (error == "state: field 'jobs' is read-only — use job-start and job-end")
     Right _ -> assert "set rejects a string jobs value" false
-  case Results.jsonValueFor "jobs" "implement" of
-    Left _ -> pure unit
-    Right _ -> assert "jobs values are parsed as structured JSON, never stored as strings" false
+  case Results.jsonValueFor "jobs" "implement" >>= \json -> State.setField "jobs" json State.emptyState of
+    Left error -> assert "string jobs values are rejected read-only at setField" (error == "state: field 'jobs' is read-only — use job-start and job-end")
+    Right _ -> assert "string jobs values are rejected read-only at setField" false
   case Results.jsonValueFor "jobs" "[]" of
     Left error -> do
       Console.error ("FAIL: jobs structured value parses: " <> error)
