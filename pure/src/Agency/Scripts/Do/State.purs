@@ -639,16 +639,27 @@ appendJob job state = do
   else Right (state { jobs = state.jobs <> [ job ] })
 
 -- | Resolve the unfinished job with this id, recording the driver-computed
--- | finish timestamp alongside its outcome.
+-- | finish timestamp alongside its outcome. Every outcome but `completed`
+-- | must carry a recorded reason, so the ledger can explain why the worker
+-- | stopped instead of losing it.
 resolveJob :: String -> JobOutcome -> Maybe String -> String -> State -> Either String State
 resolveJob jobId outcome verification completedAt state =
   case Array.findIndex (\job -> not (jobFinished job) && job.id == jobId) state.jobs of
     Nothing -> Left ("state: no unfinished job '" <> jobId <> "'")
-    Just index ->
-      let
-        resolve job =
-          job { finished = Just { finishedAt: completedAt, outcome, verification } }
-      in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
+    Just index -> case outcome, verification of
+      JobCompleted, _ -> resolveAt index
+      _, Just reason | reason /= "" -> resolveAt index
+      _, _ ->
+        Left
+          ( "state: job '" <> jobId <> "' outcome '" <> renderJobOutcome outcome
+              <> "' requires a recorded reason (verification)"
+          )
+  where
+  resolveAt index =
+    let
+      resolve job =
+        job { finished = Just { finishedAt: completedAt, outcome, verification } }
+    in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
 
 startPending :: PendingStep -> State -> State
 startPending pending state = state { pendingStep = Just pending }
