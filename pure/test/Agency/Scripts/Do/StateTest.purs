@@ -379,7 +379,9 @@ run = do
             Right pruned -> do
               assert "append keeps a full ledger bounded" (Array.length pruned.jobs == State.maxPersistedJobs)
               assert "append keeps every unfinished job while pruning"
-                (Array.length (Array.filter (not <<< State.jobFinished) pruned.jobs) == 2)
+                ( map _.id (Array.filter (not <<< State.jobFinished) pruned.jobs)
+                    == [ "police-pass2", "police-pass3", "one-too-many" ]
+                )
               assert "append drops only the oldest finished entry"
                 ( Array.length (Array.filter (\job -> job.id == "done-filler") pruned.jobs)
                     == State.maxPersistedJobs - 3
