@@ -29,7 +29,6 @@ import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Data.String (joinWith)
 import Effect (Effect)
 
 runInit :: WorkflowContext -> Effect Outcome.OpOutcome
@@ -69,7 +68,7 @@ unfinishedJobBlocker operation stepName state =
     else
       Just
         ( "do-results: unfinished job(s) block " <> operation <> " for '" <> stepName <> "': "
-            <> joinWith ", " (map (\job -> "'" <> job.id <> "'") blocking)
+            <> State.jobIdList blocking
             <> " — resolve with job-end first (non-completed outcomes require a verification reason)"
         )
 
@@ -231,7 +230,7 @@ runDriverInit context options = do
                 if Array.null carriedJobs then ""
                 else
                   "carried unfinished job(s): "
-                    <> joinWith ", " (map (\job -> "'" <> job.id <> "'") carriedJobs)
+                    <> State.jobIdList carriedJobs
                     <> "\n"
           pure (Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n" <> carriedText))
 

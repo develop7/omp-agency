@@ -34,6 +34,7 @@ module Agency.Scripts.Do.State
   , appendStep
   , jobFinished
   , unfinishedJobs
+  , jobIdList
   , jobStalled
   , unparsableDeadline
   , appendJob
@@ -638,6 +639,12 @@ jobFinished job = case job.finished of
 unfinishedJobs :: State -> Array Job
 unfinishedJobs state = Array.filter (not <<< jobFinished) state.jobs
 
+-- | The quoted, comma-joined ids of `jobs` — the blocker, restart
+-- | carry-over, and completion-claim messages all render this same list,
+-- | so the formatting lives once beside the job predicates they read.
+jobIdList :: Array Job -> String
+jobIdList jobs = joinWith ", " (map (\job -> "'" <> job.id <> "'") jobs)
+
 -- | Gate for completion claims made through `set`: `status` `completed` and
 -- | `active` `idle` declare the run over while worker jobs may still be
 -- | live, bypassing every job gate. They are refused until the ledger is
@@ -649,7 +656,7 @@ completionClaim key value state =
     else
       Left
         ( "state: unfinished job(s) block set " <> key <> "=" <> value <> ": "
-            <> joinWith ", " (map (\job -> "'" <> job.id <> "'") blocking)
+            <> jobIdList blocking
             <> " — resolve with job-end first"
         )
 
