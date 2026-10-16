@@ -225,13 +225,20 @@ runDriverInit context options = do
                     <> "\n"
           pure (Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n" <> carriedText))
 
+-- | `skip` is `step-start` + `step-end` under one lock, so its job guard
+-- | must run against the state loaded BEFORE the first half writes: a
+-- | refusal raised only inside `runStepEnd` would leave the `pendingStep`
+-- | that `runStepStart` already persisted behind a failing skip, breaking
+-- | the guard-must-not-mutate invariant on the composite operation.
 runDriverSkip :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
-runDriverSkip context step reason = do
-  started <- runStepStart context step
-  if started.exit /= 0 then pure started
-  else do
-    ended <- runStepEnd context "skipped" "" (Args.nonEmpty reason)
-    pure (Outcome.append started ended)
+runDriverSkip context step reason = withLoadedState context \state -> case unfinishedJobBlocker step state of
+  Just blocker -> pure (failText blocker)
+  Nothing -> do
+    started <- runStepStart context step
+    if started.exit /= 0 then pure started
+    else do
+      ended <- runStepEnd context "skipped" "" (Args.nonEmpty reason)
+      pure (Outcome.append started ended)
 
 validInterval :: String -> String -> Effect (Either String Unit)
 validInterval startedAt completedAt = do

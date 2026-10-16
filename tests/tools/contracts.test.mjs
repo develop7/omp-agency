@@ -225,6 +225,22 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
   });
 });
 
+test("skip refuses the whole operation while an unfinished job blocks the step", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
+    }, cwd);
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "skip", step: "police", reason: "handled elsewhere" }, cwd),
+      /unfinished job/,
+    );
+    assert.equal(await snapshot(cwd), before, "refused skip must not mutate state");
+    assert.equal((await readState(cwd)).pendingStep, undefined, "refused skip must not leave a started step");
+  });
+});
+
 test("the corrective step record is blocked by unfinished jobs", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
