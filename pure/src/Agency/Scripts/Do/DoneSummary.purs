@@ -134,8 +134,8 @@ jobRow job =
     <> " | " <> job.step
     <> " | " <> job.startedAt
     <> " | " <> fromMaybe "—" job.deadline
-    <> " | " <> maybe "—" State.renderJobOutcome job.outcome
-    <> " | " <> maybe "" escapeVerification job.verification
+    <> " | " <> maybe "—" (\finished -> State.renderJobOutcome finished.outcome) job.finished
+    <> " | " <> maybe "" (\finished -> maybe "" escapeVerification finished.verification) job.finished
     <> " |"
 
 -- | Render the machine-readable facts block for the same computed summary.

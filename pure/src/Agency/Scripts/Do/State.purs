@@ -5,6 +5,7 @@ module Agency.Scripts.Do.State
   , StepStatus(..)
   , Step
   , JobOutcome(..)
+  , FinishedJob
   , Job
   , State
   , parseActiveStatus
@@ -206,19 +207,28 @@ renderJobOutcome outcome = case outcome of
   JobEscalated -> "escalated"
   JobUnknown value -> value
 
+-- | The terminal component of a job. `finishedAt` and `outcome` must appear
+-- | together and `verification` belongs only to finished jobs, so all three
+-- | live in one record: an unfinished job cannot carry any of them. The
+-- | persisted JSON contract stays flat — encode/decode flatten and unflatten
+-- | this component, and decode rejects any partial flat spelling.
+type FinishedJob =
+  { finishedAt :: String
+  , outcome :: JobOutcome
+  , verification :: Maybe String
+  }
+
 -- | A worker-owned job. Only `job-start`/`job-end` write these fields, so
 -- | timestamps are always driver-computed and never caller-supplied.
--- | `finishedAt` and `outcome` are present together or absent together;
--- | absent means the job is unfinished.
+-- | `finished` present means the job is finished; Nothing means it is open,
+-- | and verification is unrepresentable while it is.
 type Job =
   { id :: String
   , name :: String
   , step :: String
   , startedAt :: String
   , deadline :: Maybe String
-  , finishedAt :: Maybe String
-  , outcome :: Maybe JobOutcome
-  , verification :: Maybe String
+  , finished :: Maybe FinishedJob
   }
 
 -- | Workflow state. Fields written by other workflow layers live in `extras`.
@@ -349,23 +359,27 @@ parseJob value = do
   finishedAt <- stringValue "finishedAt" object
   outcomeValue <- stringValue "outcome" object
   verification <- stringValue "verification" object
-  outcome <- case outcomeValue of
-    Nothing -> Right Nothing
-    Just text -> Just <$> validJobOutcome text
-  let job = { id, name, step, startedAt, deadline, finishedAt, outcome, verification }
+  finished <- case finishedAt, outcomeValue, verification of
+    Nothing, Nothing, Nothing -> Right Nothing
+    Nothing, Nothing, Just _ ->
+      Left ("state: job '" <> id <> "' verification requires a finished job")
+    Just at, Just text, _ -> do
+      outcome <- validJobOutcome text
+      pure (Just { finishedAt: at, outcome, verification })
+    _, _, _ ->
+      Left ("state: job '" <> id <> "' must record finishedAt and outcome together")
+  let job = { id, name, step, startedAt, deadline, finished }
   validJob job
   pure job
 
--- | Structural invariants shared by parse and append.
+-- | Structural invariants shared by parse and append. The finish component's
+-- | pairing is structural: the decoder only builds it from a complete flat
+-- | spelling, so a partial one is rejected before it reaches this check.
 validJob :: Job -> Either String Unit
 validJob job = do
   if job.id == "" then Left "state: job id must be non-empty" else Right unit
   if job.name == "" then Left "state: job name must be non-empty" else Right unit
   validStepName job.step
-  case job.finishedAt, job.outcome of
-    Nothing, Nothing -> Right unit
-    Just _, Just _ -> Right unit
-    _, _ -> Left ("state: job '" <> job.id <> "' must record finishedAt and outcome together")
 
 -- | The contract only constrains id uniqueness among unfinished jobs, so a
 -- | finished job's id may be reused by a later run.
@@ -468,15 +482,15 @@ jobJson job =
     withDeadline = case job.deadline of
       Nothing -> base
       Just deadline -> Obj.insert "deadline" (fromString deadline) base
-    withFinishedAt = case job.finishedAt of
-      Nothing -> withDeadline
-      Just finishedAt -> Obj.insert "finishedAt" (fromString finishedAt) withDeadline
-    withOutcome = case job.outcome of
-      Nothing -> withFinishedAt
-      Just outcome -> Obj.insert "outcome" (fromString (renderJobOutcome outcome)) withFinishedAt
-  in case job.verification of
-    Nothing -> fromObject withOutcome
-    Just verification -> fromObject (Obj.insert "verification" (fromString verification) withOutcome)
+  in case job.finished of
+    Nothing -> fromObject withDeadline
+    Just finished ->
+      let
+        withFinishedAt = Obj.insert "finishedAt" (fromString finished.finishedAt) withDeadline
+        withOutcome = Obj.insert "outcome" (fromString (renderJobOutcome finished.outcome)) withFinishedAt
+      in case finished.verification of
+        Nothing -> fromObject withOutcome
+        Just verification -> fromObject (Obj.insert "verification" (fromString verification) withOutcome)
 
 -- | Encode known fields in the historical order and unknown fields sorted by key.
 stringifyState :: State -> String
@@ -574,7 +588,7 @@ appendStep step state = do
   else Right (state { steps = state.steps <> [ step ] })
 
 jobFinished :: Job -> Boolean
-jobFinished job = case job.outcome of
+jobFinished job = case job.finished of
   Just _ -> true
   Nothing -> false
 
@@ -611,7 +625,7 @@ resolveJob jobId outcome verification completedAt state =
     Just index ->
       let
         resolve job =
-          job { finishedAt = Just completedAt, outcome = Just outcome, verification = verification }
+          job { finished = Just { finishedAt: completedAt, outcome, verification } }
       in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
 
 startPending :: PendingStep -> State -> State
