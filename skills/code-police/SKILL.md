@@ -64,7 +64,7 @@ At every non-trivial declaration or block, ask whether a reader who did not writ
 
 Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff and complete rules bundle in the shared batch context of both scout prompts — scouts never fetch the diff or discover rules themselves. The bundle carries the baseline contract quoted above, and the orchestrator includes it verbatim in every reviewer prompt. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
 
-Each scout starts without the implementer's context. Supply this skill's complete applicable built-in rules and the orchestrator-resolved project rules in its shared task context; it must use that bundle as the rules of record and must not rediscover project rules.
+Each scout starts without the implementer's context. Supply this skill's complete applicable built-in rules and the orchestrator-resolved project rules in its shared task context; it must use that bundle as the rules of record and must not rediscover project rules. Every `task` spawn in this skill is registered and bounded under **Jobs and bounded liveness** below: resolve each worker's job before stitching the summary.
 
 ### Pass 1: Rule checklist
 
@@ -91,6 +91,17 @@ Fail loud over fail silent; every fallback needs a reason for its failure case; 
 Skip under `--no-elegance` and report `Elegance | – | Skipped (--no-elegance)`. Otherwise the orchestrator (running this pass in main context after both scouts return) obtains the shortstat itself with `vcs_read {op: "diff-stat"}`. If the diff is under 10 lines, report `Elegance | 0 | Skipped (tiny diff)`; Passes 1–2 still run.
 
 For a larger diff, run the `elegance` skill loop for three iterations. Supply the complete rules bundle in the shared context for every elegance call and iteration, including retries; it is authoritative, and elegance must not rediscover rule files. Each iteration: understand the changed files and their unnecessary complexity; research simple, elegant, readable patterns with `web_search`; apply a refactor favoring fewer lines, clearer intent, and idiomatic style without adding abstractions; and verify with tests/CI. Simple beats clever, readable beats terse, idiomatic beats generic, and each iteration builds on the last. The Reviewing principles and project rules bind here too.
+
+## Jobs and bounded liveness
+
+Every worker spawned from this skill is a job in the driver's ledger. Budgets come from this step's `pattern_config`, surfaced through `workflow cli`: `worker_budget_minutes` per worker, `worker_retries` fallback attempts per worker, `police_budget_minutes` for the whole step.
+
+- **Register at spawn**: before each `task` call, `agency_driver { op: "job-start", id, name, step: "police", budgetMinutes: worker_budget_minutes }` with a fresh, unique `id` (e.g. `police-pass1-1`). The driver derives `deadline = startedAt + budgetMinutes`.
+- **Resolve on return**: `agency_driver { op: "job-end", id, outcome: "completed" }` for a usable report; `outcome: "failed"` for an errored or empty run. Any non-`completed` outcome must carry the recorded stopping reason in `verification` — the driver rejects `failed`/`cancelled`/`escalated` ends without one.
+- **Bounded waits only**: the diff and rules bundle are embedded at spawn. Wait only while the job's `deadline` is still ahead — re-check `read proc://<id>` after every `wait` return and never start a wait that would outlive the deadline.
+- **On stall or timeout** (deadline passed, no result): cancel the worker with `write proc://<id>/kill` (no `content`), then `job-end` `outcome: "cancelled"`. Make at most `worker_retries` fallback attempt: run that same pass in main context on the fixed embedded scope, registered as its own job with a fresh id and bounded by `police_budget_minutes`. Resolve it `outcome: "completed"`, or `outcome: "escalated"` if it too fails — then proceed with the findings so far. Never re-spawn a pass.
+- **Scope discipline**: review only the current branch/PR diff embedded at spawn. If a worker broadens scope, cancel it the same way, `job-end` `outcome: "cancelled"` with `verification` recording the breach, and drop its out-of-scope findings — record them as dropped in the summary.
+- **Honest wrap**: never claim a user-imposed stop or wrap point. Conclude only when every pass reports clean ("All clear") or `police_budget_minutes` is exhausted, and state which of the two ended the review.
 
 ## Output
 

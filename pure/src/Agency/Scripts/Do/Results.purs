@@ -3,6 +3,8 @@ module Agency.Scripts.Do.Results
   , runStepStart
   , runStepEnd
   , runStep
+  , runJobStart
+  , runJobEnd
   , runSet
   , runDriverInit
   , runDriverSkip
@@ -29,11 +31,24 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 
+-- | The legacy reset primitive: it still resets whatever it finds — no
+-- | prior run, stale extras, even corrupt state — EXCEPT for one
+-- | invariant it must never destroy: live worker jobs. A stray init would
+-- | delete the jobs ledger, and every later `job-end` would then fail
+-- | `no unfinished job`, defeating the liveness guarantee. Unfinished
+-- | jobs block init with the same blocker shape the other gates use.
 runInit :: WorkflowContext -> Effect Outcome.OpOutcome
 runInit context = do
-  timestamp <- Sys.nowIso
-  State.writeState (Context.statePath context) (State.initState timestamp)
-  pure (Outcome.withStdout ("init: startedAt=" <> timestamp <> "\n"))
+  existing <- State.readState (Context.statePath context)
+  let blocking = case existing of
+        Right (Just state) -> State.unfinishedJobs state
+        _ -> []
+  case blocking of
+    [] -> do
+      timestamp <- Sys.nowIso
+      State.writeState (Context.statePath context) (State.initState timestamp)
+      pure (Outcome.withStdout ("init: startedAt=" <> timestamp <> "\n"))
+    open -> pure (failText ("do-results: unfinished job(s) block init: " <> State.jobIdList open <> " — resolve with job-end first"))
 
 runStepStart :: WorkflowContext -> String -> Effect Outcome.OpOutcome
 runStepStart context name = withLoadedState context \state -> case state.pendingStep of
@@ -43,35 +58,126 @@ runStepStart context name = withLoadedState context \state -> case state.pending
     State.writeState (Context.statePath context) (State.startPending { name, startedAt: timestamp } state)
     pure (Outcome.withStdout ("pending: " <> name <> "\n"))
 
+-- | Unfinished jobs block every path that records the step as complete —
+-- | step-end and the corrective `step` record alike — so neither can yield
+-- | while the step's jobs are still open; the terminal `done` step watches
+-- | every job (see below), other steps only their own. The first argument
+-- | names the operation being blocked so the message reports what the
+-- | caller actually invoked (`"step-end"` from `runStepEnd` and
+-- | `runDriverSkip`, whose step-end half is what refuses, `"step"` from
+-- | `runStep`); every caller otherwise surfaces this one message verbatim.
+unfinishedJobBlocker :: String -> String -> State.State -> Maybe String
+unfinishedJobBlocker operation stepName state =
+  let
+    -- `done` is the global yield: recording it lets `terminalize` mark the
+    -- whole run complete, so it must consider ALL unfinished jobs, not only
+    -- `done`-owned ones — the same predicate `DoneSummary.run` uses. Any
+    -- other step blocks only on the jobs it owns.
+    open = State.unfinishedJobs state
+    blocking =
+      if stepName == "done" then open
+      else Array.filter (\job -> job.step == stepName) open
+  in if Array.null blocking then Nothing
+    else
+      Just
+        ( "do-results: unfinished job(s) block " <> operation <> " for '" <> stepName <> "': "
+            <> State.jobIdList blocking
+            <> " — resolve with job-end first (non-completed outcomes require a verification reason)"
+        )
+
 runStepEnd :: WorkflowContext -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStepEnd context status verification reason = withLoadedState context \state -> case state.pendingStep of
   Nothing -> pure (failText "do-results: no pendingStep — call step-start first")
-  Just pending -> do
-    completed <- Sys.nowIso
-    timing <- validInterval pending.startedAt completed
-    let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
-    case timing >>= \_ -> State.appendStep step state of
-      Left error -> pure (failText error)
-      Right appended -> do
-        let updated = terminalize pending.name status (State.finishPending appended)
-        State.writeState (Context.statePath context) updated
-        pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
-
-runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
-runStep context name status verification startedAt completedAt reason = withLoadedState context \state -> do
-  actualStart <- resolveNow startedAt
-  actualEnd <- resolveNow completedAt
-  timing <- validInterval actualStart actualEnd
-  case timing of
-    Left error -> pure (failText error)
-    Right _ -> do
-      let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
-      case State.appendStep step state of
+  Just pending -> case unfinishedJobBlocker "step-end" pending.name state of
+    Just blocker -> pure (failText blocker)
+    Nothing -> do
+      completed <- Sys.nowIso
+      timing <- validInterval pending.startedAt completed
+      let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
+      case timing >>= \_ -> State.appendStep step state of
         Left error -> pure (failText error)
         Right appended -> do
-          let updated = terminalize name status appended
+          let updated = terminalize pending.name status (State.finishPending appended)
           State.writeState (Context.statePath context) updated
-          pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
+          pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
+
+runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
+runStep context name status verification startedAt completedAt reason = withLoadedState context \state ->
+  case unfinishedJobBlocker "step" name state of
+    Just blocker -> pure (failText blocker)
+    Nothing -> do
+      actualStart <- resolveNow startedAt
+      actualEnd <- resolveNow completedAt
+      timing <- validInterval actualStart actualEnd
+      case timing of
+        Left error -> pure (failText error)
+        Right _ -> do
+          let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
+          case State.appendStep step state of
+            Left error -> pure (failText error)
+            Right appended -> do
+              let updated = terminalize name status appended
+              State.writeState (Context.statePath context) updated
+              pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
+
+-- | Append a worker-owned job under a fresh id with a driver-computed
+-- | startedAt and optional deadline (startedAt + budgetMinutes). Callers
+-- | supply no timestamps, so the ledger's time fields stay trustworthy.
+runJobStart :: WorkflowContext -> { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int } -> Effect Outcome.OpOutcome
+runJobStart context input = withLoadedState context \state -> do
+  started <- Sys.nowIso
+  deadline <- deadlineAfter started input.budgetMinutes
+  case deadline of
+    Left error -> pure (failText ("do-driver: " <> error))
+    Right limit -> do
+      let job =
+            { id: input.id
+            , name: input.name
+            , step: input.step
+            , startedAt: started
+            , deadline: limit
+            , finished: Nothing
+            }
+          deadlineText = case limit of
+            Nothing -> ""
+            Just value -> " deadline=" <> value
+      case State.appendJob job state of
+        Left error -> pure (failText error)
+        Right appended -> do
+          State.writeState (Context.statePath context) appended
+          pure (Outcome.withStdout ("job-start: " <> input.id <> " step=" <> input.step <> deadlineText <> "\n"))
+
+-- | A job's deadline is driver-computed as startedAt + budgetMinutes and is
+-- | persisted in the same canonical UTC format as every other timestamp.
+deadlineAfter :: String -> Maybe Int -> Effect (Either String (Maybe String))
+deadlineAfter started budget = case budget of
+  Nothing -> pure (Right Nothing)
+  Just minutes -> do
+    startedEpoch <- Sys.isoToEpoch started
+    pure case startedEpoch of
+      Left error -> Left error
+      Right epoch -> Right (Just (Sys.formatEpochIso (epoch + minutes * 60)))
+
+-- | Resolve the named unfinished job with the parsed outcome. The reason
+-- | requirement for non-completed outcomes is enforced inside
+-- | `State.resolveJob`, so every path that ends a job carries it; the
+-- | finish timestamp is driver-computed here.
+runJobEnd :: WorkflowContext -> { id :: String, outcome :: State.JobOutcome, verification :: Maybe String } -> Effect Outcome.OpOutcome
+runJobEnd context input = withLoadedState context \state -> do
+  completed <- Sys.nowIso
+  case State.resolveJob input.id input.outcome input.verification completed state of
+    Left error -> pure (failText error)
+    Right resolved -> do
+      State.writeState (Context.statePath context) resolved
+      -- A finish that lands before the job's start was clamped up to
+      -- `startedAt` inside `resolveJob`; surface the observed timestamps
+      -- loudly instead of silently rewriting the recorded duration — what
+      -- caused the inversion is not assumed here.
+      let clampNote = case Array.find (State.unfinishedJobWithId input.id) state.jobs of
+            Just job | State.finishNeedsClamp job completed ->
+              " (finish " <> completed <> " precedes startedAt " <> job.startedAt <> " — clamped to start)"
+            _ -> ""
+      pure (Outcome.withStdout ("job-end: " <> input.id <> " " <> State.renderJobOutcome input.outcome <> clampNote <> "\n"))
 
 runSet :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runSet context field value = withLoadedState context \state -> do
@@ -93,7 +199,13 @@ runDriverInit context options = do
       pure (failWithCode 2 ("do-driver: a /do run is already active (task: '" <> State.stateGet "task" state <> "', steps: " <> show (Array.length state.steps) <> ") — finish it or run init --restart to discard it"))
     _ -> do
       timestamp <- Sys.nowIso
-      let base = State.initState timestamp
+      -- --restart keeps unfinished worker jobs so a recovered run resumes the
+      -- same liveness ledger; a plain init discards them with everything else
+      -- from the prior run.
+      let carriedJobs = case existing of
+            Right (Just prior) | options.restart -> State.unfinishedJobs prior
+            _ -> []
+          base = (State.initState timestamp) { jobs = carriedJobs }
           vcsDetected = Vcs.vcsName context.vcs /= "unknown"
           isDefaultEntry = options.from == "" || options.from == "default"
           -- A prior base is inherited only when it names a ref. Absent, empty,
@@ -126,15 +238,30 @@ runDriverInit context options = do
         Right final -> do
           State.writeState (Context.statePath context) final
           let fromText = if isDefaultEntry then "default" else options.from
-          pure (Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n"))
+              -- A recovered run must see its pending work at once: when
+              -- --restart carried jobs, name them on the init line's tail.
+              carriedText =
+                if Array.null carriedJobs then ""
+                else
+                  "carried unfinished job(s): "
+                    <> State.jobIdList carriedJobs
+                    <> "\n"
+          pure (Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n" <> carriedText))
 
+-- | `skip` is `step-start` + `step-end` under one lock, so its job guard
+-- | must run against the state loaded BEFORE the first half writes: a
+-- | refusal raised only inside `runStepEnd` would leave the `pendingStep`
+-- | that `runStepStart` already persisted behind a failing skip, breaking
+-- | the guard-must-not-mutate invariant on the composite operation.
 runDriverSkip :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
-runDriverSkip context step reason = do
-  started <- runStepStart context step
-  if started.exit /= 0 then pure started
-  else do
-    ended <- runStepEnd context "skipped" "" (Args.nonEmpty reason)
-    pure (Outcome.append started ended)
+runDriverSkip context step reason = withLoadedState context \state -> case unfinishedJobBlocker "step-end" step state of
+  Just blocker -> pure (failText blocker)
+  Nothing -> do
+    started <- runStepStart context step
+    if started.exit /= 0 then pure started
+    else do
+      ended <- runStepEnd context "skipped" "" (Args.nonEmpty reason)
+      pure (Outcome.append started ended)
 
 validInterval :: String -> String -> Effect (Either String Unit)
 validInterval startedAt completedAt = do

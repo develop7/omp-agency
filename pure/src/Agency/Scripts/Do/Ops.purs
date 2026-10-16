@@ -26,6 +26,7 @@ module Agency.Scripts.Do.Ops
   , fmtDur
   , jsonValueFor
   , validInterval
+  , driverOperationNames
   ) where
 
 import Prelude
@@ -46,6 +47,7 @@ import Agency.Scripts.Do.WorkflowVocabulary as Vocabulary
 import Data.Argonaut.Core (Json)
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Int as Int
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (joinWith)
 import Data.String.CodeUnits (drop)
@@ -80,6 +82,8 @@ data DriverOp
   | DriverSkip String String
   | DriverSet String String
   | DriverSummary
+  | DriverJobStart { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int }
+  | DriverJobEnd { id :: String, outcome :: State.JobOutcome, verification :: Maybe String }
 -- | Parsed sync options. The parser enforces that noVcs, base, and stack
 -- | combinations are valid; callers constructing this type directly bypass
 -- | that boundary by design.
@@ -96,6 +100,14 @@ resultsCommandNames = "init|step-start|step-end|step|set"
 
 resultsUsage :: String
 resultsUsage = "Usage: do-results <" <> resultsCommandNames <> "> ..."
+
+-- | Every do-driver subcommand, single-sourced for the usage strings here
+-- | and the agency_driver dispatch check in Api.
+driverOperationNames :: Array String
+driverOperationNames = [ "init", "start", "end", "skip", "set", "summary", "job-start", "job-end" ]
+
+doDriverUsage :: String
+doDriverUsage = "Usage: do-driver <" <> joinWith "|" driverOperationNames <> "> ..."
 
 parseResultsOp :: Array String -> Either ParseError ResultsOp
 parseResultsOp args =
@@ -145,7 +157,7 @@ takeFive values = do
 parseDriverOp :: Array String -> Either ParseError DriverOp
 parseDriverOp args =
   case Args.requiredNonEmpty args of
-    Nothing -> Left (parseError 1 "Usage: do-driver <init|start|end|skip|set|summary> ...")
+    Nothing -> Left (parseError 1 doDriverUsage)
     Just { value: command, rest } -> case command of
       "init" -> parseDriverInit rest
       "start" -> requiredWorkflowStep "step required" DriverStart rest
@@ -167,7 +179,9 @@ parseDriverOp args =
           Nothing -> Left (parseError 1 "value required")
           Just { value } -> Right (DriverSet field value)
       "summary" -> Right DriverSummary
-      _ -> Left (parseError 1 ("Unknown command: " <> command <> "\nUsage: do-driver <init|start|end|skip|set|summary> ..."))
+      "job-start" -> parseJobStart rest
+      "job-end" -> parseJobEnd rest
+      _ -> Left (parseError 1 ("Unknown command: " <> command <> "\n" <> doDriverUsage))
   where
   requiredWorkflowStep message constructor values = case Args.requiredNonEmpty values of
     Just { value } -> do
@@ -201,6 +215,68 @@ parseDriverInit args = go args { review: false, noVcs: false, minimal: false, re
       _ | Args.startsWith "--" arg -> Left (parseError 2 ("do-driver: unknown flag: " <> arg))
       _ | state.task /= "" -> Left (parseError 2 ("do-driver: multiple task arguments given (already have '" <> state.task <> "')"))
         | otherwise -> go after (state { task = arg })
+
+parseJobStart :: Array String -> Either ParseError DriverOp
+parseJobStart values = do
+  jobId <- requiredOperand "id required" values
+  jobName <- requiredOperand "name required" jobId.rest
+  jobStep <- requiredOperand "step required" jobName.rest
+  validWorkflowStep jobStep.value
+  budget <- parseBudget jobStep.rest
+  rejectTrailingOperands "job-start" (Array.drop 1 jobStep.rest)
+  pure (DriverJobStart { id: jobId.value, name: jobName.value, step: jobStep.value, budgetMinutes: budget })
+
+-- | One required operand from the remaining CLI words, shared by the
+-- | job-start and job-end operand chains.
+requiredOperand :: String -> Array String -> Either ParseError Args.RequiredArg
+requiredOperand message remaining = case Args.requiredNonEmpty remaining of
+  Nothing -> Left (parseError 1 message)
+  Just operand -> Right operand
+
+-- | Reject operands past the ones the op consumes. The budget and
+-- | verification reads take only the first word, so an extra operand used
+-- | to be silently dropped (`job-start id name police 10 20` quietly used
+-- | 10). An empty leftover word is rejected with the same loud error: it
+-- | carries no value, so skipping it silently loses it — the exact
+-- | behavior this check exists to kill (`parseBudget` already fails loud
+-- | on an empty budget slot).
+rejectTrailingOperands :: String -> Array String -> Either ParseError Unit
+rejectTrailingOperands op remaining = case Array.uncons remaining of
+  Nothing -> Right unit
+  Just { head } -> Left (parseError 1 (op <> ": unexpected operand '" <> head <> "'"))
+
+-- | Job budget bounds accepted by `job-start`, named so the range check and
+-- | its error text derive from one source. The zod `.min(1).max(120)` in
+-- | src/agency-tools.ts is the TS-side boundary anchor for the same numbers.
+minJobBudgetMinutes :: Int
+minJobBudgetMinutes = 1
+
+maxJobBudgetMinutes :: Int
+maxJobBudgetMinutes = 120
+
+parseBudget :: Array String -> Either ParseError (Maybe Int)
+parseBudget remaining = case Array.head remaining of
+  Nothing -> Right Nothing
+  Just text -> case Int.fromString text of
+    Just minutes
+      | minutes >= minJobBudgetMinutes && minutes <= maxJobBudgetMinutes -> Right (Just minutes)
+    _ ->
+      Left
+        ( parseError 1
+            ( "job-start: budgetMinutes must be an integer between "
+                <> show minJobBudgetMinutes
+                <> " and "
+                <> show maxJobBudgetMinutes
+            )
+        )
+
+parseJobEnd :: Array String -> Either ParseError DriverOp
+parseJobEnd values = do
+  jobId <- requiredOperand "id required" values
+  outcomeValue <- requiredOperand ("outcome required (" <> joinWith "|" State.jobOutcomeNames <> ")") jobId.rest
+  outcome <- validJobOutcome outcomeValue.value
+  rejectTrailingOperands "job-end" (Array.drop 1 outcomeValue.rest)
+  pure (DriverJobEnd { id: jobId.value, outcome, verification: Array.head outcomeValue.rest >>= Args.nonEmpty })
 
 parseSyncOp :: Array String -> Either ParseError SyncOp
 parseSyncOp args = do
@@ -270,6 +346,12 @@ validStepStatus status =
   if Array.elem status [ "passed", "failed", "skipped" ] then Right unit
   else Left (parseError 1 ("do-results: invalid status '" <> status <> "' (passed|failed|skipped)"))
 
+validJobOutcome :: String -> Either ParseError State.JobOutcome
+validJobOutcome value = case State.parseJobOutcome value of
+  State.JobUnknown _ ->
+    Left (parseError 1 ("do-driver: invalid outcome '" <> value <> "' (" <> joinWith "|" State.jobOutcomeNames <> ")"))
+  outcome -> Right outcome
+
 parseError :: Int -> String -> ParseError
 parseError code message = { code, message }
 
@@ -332,6 +414,8 @@ runDriverOp context operation = case operation of
   DriverSkip step reason -> withMutationLock context (Results.runDriverSkip context step reason)
   DriverSet field value -> withMutationLock context (Results.runSet context field value)
   DriverSummary -> DoneReport.run context
+  DriverJobStart options -> withMutationLock context (Results.runJobStart context options)
+  DriverJobEnd options -> withMutationLock context (Results.runJobEnd context options)
 
 -- | Delegate the ordered sync transaction under the same exclusive lock.
 runSyncOp :: WorkflowContext -> SyncOp -> Effect Outcome.OpOutcome

@@ -19,7 +19,7 @@ import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Data.Array as Array
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
 import Data.String (Pattern(..), Replacement(..), joinWith, replaceAll)
 import Data.String.CodeUnits (drop)
 import Data.Traversable (traverse)
@@ -31,11 +31,37 @@ run context = do
   loaded <- Results.loadState context
   case loaded of
     Left error -> pure (failText (if Args.startsWith "do-results: " error then "done: " <> drop 12 error else error))
-    Right state -> do
-      summary <- compute state
-      case summary of
-        Left error -> pure (failText ("done: " <> error))
-        Right value -> pure (Outcome.withStdout (renderMarkdown value <> renderFacts value))
+    Right state -> case State.unfinishedJobs state of
+      [] -> do
+        summary <- compute state
+        case summary of
+          Left error -> pure (failText ("done: " <> error))
+          Right value -> pure (Outcome.withStdout (renderMarkdown value <> renderFacts value))
+      jobs -> do
+        now <- Sys.nowIso
+        current <- Sys.isoToEpoch now
+        case current of
+          Left error -> pure (failText ("done: invalid current time: " <> error))
+          Right nowEpoch -> do
+            described <- traverse (describeUnfinished nowEpoch) jobs
+            pure (failText ("done: unfinished job(s): " <> joinWith ", " described <> " — resolve with job-end before summary (non-completed outcomes require a verification reason)"))
+
+-- | An unfinished job blocks summary; jobs past their deadline are
+-- | additionally reported as stalled so liveness failures stay visible,
+-- | and an unparsable deadline is marked instead of silently counting as
+-- | unstalled.
+describeUnfinished :: Int -> State.Job -> Effect String
+describeUnfinished nowEpoch job = do
+  stalled <- State.jobStalled nowEpoch job
+  broken <- State.unparsableDeadline job
+  pure
+    ( "'" <> job.id <> "'"
+        <> (if stalled then " (stalled past deadline " <> fromMaybe "" job.deadline <> ")" else "")
+        <> maybe "" (\raw -> " (deadline unparsable \"" <> raw <> "\")") broken
+        -- A job without a deadline can never stall, so say so instead of
+        -- letting it pass as a merely unfinished, implicitly timed job.
+        <> (if isNothing job.deadline then " (no deadline — unbounded)" else "")
+    )
 
 -- | A row contains facts needed by both markdown and machine-readable output.
 type DoneRow =
@@ -52,6 +78,7 @@ type DoneSummary =
   , dominant :: Array String
   , skipped :: Array String
   , failed :: Array String
+  , jobs :: Array State.Job
   }
 
 -- | Compute all duration and status facts, failing on malformed timestamps.
@@ -84,7 +111,7 @@ compute state = do
         dominant = Array.mapMaybe (dominantName totalDuration) durations
         skipped = map (skippedName <<< _.step) (Array.filter (\item -> item.step.status == State.StepSkipped) timed)
         failed = map (_.step >>> _.name) (Array.filter (\item -> item.step.status == State.StepFailed) timed)
-    pure { rows: timed, pending, totalSeconds: totalDuration, slowest, dominant, skipped, failed }
+    pure { rows: timed, pending, totalSeconds: totalDuration, slowest, dominant, skipped, failed, jobs: state.jobs }
 
 -- | Render the human-facing markdown table and slowest-step line.
 renderMarkdown :: DoneSummary -> String
@@ -102,7 +129,29 @@ renderMarkdown summary =
       slowLine = case summary.slowest of
         Nothing -> ""
         Just (Tuple name seconds) -> "**Slowest step**: `" <> name <> "` (" <> fmtDur seconds <> ")\n"
-  in table <> slowLine <> "\n"
+      jobsSection =
+        if Array.null summary.jobs then ""
+        else "**Jobs**\n\n"
+          <> "| Job | Name | Step | Started | Deadline | Outcome | Verification |\n"
+          <> "|-----|------|------|---------|----------|---------|--------------|\n"
+          <> joinWith "\n" (map jobRow summary.jobs)
+          <> "\n"
+  in table <> slowLine <> jobsSection <> "\n"
+
+-- | One ledger row; every caller-supplied cell (id, name, startedAt,
+-- | deadline, verification) is escaped like verifications, so a hand-edited
+-- | value containing `|` cannot break the markdown table. Step names and
+-- | outcomes come from fixed vocabularies and need no escaping.
+jobRow :: State.Job -> String
+jobRow job =
+  "| " <> escapeVerification job.id
+    <> " | " <> escapeVerification job.name
+    <> " | " <> job.step
+    <> " | " <> escapeVerification job.startedAt
+    <> " | " <> escapeVerification (fromMaybe "—" job.deadline)
+    <> " | " <> maybe "—" (\finished -> State.renderJobOutcome finished.outcome) job.finished
+    <> " | " <> maybe "" (\finished -> maybe "" escapeVerification finished.verification) job.finished
+    <> " |"
 
 -- | Render the machine-readable facts block for the same computed summary.
 renderFacts :: DoneSummary -> String

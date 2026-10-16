@@ -12,6 +12,7 @@ import Agency.Scripts.Do.Vcs as Vcs
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Data.String (joinWith)
 import Effect (Effect)
 
 type ToolResult =
@@ -76,10 +77,10 @@ resultsOperationNames :: Array String
 resultsOperationNames = ["step-start", "step-end", "step"]
 
 driverOperationNames :: Array String
-driverOperationNames = ["init", "start", "end", "skip", "set", "summary"]
+driverOperationNames = Ops.driverOperationNames
 
 agencyDriverUsage :: String
-agencyDriverUsage = "agency_driver: operation required (init|start|end|skip|set|summary|sync|step-start|step-end|step)"
+agencyDriverUsage = "agency_driver: operation required (" <> joinWith "|" (driverOperationNames <> ["sync"] <> resultsOperationNames) <> ")"
 
 parseVcsRead :: Array String -> Either String Vcs.VcsOp
 parseVcsRead args = case Vcs.parseVcsOp args of
