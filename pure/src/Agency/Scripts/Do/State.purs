@@ -148,6 +148,11 @@ validStepStatus value = case parseStepStatus value of
   StepUnknown _ -> Left ("state: invalid step status '" <> value <> "'")
   status -> Right status
 
+validJobOutcome :: String -> Either String JobOutcome
+validJobOutcome value = case parseJobOutcome value of
+  JobUnknown _ -> Left ("state: invalid job outcome '" <> value <> "'")
+  outcome -> Right outcome
+
 -- | A step that has begun but has not yet been recorded as complete.
 type PendingStep =
   { name :: String
@@ -335,9 +340,7 @@ parseJob value = do
   verification <- stringValue "verification" object
   outcome <- case outcomeValue of
     Nothing -> Right Nothing
-    Just text -> case parseJobOutcome text of
-      JobUnknown _ -> Left ("state: invalid job outcome '" <> text <> "'")
-      parsed -> Right (Just parsed)
+    Just text -> Just <$> validJobOutcome text
   let job = { id, name, step, startedAt, deadline, finishedAt, outcome, verification }
   validJob job
   pure job

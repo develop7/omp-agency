@@ -235,9 +235,7 @@ parseJobEnd values = do
   outcomeValue <- case Args.requiredNonEmpty jobId.rest of
     Nothing -> Left (parseError 1 "outcome required (completed|failed|cancelled|escalated)")
     Just operand -> Right operand
-  outcome <- case State.parseJobOutcome outcomeValue.value of
-    State.JobUnknown _ -> Left (parseError 1 ("do-driver: invalid outcome '" <> outcomeValue.value <> "' (completed|failed|cancelled|escalated)"))
-    parsed -> Right parsed
+  outcome <- validJobOutcome outcomeValue.value
   pure (DriverJobEnd { id: jobId.value, outcome, verification: Array.head outcomeValue.rest >>= Args.nonEmpty })
 
 parseSyncOp :: Array String -> Either ParseError SyncOp
@@ -307,6 +305,11 @@ validStepStatus :: String -> Either ParseError Unit
 validStepStatus status =
   if Array.elem status [ "passed", "failed", "skipped" ] then Right unit
   else Left (parseError 1 ("do-results: invalid status '" <> status <> "' (passed|failed|skipped)"))
+
+validJobOutcome :: String -> Either ParseError State.JobOutcome
+validJobOutcome value = case State.parseJobOutcome value of
+  State.JobUnknown _ -> Left (parseError 1 ("do-driver: invalid outcome '" <> value <> "' (completed|failed|cancelled|escalated)"))
+  outcome -> Right outcome
 
 parseError :: Int -> String -> ParseError
 parseError code message = { code, message }
