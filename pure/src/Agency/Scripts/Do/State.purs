@@ -53,6 +53,7 @@ import Data.Foldable (any, foldl)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.String (joinWith)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
@@ -570,11 +571,19 @@ setField key value state =
     "active" -> do
       text <- stringField key
       active <- validActiveStatus text
-      pure (state { active = active })
+      case active of
+        ActiveIdle -> do
+          completionClaim key text state
+          pure (state { active = active })
+        _ -> Right (state { active = active })
     "status" -> do
       text <- stringField key
       status <- validWorkflowStatus text
-      pure (state { status = status })
+      case status of
+        WorkflowCompleted -> do
+          completionClaim key text state
+          pure (state { status = status })
+        _ -> Right (state { status = status })
     "steps" -> case toArray value of
       Nothing -> Left "state: field 'steps' must be an array"
       Just values -> do
@@ -625,6 +634,21 @@ jobFinished job = case job.finished of
 -- | and restart carry-over — filters through this one definition.
 unfinishedJobs :: State -> Array Job
 unfinishedJobs state = Array.filter (not <<< jobFinished) state.jobs
+
+-- | Gate for completion claims made through `set`: `status` `completed` and
+-- | `active` `idle` declare the run over while worker jobs may still be
+-- | live, bypassing every job gate. They are refused until the ledger is
+-- | empty; honest abort (`failed`) and in-flight transitions stay open.
+completionClaim :: String -> String -> State -> Either String Unit
+completionClaim key value state =
+  let blocking = unfinishedJobs state
+  in if Array.null blocking then Right unit
+    else
+      Left
+        ( "state: unfinished job(s) block set " <> key <> "=" <> value <> ": "
+            <> joinWith ", " (map (\job -> "'" <> job.id <> "'") blocking)
+            <> " — resolve with job-end first"
+        )
 
 -- | Parse the stored deadline once for stall evaluation and diagnostics.
 -- | `Nothing` means the job has no deadline; `Left` carries the raw text
