@@ -333,6 +333,8 @@ test("restart init carries unfinished jobs forward; plain init discards them", a
 
     const restarted = await invoke(registered, "agency_driver", { op: "init", restart: true, task: "restarted task" }, cwd);
     assert.equal(restarted.details.exit, 0);
+    assert.match(restarted.details.stdout, /carried unfinished job/);
+    assert.match(restarted.details.stdout, /carry-me/);
     assert.deepEqual((await readState(cwd)).jobs, [before]);
 
     // Finished jobs stay behind with the discarded run.

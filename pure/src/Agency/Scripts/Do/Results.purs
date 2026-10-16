@@ -215,7 +215,15 @@ runDriverInit context options = do
         Right final -> do
           State.writeState (Context.statePath context) final
           let fromText = if isDefaultEntry then "default" else options.from
-          pure (Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n"))
+              -- A recovered run must see its pending work at once: when
+              -- --restart carried jobs, name them on the init line's tail.
+              carriedText =
+                if Array.null carriedJobs then ""
+                else
+                  "carried unfinished job(s): "
+                    <> joinWith ", " (map (\job -> "'" <> job.id <> "'") carriedJobs)
+                    <> "\n"
+          pure (Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n" <> carriedText))
 
 runDriverSkip :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runDriverSkip context step reason = do
