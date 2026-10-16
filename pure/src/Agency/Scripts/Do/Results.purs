@@ -99,9 +99,7 @@ runJobStart context input = withLoadedState context \state -> do
             , step: input.step
             , startedAt: started
             , deadline: limit
-            , finishedAt: Nothing
-            , outcome: Nothing
-            , verification: Nothing
+            , finished: Nothing
             }
           deadlineText = case limit of
             Nothing -> ""

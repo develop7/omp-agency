@@ -240,17 +240,17 @@ run = do
         , step: "police"
         , startedAt: "2026-10-16T12:00:00Z"
         , deadline: Just "2026-10-16T12:10:00Z"
-        , finishedAt: Just "2026-10-16T12:07:41Z"
-        , outcome: Just State.JobCompleted
-        , verification: Just "reviewed 12 files"
+        , finished: Just
+            { finishedAt: "2026-10-16T12:07:41Z"
+            , outcome: State.JobCompleted
+            , verification: Just "reviewed 12 files"
+            }
         }
       openJob =
         fullJob
           { id = "police-pass2"
           , name = "Pass 2 detail review"
-          , finishedAt = Nothing
-          , outcome = Nothing
-          , verification = Nothing
+          , finished = Nothing
           }
       ledgerState = (State.initState "2026-10-16T12:00:00Z") { jobs = [ fullJob, openJob ] }
   assert
@@ -271,7 +271,7 @@ run = do
     Left error -> do
       Console.error ("FAIL: minimal job parse: " <> error)
       Sys.exit 1
-    Right parsed -> assert "minimal unfinished job parses" (map _.outcome parsed.jobs == [ Nothing ])
+    Right parsed -> assert "minimal unfinished job parses" (map _.finished parsed.jobs == [ Nothing ])
   case State.parseState "{\"jobs\":[{\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}]}" of
     Left error -> assert "job id is required" (error == "state: field 'id' must be a string")
     Right _ -> assert "job id is required" false
@@ -290,6 +290,9 @@ run = do
   case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"outcome\":\"completed\"}]}" of
     Left error -> assert "outcome without finishedAt is rejected" (error == "state: job 'a' must record finishedAt and outcome together")
     Right _ -> assert "outcome without finishedAt is rejected" false
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"verification\":\"orphan reason\"}]}" of
+    Left error -> assert "verification without a finished job is rejected" (error == "state: job 'a' verification requires a finished job")
+    Right _ -> assert "verification without a finished job is rejected" false
   case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"bananas\"}]}" of
     Left error -> assert "unknown job outcome is rejected" (error == "state: invalid job outcome 'bananas'")
     Right _ -> assert "unknown job outcome is rejected" false
@@ -344,7 +347,15 @@ run = do
           Sys.exit 1
         Right two -> do
           assert "distinct ids append" (Array.length two.jobs == 2)
-          let finishedFiller = openJob { id = "done-filler", finishedAt = Just "2026-10-16T12:05:00Z", outcome = Just State.JobCompleted }
+          let finishedFiller =
+                openJob
+                  { id = "done-filler"
+                  , finished = Just
+                      { finishedAt: "2026-10-16T12:05:00Z"
+                      , outcome: State.JobCompleted
+                      , verification: Nothing
+                      }
+                  }
               atLimit = two { jobs = two.jobs <> Array.replicate (State.maxPersistedJobs - Array.length two.jobs) finishedFiller }
           assert "limit fixture reaches the bound" (Array.length atLimit.jobs == State.maxPersistedJobs)
           case State.appendJob (openJob { id = "one-too-many" }) atLimit of
@@ -359,13 +370,15 @@ run = do
           Sys.exit 1
         Right resolved -> do
           case Array.head resolved.jobs of
-            Just ended ->
-              assert
-                "resolve records the finish pair with verification"
-                ( ended.finishedAt == Just "2026-10-16T12:05:00Z"
-                    && ended.outcome == Just State.JobEscalated
-                    && ended.verification == Just "escalated to owner"
-                )
+            Just ended -> case ended.finished of
+              Just finish ->
+                assert
+                  "resolve records the finish pair with verification"
+                  ( finish.finishedAt == "2026-10-16T12:05:00Z"
+                      && finish.outcome == State.JobEscalated
+                      && finish.verification == Just "escalated to owner"
+                  )
+              Nothing -> assert "resolve records the finish pair with verification" false
             Nothing -> assert "resolve records the finish pair with verification" false
           case State.resolveJob "police-pass2" State.JobCompleted Nothing "2026-10-16T12:06:00Z" resolved of
             Left error -> assert "finished job cannot end twice" (error == "state: no unfinished job 'police-pass2'")
