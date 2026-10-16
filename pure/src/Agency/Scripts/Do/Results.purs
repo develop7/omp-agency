@@ -46,13 +46,22 @@ runStepStart context name = withLoadedState context \state -> case state.pending
     State.writeState (Context.statePath context) (State.startPending { name, startedAt: timestamp } state)
     pure (Outcome.withStdout ("pending: " <> name <> "\n"))
 
--- | Unfinished jobs owned by a step block every path that records the step as
--- | complete — step-end and the corrective `step` record alike — so neither
--- | can yield while the step's jobs are still open. Both callers surface this
--- | one message verbatim.
+-- | Unfinished jobs block every path that records the step as complete —
+-- | step-end and the corrective `step` record alike — so neither can yield
+-- | while the step's jobs are still open; the terminal `done` step watches
+-- | every job (see below), other steps only their own. Both callers surface
+-- | this one message verbatim.
 unfinishedJobBlocker :: String -> State.State -> Maybe String
 unfinishedJobBlocker stepName state =
-  let blocking = Array.filter (\job -> job.step == stepName) (State.unfinishedJobs state)
+  let
+    -- `done` is the global yield: recording it lets `terminalize` mark the
+    -- whole run complete, so it must consider ALL unfinished jobs, not only
+    -- `done`-owned ones — the same predicate `DoneSummary.run` uses. Any
+    -- other step blocks only on the jobs it owns.
+    open = State.unfinishedJobs state
+    blocking =
+      if stepName == "done" then open
+      else Array.filter (\job -> job.step == stepName) open
   in if Array.null blocking then Nothing
     else
       Just

@@ -245,6 +245,30 @@ test("the corrective step record is blocked by unfinished jobs", async () => {
   });
 });
 
+test("the done step blocks on unfinished jobs from any step", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "impl-1", name: "Implement work", step: "implement", budgetMinutes: 10,
+    }, cwd);
+    await invoke(registered, "agency_driver", { op: "start", step: "done" }, cwd);
+
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "end", status: "passed", verification: "ok" }, cwd),
+      (error) => {
+        assert.match(error.message, /unfinished job/);
+        assert.match(error.message, /impl-1/);
+        return true;
+      },
+    );
+    assert.equal(await snapshot(cwd), before, "blocked done end must not mutate state");
+    const state = await readState(cwd);
+    assert.equal(state.status, "running", "blocked done end must not terminalize the run");
+    assert.equal(state.jobs[0].finishedAt, undefined);
+  });
+});
+
 test("summary surfaces an unparsable job deadline instead of silently unstalling", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
