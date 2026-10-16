@@ -686,10 +686,23 @@ resolveJob jobId outcome verification completedAt state =
           )
   where
   resolveAt index =
-    let
-      resolve job =
-        job { finished = Just { finishedAt: completedAt, outcome, verification } }
-    in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
+    case Array.index state.jobs index of
+      Nothing -> Left ("state: no unfinished job '" <> jobId <> "'")
+      Just job
+        | completedAt < job.startedAt ->
+            -- Canonical UTC strings compare chronologically as text, so a
+            -- finish before the start is refused here (same rationale as
+            -- `validJob`); writing it would wedge every later load.
+            Left
+              ( "state: job '" <> job.id <> "' finishedAt '" <> completedAt
+                  <> "' precedes startedAt '" <> job.startedAt
+                  <> "'"
+              )
+        | otherwise ->
+            let
+              resolve job' =
+                job' { finished = Just { finishedAt: completedAt, outcome, verification } }
+            in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
 
 startPending :: PendingStep -> State -> State
 startPending pending state = state { pendingStep = Just pending }
