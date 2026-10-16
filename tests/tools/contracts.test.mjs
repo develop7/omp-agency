@@ -464,6 +464,8 @@ test("job-end clamps a finish that precedes the job start", async () => {
     const ended = await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
     assert.equal(ended.details.exit, 0, "a rolled-back finish must not wedge job-end");
     assert.match(ended.details.stdout, /clamped/);
+    // The note reports the observed timestamps rather than a diagnosed cause.
+    assert.match(ended.details.stdout, /\(finish \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z precedes startedAt 2030-01-01T00:00:00Z — clamped to start\)/);
     const after = await readState(cwd);
     assert.equal(after.jobs[0].finishedAt, "2030-01-01T00:00:00Z", "the finish clamps up to the start");
 
