@@ -37,6 +37,7 @@ module Agency.Scripts.Do.State
   , jobStalled
   , unparsableDeadline
   , appendJob
+  , finishNeedsClamp
   , resolveJob
   , startPending
   , finishPending
@@ -694,10 +695,23 @@ appendJob job state = do
     Left ("state: job '" <> job.id <> "' already running")
   else Right (state { jobs = state.jobs <> [ job ] })
 
+-- | Whether a driver-computed finish lands before the job's canonical start
+-- | — a clock rollback. Canonical UTC strings compare chronologically as
+-- | text, so this lexicographic test is exact. `resolveJob` clamps such a
+-- | finish up to `startedAt` (keeping the record loadable under `validJob`'s
+-- | interval rule) and `runJobEnd` announces the clamp from this same rule
+-- | instead of re-deriving it.
+finishNeedsClamp :: Job -> String -> Boolean
+finishNeedsClamp job completedAt = completedAt < job.startedAt
+
 -- | Resolve the unfinished job with this id, recording the driver-computed
 -- | finish timestamp alongside its outcome. Every outcome but `completed`
 -- | must carry a recorded reason, so the ledger can explain why the worker
--- | stopped instead of losing it.
+-- | stopped instead of losing it. A finish before the start (clock
+-- | rollback) is clamped up to `startedAt` instead of refused: refusing
+-- | wedged the protocol — every job-end and stale-job remedy failed and
+-- | done/summary stayed blocked forever — while the clamped record still
+-- | passes every later load.
 resolveJob :: String -> JobOutcome -> Maybe String -> String -> State -> Either String State
 resolveJob jobId outcome verification completedAt state =
   case Array.findIndex (\job -> not (jobFinished job) && job.id == jobId) state.jobs of
@@ -714,21 +728,12 @@ resolveJob jobId outcome verification completedAt state =
   resolveAt index =
     case Array.index state.jobs index of
       Nothing -> Left ("state: no unfinished job '" <> jobId <> "'")
-      Just job
-        | completedAt < job.startedAt ->
-            -- Canonical UTC strings compare chronologically as text, so a
-            -- finish before the start is refused here (same rationale as
-            -- `validJob`); writing it would wedge every later load.
-            Left
-              ( "state: job '" <> job.id <> "' finishedAt '" <> completedAt
-                  <> "' precedes startedAt '" <> job.startedAt
-                  <> "'"
-              )
-        | otherwise ->
-            let
-              resolve job' =
-                job' { finished = Just { finishedAt: completedAt, outcome, verification } }
-            in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
+      Just job ->
+        let
+          finishedAt = if finishNeedsClamp job completedAt then job.startedAt else completedAt
+          resolve job' =
+            job' { finished = Just { finishedAt, outcome, verification } }
+        in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
 
 startPending :: PendingStep -> State -> State
 startPending pending state = state { pendingStep = Just pending }

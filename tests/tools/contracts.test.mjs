@@ -415,7 +415,7 @@ test("job-end requires a recorded reason for non-completed outcomes", async () =
   });
 });
 
-test("job-end refuses a finish that precedes the job start", async () => {
+test("job-end clamps a finish that precedes the job start", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
     await invoke(registered, "agency_driver", {
@@ -427,12 +427,15 @@ test("job-end refuses a finish that precedes the job start", async () => {
     state.jobs[0].startedAt = "2030-01-01T00:00:00Z";
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
 
-    await assert.rejects(
-      invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd),
-      /precedes/,
-    );
+    const ended = await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
+    assert.equal(ended.details.exit, 0, "a rolled-back finish must not wedge job-end");
+    assert.match(ended.details.stdout, /clamped/);
     const after = await readState(cwd);
-    assert.equal(after.jobs[0].finishedAt, undefined, "rejected end must leave the job unfinished");
+    assert.equal(after.jobs[0].finishedAt, "2030-01-01T00:00:00Z", "the finish clamps up to the start");
+
+    // The clamped record stays loadable: later driver ops read the state.
+    const summary = await invoke(registered, "agency_driver", { op: "summary" }, cwd);
+    assert.equal(summary.details.exit, 0);
   });
 });
 
