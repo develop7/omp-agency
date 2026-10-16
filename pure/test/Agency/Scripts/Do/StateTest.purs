@@ -468,3 +468,13 @@ run = do
   case Ops.parseDriverOp [ "job-end", "p1" ] of
     Left error -> assert "job-end requires an outcome" (error.message == "outcome required (completed|failed|cancelled|escalated)")
     Right _ -> assert "job-end requires an outcome" false
+  case Ops.parseDriverOp [ "job-start", "p1", "Pass", "police", "10", "20" ] of
+    Left error ->
+      assert "job-start rejects a trailing operand"
+        (error.code == 1 && error.message == "job-start: unexpected operand '20'")
+    Right _ -> assert "job-start rejects a trailing operand" false
+  case Ops.parseDriverOp [ "job-end", "p1", "escalated", "specs verified", "surplus" ] of
+    Left error ->
+      assert "job-end rejects a trailing operand"
+        (error.code == 1 && error.message == "job-end: unexpected operand 'surplus'")
+    Right _ -> assert "job-end rejects a trailing operand" false
