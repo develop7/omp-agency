@@ -376,11 +376,30 @@ parseJob value = do
 -- | Structural invariants shared by parse and append. The finish component's
 -- | pairing is structural: the decoder only builds it from a complete flat
 -- | spelling, so a partial one is rejected before it reaches this check.
+-- | Finished jobs also obey the same interval rule as steps: the finish
+-- | cannot precede the start, and both timestamps must be canonical UTC
+-- | strings to be compared — their fixed-width format makes lexicographic
+-- | order chronological, so corrupt or hand-edited state surfaces as a parse
+-- | error instead of silently loading. Unfinished jobs carry no interval.
 validJob :: Job -> Either String Unit
 validJob job = do
   if job.id == "" then Left "state: job id must be non-empty" else Right unit
   if job.name == "" then Left "state: job name must be non-empty" else Right unit
   validStepName job.step
+  case job.finished of
+    Nothing -> Right unit
+    Just finished
+      | not (Sys.isCanonicalIso job.startedAt) ->
+          Left ("state: invalid timestamp '" <> job.startedAt <> "'")
+      | not (Sys.isCanonicalIso finished.finishedAt) ->
+          Left ("state: invalid timestamp '" <> finished.finishedAt <> "'")
+      | finished.finishedAt < job.startedAt ->
+          Left
+            ( "state: job '" <> job.id <> "' finishedAt '" <> finished.finishedAt
+                <> "' precedes startedAt '" <> job.startedAt
+                <> "'"
+            )
+      | otherwise -> Right unit
 
 -- | The contract only constrains id uniqueness among unfinished jobs, so a
 -- | finished job's id may be reused by a later run.

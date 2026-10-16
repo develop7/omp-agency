@@ -293,6 +293,15 @@ run = do
   case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"verification\":\"orphan reason\"}]}" of
     Left error -> assert "verification without a finished job is rejected" (error == "state: job 'a' verification requires a finished job")
     Right _ -> assert "verification without a finished job is rejected" false
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:05:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"completed\"}]}" of
+    Left error ->
+      assert
+        "a finish before the start is rejected"
+        (error == "state: job 'a' finishedAt '2026-10-16T12:01:00Z' precedes startedAt '2026-10-16T12:05:00Z'")
+    Right _ -> assert "a finish before the start is rejected" false
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"whenever\",\"outcome\":\"completed\"}]}" of
+    Left error -> assert "an unparsable finish timestamp is rejected" (error == "state: invalid timestamp 'whenever'")
+    Right _ -> assert "an unparsable finish timestamp is rejected" false
   case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"bananas\"}]}" of
     Left error -> assert "unknown job outcome is rejected" (error == "state: invalid job outcome 'bananas'")
     Right _ -> assert "unknown job outcome is rejected" false
