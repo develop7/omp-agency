@@ -53,3 +53,5 @@ export async function initState(cwd = process.cwd(), options = {}) {
 export async function readState(cwd = process.cwd()) {
   return JSON.parse(await readFile(join(cwd, ".do-results.json"), "utf8"));
 }
+
+export const snapshot = (cwd) => readFile(join(cwd, ".do-results.json"), "utf8");
