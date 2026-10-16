@@ -173,6 +173,7 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
       (error) => {
         assert.match(error.message, /unfinished job/);
         assert.match(error.message, /police-pass1/);
+        assert.match(error.message, /verification reason/);
         return true;
       },
     );
@@ -185,6 +186,7 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
       invoke(registered, "agency_driver", { op: "summary" }, cwd),
       (error) => {
         assert.match(error.message, /unfinished job/);
+        assert.match(error.message, /verification reason/);
         return true;
       },
     );

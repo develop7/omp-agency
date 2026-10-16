@@ -44,7 +44,7 @@ run context = do
           Left error -> pure (failText ("done: invalid current time: " <> error))
           Right nowEpoch -> do
             described <- traverse (describeUnfinished nowEpoch) jobs
-            pure (failText ("done: unfinished job(s): " <> joinWith ", " described <> " — resolve with job-end before summary"))
+            pure (failText ("done: unfinished job(s): " <> joinWith ", " described <> " — resolve with job-end before summary (non-completed outcomes require a verification reason)"))
 
 -- | An unfinished job blocks summary; jobs past their deadline are
 -- | additionally reported as stalled so liveness failures stay visible,
