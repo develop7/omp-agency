@@ -480,3 +480,13 @@ run = do
       assert "job-end rejects a trailing operand"
         (error.code == 1 && error.message == "job-end: unexpected operand 'surplus'")
     Right _ -> assert "job-end rejects a trailing operand" false
+  case Ops.parseDriverOp [ "job-start", "p1", "Pass", "police", "10", "" ] of
+    Left error ->
+      assert "job-start rejects an empty trailing operand"
+        (error.code == 1 && error.message == "job-start: unexpected operand ''")
+    Right _ -> assert "job-start rejects an empty trailing operand" false
+  case Ops.parseDriverOp [ "job-end", "p1", "escalated", "specs verified", "" ] of
+    Left error ->
+      assert "job-end rejects an empty trailing operand"
+        (error.code == 1 && error.message == "job-end: unexpected operand ''")
+    Right _ -> assert "job-end rejects an empty trailing operand" false

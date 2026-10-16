@@ -236,14 +236,14 @@ requiredOperand message remaining = case Args.requiredNonEmpty remaining of
 -- | Reject operands past the ones the op consumes. The budget and
 -- | verification reads take only the first word, so an extra operand used
 -- | to be silently dropped (`job-start id name police 10 20` quietly used
--- | 10). Empty words carry no value and are skipped; any other leftover is
--- | a caller error.
+-- | 10). An empty leftover word is rejected with the same loud error: it
+-- | carries no value, so skipping it silently loses it — the exact
+-- | behavior this check exists to kill (`parseBudget` already fails loud
+-- | on an empty budget slot).
 rejectTrailingOperands :: String -> Array String -> Either ParseError Unit
 rejectTrailingOperands op remaining = case Array.uncons remaining of
   Nothing -> Right unit
-  Just { head, tail } -> case Args.nonEmpty head of
-    Nothing -> rejectTrailingOperands op tail
-    Just operand -> Left (parseError 1 (op <> ": unexpected operand '" <> operand <> "'"))
+  Just { head } -> Left (parseError 1 (op <> ": unexpected operand '" <> head <> "'"))
 
 -- | Job budget bounds accepted by `job-start`, named so the range check and
 -- | its error text derive from one source. The zod `.min(1).max(120)` in
