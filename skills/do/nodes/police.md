@@ -24,7 +24,7 @@ changed files are documentation-only (`.md`, `.txt`, README, docs/) — skip thi
 
 **Resolve leftover jobs first.** At step start, before spawning any work, read the `jobs` array in `.do-results.json` and resolve every unfinished entry with `step == "police"` (a crash leaves these behind): `agency_driver { op: "job-end", id, outcome: "escalated" }` — stale, its process died — and spawn a replacement worker under a fresh id, or `outcome: "cancelled"` to drop that work. Never spawn while a stale police job is unfinished.
 
-Otherwise, read the `code-police` skill via `read skill://code-police` and invoke it. When it asks about scope: **changes in the current branch/PR only**. Its worker budgets come from this step's `pattern_config` as surfaced by `workflow cli`: `worker_budget_minutes = 10` per worker, `worker_retries = 1` fallback attempt, `police_budget_minutes = 30` for the whole step.
+Otherwise, read the `code-police` skill via `read skill://code-police` and invoke it. When it asks about scope: **changes in the current branch/PR only**. Its worker budgets come from this step's `pattern_config` as surfaced by `workflow cli`: `worker_budget_minutes` per worker, `worker_retries` fallback attempt, `police_budget_minutes` for the whole step.
 
 The orchestrator resolves optional project rules once using the skill's **Project rules** protocol before spawning passes. Reuse that complete rules bundle for every reviewer, elegance call, and retry; reviewers must not rediscover project-rule files. Optional absence selects built-in rules only; genuine discovery or read failures stop the review.
 
