@@ -224,10 +224,13 @@ parseJobStart values = do
   validWorkflowStep jobStep.value
   budget <- parseBudget jobStep.rest
   pure (DriverJobStart { id: jobId.value, name: jobName.value, step: jobStep.value, budgetMinutes: budget })
-  where
-  requiredOperand message remaining = case Args.requiredNonEmpty remaining of
-    Nothing -> Left (parseError 1 message)
-    Just operand -> Right operand
+
+-- | One required operand from the remaining CLI words, shared by the
+-- | job-start and job-end operand chains.
+requiredOperand :: String -> Array String -> Either ParseError Args.RequiredArg
+requiredOperand message remaining = case Args.requiredNonEmpty remaining of
+  Nothing -> Left (parseError 1 message)
+  Just operand -> Right operand
 
 -- | Job budget bounds accepted by `job-start`, named so the range check and
 -- | its error text derive from one source. The zod `.min(1).max(120)` in
@@ -256,12 +259,8 @@ parseBudget remaining = case Array.head remaining of
 
 parseJobEnd :: Array String -> Either ParseError DriverOp
 parseJobEnd values = do
-  jobId <- case Args.requiredNonEmpty values of
-    Nothing -> Left (parseError 1 "id required")
-    Just operand -> Right operand
-  outcomeValue <- case Args.requiredNonEmpty jobId.rest of
-    Nothing -> Left (parseError 1 ("outcome required (" <> joinWith "|" State.jobOutcomeNames <> ")"))
-    Just operand -> Right operand
+  jobId <- requiredOperand "id required" values
+  outcomeValue <- requiredOperand ("outcome required (" <> joinWith "|" State.jobOutcomeNames <> ")") jobId.rest
   outcome <- validJobOutcome outcomeValue.value
   pure (DriverJobEnd { id: jobId.value, outcome, verification: Array.head outcomeValue.rest >>= Args.nonEmpty })
 
