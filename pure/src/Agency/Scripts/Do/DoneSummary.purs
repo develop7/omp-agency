@@ -19,7 +19,7 @@ import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Data.Array as Array
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
 import Data.String (Pattern(..), Replacement(..), joinWith, replaceAll)
 import Data.String.CodeUnits (drop)
 import Data.Traversable (traverse)
@@ -58,6 +58,9 @@ describeUnfinished nowEpoch job = do
     ( "'" <> job.id <> "'"
         <> (if stalled then " (stalled past deadline " <> fromMaybe "" job.deadline <> ")" else "")
         <> maybe "" (\raw -> " (deadline unparsable \"" <> raw <> "\")") broken
+        -- A job without a deadline can never stall, so say so instead of
+        -- letting it pass as a merely unfinished, implicitly timed job.
+        <> (if isNothing job.deadline then " (no deadline — unbounded)" else "")
     )
 
 -- | A row contains facts needed by both markdown and machine-readable output.

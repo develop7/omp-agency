@@ -323,6 +323,26 @@ test("summary surfaces an unparsable job deadline instead of silently unstalling
   });
 });
 
+test("summary marks jobs without a deadline as unbounded", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", {
+      op: "job-start", id: "no-budget", name: "Unbounded work", step: "police",
+    }, cwd);
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "summary" }, cwd),
+      (error) => {
+        assert.match(error.message, /unfinished job/);
+        assert.match(error.message, /no-budget/);
+        assert.match(error.message, /no deadline/);
+        return true;
+      },
+    );
+    assert.equal(await snapshot(cwd), before, "unbounded summary must not mutate state");
+  });
+});
+
 test("restart init carries unfinished jobs forward; plain init discards them", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
