@@ -342,7 +342,10 @@ export default function (pi: ExtensionAPI) {
       z.object({
         op: z.literal("job-end"), id: text,
         outcome: z.enum(["completed", "failed", "cancelled", "escalated"]),
-        verification: z.string().optional(),
+        // The driver maps "" to absent, so an empty reason would fail the
+        // non-completed outcome rule only after passing the schema — the
+        // contract must reject it up front instead.
+        verification: z.string().min(1).optional(),
       }).strict(),
       z.object({ op: z.literal("summary") }).strict(),
       z.object({ op: z.literal("sync"), noVcs: z.boolean() }).strict(),

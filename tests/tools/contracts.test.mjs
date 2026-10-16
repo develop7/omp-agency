@@ -103,6 +103,9 @@ test("job operation schemas reject out-of-contract operands", () => {
   rejects(schema, { op: "job-end", id: "", outcome: "completed" });
   rejects(schema, { op: "job-end", id: "j1", outcome: "finished" });
   rejects(schema, { op: "job-end", id: "j1", outcome: "completed", args: [] });
+  // Empty verification maps to absent and would fail the driver's
+  // non-completed reason rule — the schema must not advertise it.
+  rejects(schema, { op: "job-end", id: "j1", outcome: "failed", verification: "" });
   assert.equal(schema.safeParse({ op: "job-start", id: "j1", name: "Pass 1", step: "police", budgetMinutes: 120 }).success, true);
   assert.equal(schema.safeParse({ op: "job-end", id: "j1", outcome: "escalated", verification: "handoff notes" }).success, true);
 });
