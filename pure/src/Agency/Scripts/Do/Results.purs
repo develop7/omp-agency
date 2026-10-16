@@ -49,10 +49,13 @@ runStepStart context name = withLoadedState context \state -> case state.pending
 -- | Unfinished jobs block every path that records the step as complete —
 -- | step-end and the corrective `step` record alike — so neither can yield
 -- | while the step's jobs are still open; the terminal `done` step watches
--- | every job (see below), other steps only their own. Both callers surface
--- | this one message verbatim.
-unfinishedJobBlocker :: String -> State.State -> Maybe String
-unfinishedJobBlocker stepName state =
+-- | every job (see below), other steps only their own. The first argument
+-- | names the operation being blocked so the message reports what the
+-- | caller actually invoked (`"step-end"` from `runStepEnd` and
+-- | `runDriverSkip`, whose step-end half is what refuses, `"step"` from
+-- | `runStep`); every caller otherwise surfaces this one message verbatim.
+unfinishedJobBlocker :: String -> String -> State.State -> Maybe String
+unfinishedJobBlocker operation stepName state =
   let
     -- `done` is the global yield: recording it lets `terminalize` mark the
     -- whole run complete, so it must consider ALL unfinished jobs, not only
@@ -65,7 +68,7 @@ unfinishedJobBlocker stepName state =
   in if Array.null blocking then Nothing
     else
       Just
-        ( "do-results: unfinished job(s) block step-end for '" <> stepName <> "': "
+        ( "do-results: unfinished job(s) block " <> operation <> " for '" <> stepName <> "': "
             <> joinWith ", " (map (\job -> "'" <> job.id <> "'") blocking)
             <> " — resolve with job-end first (non-completed outcomes require a verification reason)"
         )
@@ -73,7 +76,7 @@ unfinishedJobBlocker stepName state =
 runStepEnd :: WorkflowContext -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStepEnd context status verification reason = withLoadedState context \state -> case state.pendingStep of
   Nothing -> pure (failText "do-results: no pendingStep — call step-start first")
-  Just pending -> case unfinishedJobBlocker pending.name state of
+  Just pending -> case unfinishedJobBlocker "step-end" pending.name state of
     Just blocker -> pure (failText blocker)
     Nothing -> do
       completed <- Sys.nowIso
@@ -88,7 +91,7 @@ runStepEnd context status verification reason = withLoadedState context \state -
 
 runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStep context name status verification startedAt completedAt reason = withLoadedState context \state ->
-  case unfinishedJobBlocker name state of
+  case unfinishedJobBlocker "step" name state of
     Just blocker -> pure (failText blocker)
     Nothing -> do
       actualStart <- resolveNow startedAt
@@ -238,7 +241,7 @@ runDriverInit context options = do
 -- | that `runStepStart` already persisted behind a failing skip, breaking
 -- | the guard-must-not-mutate invariant on the composite operation.
 runDriverSkip :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
-runDriverSkip context step reason = withLoadedState context \state -> case unfinishedJobBlocker step state of
+runDriverSkip context step reason = withLoadedState context \state -> case unfinishedJobBlocker "step-end" step state of
   Just blocker -> pure (failText blocker)
   Nothing -> do
     started <- runStepStart context step
