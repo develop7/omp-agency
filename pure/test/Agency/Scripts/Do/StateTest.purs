@@ -272,6 +272,9 @@ run = do
       Console.error ("FAIL: minimal job parse: " <> error)
       Sys.exit 1
     Right parsed -> assert "minimal unfinished job parses" (map _.finished parsed.jobs == [ Nothing ])
+  case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16 12:00:00Z\"}]}" of
+    Left error -> assert "an unfinished job's start must be canonical" (error == "state: invalid timestamp '2026-10-16 12:00:00Z'")
+    Right _ -> assert "an unfinished job's start must be canonical" false
   case State.parseState "{\"jobs\":[{\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}]}" of
     Left error -> assert "job id is required" (error == "state: field 'id' must be a string")
     Right _ -> assert "job id is required" false
