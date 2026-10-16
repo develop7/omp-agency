@@ -30,25 +30,7 @@ async function loadApi(): Promise<AgencyApi> {
   apiPromise ??= import("../pure/dist/agency-api.js") as unknown as Promise<AgencyApi>;
   return apiPromise;
 }
-async function executeWorkflow(
-  params: { field: "cli" } | { field: "cli_seed"; from: string },
-  ctx: ToolContext,
-): Promise<{
-  content: Array<{ type: "text"; text: string }>;
-  details: ApiResult;
-}> {
-  const request = params.field === "cli"
-    ? { operation: "cli" as const, cwd: ctx.cwd }
-    : { operation: "cli_seed" as const, seed: params.from, cwd: ctx.cwd };
-  const result = await evaluateWorkflow(request);
-  if (result.exit !== 0) {
-    throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
-  }
-  return {
-    content: [{ type: "text", text: result.stdout || "ok" }],
-    details: result,
-  };
-}
+
 async function executeApi(tool: string, args: string[]): Promise<{
   content: Array<{ type: "text"; text: string }>;
   details: ApiResult;
@@ -279,17 +261,44 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  const cliField = "cli";
+  const cliSeedField = "cli_seed";
   pi.registerTool({
     name: "workflow",
     label: "Workflow",
     description:
       "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared entry point to seed/resume.",
     parameters: z.union([
-      z.object({ field: z.literal("cli") }).strict(),
-      z.object({ field: z.literal("cli_seed"), from: z.enum(workflowEntryPoints) }).strict(),
+      // zod promotes a lone soft-failing arm's issues, so this arm's bare key
+      // error is what a caller sees for `from` alongside `cli`. Name the
+      // sibling cli_seed arm there instead of the default prose.
+      z.object({ field: z.literal(cliField) }, {
+        error: issue => {
+          // This map also finalizes issues nested under invalid_union when
+          // `field` is misspelled; input.field keeps the hint scoped to a
+          // genuine cli selection so it cannot mislabel foreign payloads.
+          if (issue.code !== "unrecognized_keys" || !issue.keys.includes("from") || issue.input?.field !== cliField) {
+            return undefined;
+          }
+          const others = issue.keys.filter(key => key !== "from");
+          return `cli takes no "from"; use the sibling arm { field: "${cliSeedField}", from: <entry point> } to supply one`
+            + (others.length ? `; also unrecognized keys: ${others.map(JSON.stringify).join(", ")}` : "");
+        },
+      }).strict(),
+      z.object({ field: z.literal(cliSeedField), from: z.enum(workflowEntryPoints) }).strict(),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      return executeWorkflow(params, ctx);
+      const request = params.field === cliField
+        ? { operation: cliField, cwd: ctx.cwd }
+        : { operation: cliSeedField, seed: params.from, cwd: ctx.cwd };
+      const result = await evaluateWorkflow(request);
+      if (result.exit !== 0) {
+        throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
+      }
+      return {
+        content: [{ type: "text", text: result.stdout || "ok" }],
+        details: result,
+      };
     },
   });
 

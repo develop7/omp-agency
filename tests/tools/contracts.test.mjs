@@ -92,8 +92,29 @@ test("agency_driver rejects invalid operation fields and generated vocabulary va
 test("workflow rejects legacy argv and unknown entry-point selectors", () => {
   const schema = tool(tools, "workflow").parameters;
   rejects(schema, { args: ["cli"] });
-  rejects(schema, { field: "cli", from: "default" });
   rejects(schema, { field: "cli_seed", from: "not-an-entry-point" });
+});
+
+test("workflow cli + from rejection names the sibling cli_seed arm", () => {
+  const schema = tool(tools, "workflow").parameters;
+  for (const from of ["default", "not-an-entry-point"]) {
+    const result = schema.safeParse({ field: "cli", from });
+    assert.equal(result.success, false);
+    const [issue] = result.error.issues;
+    assert.equal(issue.code, "unrecognized_keys");
+    assert.deepEqual(issue.keys, ["from"]);
+    // Guidance, not exact prose: the error must point at the cli_seed arm.
+    assert.match(issue.message, /cli_seed/);
+  }
+  // The hint keeps enumerating any other unrecognized keys, as the deleted
+  // strict-object prose did.
+  const mixed = schema.safeParse({ field: "cli", from: "default", junk: 1 });
+  assert.equal(mixed.success, false);
+  assert.match(mixed.error.issues[0].message, /cli_seed/);
+  assert.match(mixed.error.issues[0].message, /junk/);
+  // Both valid forms keep parsing unchanged.
+  assert.equal(schema.safeParse({ field: "cli" }).success, true);
+  assert.equal(schema.safeParse({ field: "cli_seed", from: "default" }).success, true);
 });
 
 test("forge rejects injected selectors, arbitrary argv, and conflicting bodies", () => {
