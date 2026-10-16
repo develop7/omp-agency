@@ -67,7 +67,7 @@ unfinishedJobBlocker stepName state =
       Just
         ( "do-results: unfinished job(s) block step-end for '" <> stepName <> "': "
             <> joinWith ", " (map (\job -> "'" <> job.id <> "'") blocking)
-            <> " — resolve with job-end first"
+            <> " — resolve with job-end first (non-completed outcomes require a verification reason)"
         )
 
 runStepEnd :: WorkflowContext -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
