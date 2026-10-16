@@ -383,21 +383,23 @@ parseJob value = do
 -- | Structural invariants shared by parse and append. The finish component's
 -- | pairing is structural: the decoder only builds it from a complete flat
 -- | spelling, so a partial one is rejected before it reaches this check.
--- | Finished jobs also obey the same interval rule as steps: the finish
--- | cannot precede the start, and both timestamps must be canonical UTC
--- | strings to be compared — their fixed-width format makes lexicographic
--- | order chronological, so corrupt or hand-edited state surfaces as a parse
--- | error instead of silently loading. Unfinished jobs carry no interval.
+-- | Every job's start must be a canonical UTC string: later comparisons
+-- | (`resolveJob`'s clamp included) order timestamps lexicographically,
+-- | which is only chronological in the fixed-width canonical format, so a
+-- | corrupt or hand-edited start surfaces as a parse error instead of
+-- | silently loading. Finished jobs additionally obey the same interval
+-- | rule as steps: the finish cannot precede the start and must itself be
+-- | canonical to be compared. Unfinished jobs carry no interval.
 validJob :: Job -> Either String Unit
 validJob job = do
   if job.id == "" then Left "state: job id must be non-empty" else Right unit
   if job.name == "" then Left "state: job name must be non-empty" else Right unit
   validStepName job.step
-  case job.finished of
+  if not (Sys.isCanonicalIso job.startedAt) then
+    Left ("state: invalid timestamp '" <> job.startedAt <> "'")
+  else case job.finished of
     Nothing -> Right unit
     Just finished
-      | not (Sys.isCanonicalIso job.startedAt) ->
-          Left ("state: invalid timestamp '" <> job.startedAt <> "'")
       | not (Sys.isCanonicalIso finished.finishedAt) ->
           Left ("state: invalid timestamp '" <> finished.finishedAt <> "'")
       | finished.finishedAt < job.startedAt ->
