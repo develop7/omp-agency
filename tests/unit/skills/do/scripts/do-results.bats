@@ -43,6 +43,26 @@ run_dr() {
   [[ "$output" =~ ^init:\ startedAt=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
+# Helper: run do-driver — the command that creates live jobs, used here to
+# build the ledger fixture the legacy init guard must refuse to destroy.
+run_dd() {
+  run node "$REPO_ROOT/pure/dist/agency-do.js" do-driver "$@"
+}
+
+@test "init refuses to reset the state while a job is unfinished" {
+  run_dr init
+  [ "$status" -eq 0 ]
+  run_dd job-start j1 "Pass 1" police
+  [ "$status" -eq 0 ]
+  cp .do-results.json before-init.json
+
+  run_dr init
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unfinished job(s) block init"* ]]
+  [[ "$output" == *"'j1'"* ]]
+  cmp .do-results.json before-init.json
+}
+
 @test "step-start sets pendingStep" {
   run_dr init
   run_dr step-start research
