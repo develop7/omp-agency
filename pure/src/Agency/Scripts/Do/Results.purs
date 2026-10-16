@@ -173,7 +173,7 @@ runJobEnd context input = withLoadedState context \state -> do
       -- `startedAt` inside `resolveJob`; surface the observed timestamps
       -- loudly instead of silently rewriting the recorded duration — what
       -- caused the inversion is not assumed here.
-      let clampNote = case Array.find (\job -> not (State.jobFinished job) && job.id == input.id) state.jobs of
+      let clampNote = case Array.find (State.unfinishedJobWithId input.id) state.jobs of
             Just job | State.finishNeedsClamp job completed ->
               " (finish " <> completed <> " precedes startedAt " <> job.startedAt <> " — clamped to start)"
             _ -> ""

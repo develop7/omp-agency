@@ -34,6 +34,7 @@ module Agency.Scripts.Do.State
   , appendStep
   , jobFinished
   , unfinishedJobs
+  , unfinishedJobWithId
   , jobIdList
   , jobStalled
   , unparsableDeadline
@@ -639,6 +640,13 @@ jobFinished job = case job.finished of
 unfinishedJobs :: State -> Array Job
 unfinishedJobs state = Array.filter (not <<< jobFinished) state.jobs
 
+-- | Whether `job` is the unfinished job carrying `jobId` — the one
+-- | spelling of "unfinished job with this id". `resolveJob`'s lookup,
+-- | `appendJob`'s duplicate check, and `runJobEnd`'s clamp report all ask
+-- | this same question, so it lives beside the job predicates they read.
+unfinishedJobWithId :: String -> Job -> Boolean
+unfinishedJobWithId jobId job = not (jobFinished job) && job.id == jobId
+
 -- | The quoted, comma-joined ids of `jobs` — the blocker, restart
 -- | carry-over, and completion-claim messages all render this same list,
 -- | so the formatting lives once beside the job predicates they read.
@@ -701,7 +709,7 @@ unparsableDeadline job = do
 appendJob :: Job -> State -> Either String State
 appendJob job state = do
   validJob job
-  if any (\existing -> not (jobFinished existing) && existing.id == job.id) state.jobs then
+  if any (unfinishedJobWithId job.id) state.jobs then
     Left ("state: job '" <> job.id <> "' already running")
   else if Array.length state.jobs >= maxPersistedJobs then
     let room = makeJobRoom state.jobs in
@@ -739,7 +747,7 @@ finishNeedsClamp job completedAt = completedAt < job.startedAt
 -- | passes every later load.
 resolveJob :: String -> JobOutcome -> Maybe String -> String -> State -> Either String State
 resolveJob jobId outcome verification completedAt state =
-  case Array.findIndex (\job -> not (jobFinished job) && job.id == jobId) state.jobs of
+  case Array.findIndex (unfinishedJobWithId jobId) state.jobs of
     Nothing -> Left ("state: no unfinished job '" <> jobId <> "'")
     Just index -> case outcome, verification of
       JobCompleted, _ -> resolveAt index
