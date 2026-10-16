@@ -26,6 +26,7 @@ module Agency.Scripts.Do.Ops
   , fmtDur
   , jsonValueFor
   , validInterval
+  , driverOperationNames
   ) where
 
 import Prelude
@@ -100,6 +101,14 @@ resultsCommandNames = "init|step-start|step-end|step|set"
 resultsUsage :: String
 resultsUsage = "Usage: do-results <" <> resultsCommandNames <> "> ..."
 
+-- | Every do-driver subcommand, single-sourced for the usage strings here
+-- | and the agency_driver dispatch check in Api.
+driverOperationNames :: Array String
+driverOperationNames = [ "init", "start", "end", "skip", "set", "summary", "job-start", "job-end" ]
+
+doDriverUsage :: String
+doDriverUsage = "Usage: do-driver <" <> joinWith "|" driverOperationNames <> "> ..."
+
 parseResultsOp :: Array String -> Either ParseError ResultsOp
 parseResultsOp args =
   case Args.requiredNonEmpty args of
@@ -148,7 +157,7 @@ takeFive values = do
 parseDriverOp :: Array String -> Either ParseError DriverOp
 parseDriverOp args =
   case Args.requiredNonEmpty args of
-    Nothing -> Left (parseError 1 "Usage: do-driver <init|start|end|skip|set|summary|job-start|job-end> ...")
+    Nothing -> Left (parseError 1 doDriverUsage)
     Just { value: command, rest } -> case command of
       "init" -> parseDriverInit rest
       "start" -> requiredWorkflowStep "step required" DriverStart rest
@@ -172,7 +181,7 @@ parseDriverOp args =
       "summary" -> Right DriverSummary
       "job-start" -> parseJobStart rest
       "job-end" -> parseJobEnd rest
-      _ -> Left (parseError 1 ("Unknown command: " <> command <> "\nUsage: do-driver <init|start|end|skip|set|summary|job-start|job-end> ..."))
+      _ -> Left (parseError 1 ("Unknown command: " <> command <> "\n" <> doDriverUsage))
   where
   requiredWorkflowStep message constructor values = case Args.requiredNonEmpty values of
     Just { value } -> do
