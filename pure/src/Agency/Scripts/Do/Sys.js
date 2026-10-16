@@ -1,9 +1,13 @@
+function canonicalIso(date) {
+  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 export function nowIso() {
-  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  return canonicalIso(new Date());
 }
 
 export function formatEpochIso(epoch) {
-  return new Date(epoch * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  return canonicalIso(new Date(epoch * 1000));
 }
 
 export function bundleDir() {
