@@ -303,6 +303,7 @@ export default function (pi: ExtensionAPI) {
   const stateValues = {
     review: boolean, noVcs: boolean, minimal: boolean, hasEvidence: boolean,
     supportsPrCreate: boolean, supportsPrComment: boolean, supportsIssueView: boolean, supportsPrChecks: boolean,
+    requireRemote: boolean,
     active: z.enum(["idle", "working", "waiting"]),
     status: z.enum(["idle", "running", "completed", "failed"]),
     from: z.enum(workflowEntryPoints), steps: z.array(recordedStep), pendingStep: pendingStep.nullable(),
