@@ -26,11 +26,21 @@ teardown() {
   [ "$output" = "0" ]
 }
 
-@test "nickel test executes doc examples (mutation guard)" {
+@test "nickel test executes plain-fence doc examples (mutation guard)" {
   # If fence collection ever drifts, `nickel test` could pass having run zero
   # examples. Corrupting one known expectation must make it fail, proving the
-  # examples above execute.
+  # plain-fence example executes.
   sed -i "s|# => 'github|# => 'gitea|" workflow.ncl
+  run nickel test workflow.ncl
+  echo "$output"
+  [ "$status" -ne 0 ]
+}
+
+@test "nickel test executes multiline-fence doc examples (mutation guard)" {
+  # The plain-fence guard cannot see multiline fences silently dropping out of
+  # collection (bad label, splitting change); corrupting one of their
+  # expectations must fail too.
+  sed -i 's|# => "plan-approval"|# => "bogus"|' workflow.ncl
   run nickel test workflow.ncl
   echo "$output"
   [ "$status" -ne 0 ]
