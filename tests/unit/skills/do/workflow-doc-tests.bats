@@ -11,10 +11,10 @@ setup() {
   setup_test_dir
   cp "$REPO_ROOT/skills/do/workflow.ncl" .
   cp "$REPO_ROOT/skills/do/workflow-manifest.json" .
-  # Rewrite the in-memory seam to a local import. If the seam spelling ever
-  # changes, the rewrite misses and the %inmem_src% assertion below fails
-  # loudly instead of surfacing as a confusing resolution error.
-  sed -i 's|import "%inmem_src%:workflow-manifest.json"|import "workflow-manifest.json"|' workflow.ncl
+  # Strip the in-memory seam prefix so the vocabulary import resolves against
+  # the scratch copy; the %inmem_src% assertion below fails loudly if the
+  # strip ever misses.
+  sed -i 's|%inmem_src%:||' workflow.ncl
 }
 
 teardown() {
