@@ -92,7 +92,7 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     ## Examples
 
     ```nickel
-    (normalize_state { steps = [], forge = "github", noVcs = false, minimal = false, task = "test", active = "working", status = "running" }).forge
+    (normalize_state { steps = [], forge = "github", noVcs = false, minimal = false }).forge
     # => 'github
     ```
   "%
