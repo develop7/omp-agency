@@ -39,6 +39,7 @@ run_nickel_test() {
   # plain-fence example executes.
   sed -i "s|# => 'github|# => 'gitea|" workflow.ncl
   run_nickel_test
+  [[ "$output" == *gitea* ]]
   [ "$status" -ne 0 ]
 }
 
@@ -48,6 +49,7 @@ run_nickel_test() {
   # expectations must fail too.
   sed -i 's|# => "plan-approval"|# => "bogus"|' workflow.ncl
   run_nickel_test
+  [[ "$output" == *bogus* ]]
   [ "$status" -ne 0 ]
 }
 
