@@ -21,6 +21,13 @@ teardown() {
   teardown_test_dir
 }
 
+# Run the doctest suite and surface its output; callers assert on
+# $status/$output (the repo's run_* helper idiom).
+run_nickel_test() {
+  run nickel test workflow.ncl
+  echo "$output"
+}
+
 @test "vocabulary import seam is rewritten for the stock CLI" {
   run grep -c '%inmem_src%' workflow.ncl
   [ "$output" = "0" ]
@@ -31,8 +38,7 @@ teardown() {
   # examples. Corrupting one known expectation must make it fail, proving the
   # plain-fence example executes.
   sed -i "s|# => 'github|# => 'gitea|" workflow.ncl
-  run nickel test workflow.ncl
-  echo "$output"
+  run_nickel_test
   [ "$status" -ne 0 ]
 }
 
@@ -41,13 +47,11 @@ teardown() {
   # collection (bad label, splitting change); corrupting one of their
   # expectations must fail too.
   sed -i 's|# => "plan-approval"|# => "bogus"|' workflow.ncl
-  run nickel test workflow.ncl
-  echo "$output"
+  run_nickel_test
   [ "$status" -ne 0 ]
 }
 
 @test "workflow.ncl documentation examples pass nickel test" {
-  run nickel test workflow.ncl
-  echo "$output"
+  run_nickel_test
   [ "$status" -eq 0 ]
 }
