@@ -334,7 +334,7 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     should_skip "docs" (_test_state & { minimal = true })
     # => true
 
-    should_skip "create-pr" (_test_state & { forge = 'bitbucket, supportsPrCreate = false, supportsPrComment = false, supportsIssueView = false, supportsPrChecks = false })
+    should_skip "create-pr" (_test_state & { forge = 'bitbucket, supportsPrCreate | force = false, supportsPrComment | force = false, supportsIssueView | force = false, supportsPrChecks | force = false })
     # => true
 
     should_skip "evidence" _test_state
@@ -557,6 +557,10 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
       minimal | default = false,
       review | default = false,
       forge | default = 'github,
+      supportsPrCreate = true,
+      supportsPrComment = true,
+      supportsIssueView = true,
+      supportsPrChecks = true,
       task = "test",
     },
 }
