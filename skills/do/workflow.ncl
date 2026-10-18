@@ -302,7 +302,7 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     | doc "Steps omitted from both CLI routing and the todo list when --minimal is set."
     = ["docs", "hickey-lowy", "police", "evidence"],
   ReviewSkips
-    | doc "Steps omitted from both CLI routing and the todo list when --review is not set."
+    | doc "Steps omitted from the todo list when --review is not set."
     = ["plan-approval"],
 
   # ── Helper functions ───────────────────────────────────────────────────────
@@ -439,6 +439,8 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     - `initial_status`: 'completed for pre-steps, 'pending for the rest
     - MinimalSkips steps are omitted entirely when state.minimal is true
       (--minimal was passed); otherwise they're included as normal steps.
+    - ReviewSkips steps are omitted entirely when state.review is false
+      (--review was not passed); otherwise they're included as normal steps.
   "%
     = fun from state =>
     let start = resolve_entry from in
