@@ -29,6 +29,11 @@ run_nickel_test() {
 }
 
 @test "vocabulary import seam is rewritten for the stock CLI" {
+  # Presence in the source (there is a seam to strip) and absence in the
+  # scratch copy (the strip worked): neither check alone distinguishes a
+  # rewrite from a prefix-less source passing vacuously.
+  run grep -c '%inmem_src%:' "$REPO_ROOT/skills/do/workflow.ncl"
+  [ "$output" -ge 1 ]
   run grep -c '%inmem_src%' workflow.ncl
   [ "$output" = "0" ]
 }
