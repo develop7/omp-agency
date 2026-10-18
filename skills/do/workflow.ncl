@@ -325,19 +325,19 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     ## Examples
 
     ```nickel multiline
-    should_skip "branch" { active = "working", status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
+    should_skip "branch" (_test_state & { noVcs = true })
     # => true
 
-    should_skip "docs" { active = "working", status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    should_skip "docs" (_test_state & { minimal = true })
     # => true
 
-    should_skip "create-pr" { active = "working", status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'bitbucket, supportsPrCreate = false, supportsPrComment = false, supportsIssueView = false, supportsPrChecks = false, task = "test" }
+    should_skip "create-pr" (_test_state & { forge = 'bitbucket, supportsPrCreate = false, supportsPrComment = false, supportsIssueView = false, supportsPrChecks = false })
     # => true
 
     should_skip "evidence" _test_state
     # => false
 
-    should_skip "ci" { active = "working", status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
+    should_skip "ci" (_test_state & { noVcs = true })
     # => false
     ```
   "%
@@ -354,13 +354,13 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     ## Examples
 
     ```nickel multiline
-    get_next "check" { active = "working", status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    get_next "check" (_test_state & { minimal = true })
     # => "fmt"
 
-    get_next "research" { active = "working", status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, task = "test" }
+    get_next "research" (_test_state & { review = true })
     # => "plan-approval"
 
-    get_next "fmt" { active = "working", status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
+    get_next "fmt" (_test_state & { noVcs = true })
     # => "hickey-lowy"
     ```
   "%
@@ -486,7 +486,7 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     cli _test_state
     # => { step = "sync", skip = false, pattern = 'one-shot, instructions = "nodes/sync.md", requires = [], pattern_config = {} }
 
-    cli { active = "working", status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'github, from = "polish", task = "test" }
+    cli (_test_state & { from = "polish" })
     # => { step = "hickey-lowy", skip = false, pattern = 'fanout-fix, instructions = "nodes/hickey-lowy.md", requires = ["diff", "research.context"], pattern_config = { cross_validate = true } }
     ```
   "%
@@ -528,13 +528,13 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     cli_seed "polish" _test_state
     # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "docs", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "" { active = "working", status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, task = "test" }
+    cli_seed "" (_test_state & { review = true })
     # => [{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "plan-approval", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "" { active = "working", status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    cli_seed "" (_test_state & { minimal = true })
     # => [{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "polish" { active = "working", status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    cli_seed "polish" (_test_state & { minimal = true })
     # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
     ```
   "%
@@ -544,19 +544,15 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
   # ── Test fixtures ──────────────────────────────────────────────────────────
 
   _test_state
-    | doc "Default state for doc tests, run through the State contract so fixture drift fails loudly."
+    | doc "Default state for doc tests, run through the State contract so fixture drift fails loudly. Example states vary it as `& { … }` deltas; `noVcs`/`minimal`/`review`/`forge` are `| default` so deltas merge over them."
     = normalize_state {
       active = "working",
       status = 'running,
       steps = [],
-      noVcs = false,
-      minimal = false,
-      review = false,
-      forge = 'github,
-      supportsPrCreate = true,
-      supportsPrComment = true,
-      supportsIssueView = true,
-      supportsPrChecks = true,
+      noVcs | default = false,
+      minimal | default = false,
+      review | default = false,
+      forge | default = 'github,
       task = "test",
     },
 }
