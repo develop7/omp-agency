@@ -14,6 +14,8 @@
 #
 # Doc examples inside | doc metadata are executable: `nickel test` runs every
 # `# =>` example (wired through tests/unit/skills/do/workflow-doc-tests.bats).
+# A plain ```nickel fence holds exactly one example; ```nickel multiline
+# fences split examples at blank lines.
 let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
 {
 
