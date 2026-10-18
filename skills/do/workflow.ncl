@@ -11,63 +11,105 @@
 #
 # The workflow tool injects this manifest beside workflow.ncl in Nickel's
 # in-memory source cache; direct callers must use the same evaluator seam.
+#
+# Doc examples inside | doc metadata are executable: `nickel test` runs every
+# `# =>` example (wired through tests/unit/skills/do/workflow-doc-tests.bats).
 let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
 {
 
   # ── State contract ──────────────────────────────────────────────────────────
-  # Contract for workflow state, accepting both JSON strings and Nickel tags.
-  # std.enum.TagOrString converts "github" → 'github at contract application.
-  # The contract is open (..) to allow extra fields from the agency_driver.
 
-  State = fun raw =>
+  State
+    | doc m%"
+    Contract for workflow state, accepting both JSON strings and Nickel tags.
+    std.enum.TagOrString converts "github" → 'github at contract application.
+    The contract is open (..) to allow extra fields from the agency_driver.
+
+    The `supports*` booleans are written by sync from the forge tool's
+    `supports` operation; nodes and skip predicates branch on them instead of
+    on the forge string, so the forge → supported-ops map lives in one place
+    (the forge tool's capability table). Only ops with readers are
+    pre-computed; pr-view/pr-edit are trusted to follow pr-create.
+  "%
+    = fun raw =>
     raw
       | {
         steps | Array { name | String, status | std.enum.TagOrString, .. },
         forge | std.enum.TagOrString,
         noVcs | Bool,
-        # `base` is the resolved branch to branch from, diff against, and
-        # target the PR at (enables stacked PRs via --base / --stack).
-        # Written by sync; carried forward from the prior run by init for
-        # entry points that skip sync. Read by vcs_read. Empty until sync
-        # runs or init inherits a resolved base.
-        base | String | default = "",
+        base
+          | doc m%"
+          The resolved branch to branch from, diff against, and target the PR
+          at (enables stacked PRs via --base / --stack). Written by sync;
+          carried forward from the prior run by init for entry points that
+          skip sync. Read by vcs_read. Empty until sync runs or init inherits
+          a resolved base.
+          "%
+          | String
+          | default = "",
         minimal | Bool,
         review | Bool | default = false,
-        # Entry point ID (e.g. "followup", "polish") set by agency_driver init --from.
-        # Read by compute_next when steps is empty to start at the entry point
-        # instead of always defaulting to "sync". Empty or "default" → "sync".
-        from | String | default = "",
+        from
+          | doc m%"
+          Entry point ID (e.g. "followup", "polish") set by agency_driver
+          init --from. Read by compute_next when steps is empty to start at
+          the entry point instead of always defaulting to "sync". Empty or
+          "default" → "sync".
+          "%
+          | String
+          | default = "",
         task | String | default = "",
         active | String | default = "idle",
         status | std.enum.TagOrString | default = 'idle,
-        # Forge capability booleans — written by sync (which calls
-        # the forge tool's supports operation for each op nodes branch on). Nodes and
-        # skip predicates branch on these instead of on the forge string, so
-        # the forge → supported-ops map lives in one place (the forge tool's
-        # capability table). Only ops with readers are pre-computed;
-        # pr-view/pr-edit are trusted to follow pr-create. When #10 lands,
-        # only the forge tool's table + dispatch arms change.
-        supportsPrCreate | Bool | default = false,
-        supportsPrComment | Bool | default = false,
-        supportsIssueView | Bool | default = false,
-        supportsPrChecks | Bool | default = false,
+        supportsPrCreate
+          | doc "Whether the forge supports creating PRs (forge tool capability, computed by sync)."
+          | Bool
+          | default = false,
+        supportsPrComment
+          | doc "Whether the forge supports commenting on PRs (forge tool capability, computed by sync)."
+          | Bool
+          | default = false,
+        supportsIssueView
+          | doc "Whether the forge supports viewing issues (forge tool capability, computed by sync)."
+          | Bool
+          | default = false,
+        supportsPrChecks
+          | doc "Whether the forge supports reading PR checks (forge tool capability, computed by sync)."
+          | Bool
+          | default = false,
         ..
       },
 
-  # Normalize imported JSON to State contract.
-  # Usage: normalize_state (import ".do-results.json")
-  normalize_state | not_exported = State,
+  normalize_state
+    | not_exported
+    | doc m%"
+    Normalize imported JSON to the State contract.
+    Usage: `normalize_state (import ".do-results.json")`.
+
+    ## Examples
+
+    ```nickel
+    (normalize_state { steps = [], forge = "github", noVcs = false, minimal = false, task = "test", active = "working", status = "running" }).forge
+    # => 'github
+    ```
+  "%
+    = State,
 
   # ── Step definitions ───────────────────────────────────────────────────────
-  # Each step: { pattern, pattern_config, next, skip_when, requires, instructions }
-  #   pattern:        which retry/parallel shape to use
-  #   pattern_config: configuration for that pattern
-  #   next:           static string or function(state) → next step name
-  #   skip_when:      function(state) → Bool
-  #   requires:       data this step needs from prior steps (declarative)
-  #   instructions:   path to node file
 
-  Steps = {
+  Steps
+    | doc m%"
+    Step definitions, driven by the `cli`/`cli_seed` outputs. Each step:
+    `{ pattern, pattern_config, next, skip_when, requires, instructions }`
+
+    - `pattern`: which retry/parallel shape to use
+    - `pattern_config`: configuration for that pattern
+    - `next`: static string or function(state) → next step name
+    - `skip_when`: function(state) → Bool
+    - `requires`: data this step needs from prior steps (declarative)
+    - `instructions`: path to node file
+  "%
+    = {
     sync = {
       pattern = 'one-shot,
       pattern_config = {},
@@ -256,13 +298,19 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
 
   # ── Minimal skips (omitted from todo list entirely) ────────────────────────
 
-  MinimalSkips = ["docs", "hickey-lowy", "police", "evidence"],
-  ReviewSkips = ["plan-approval"],
+  MinimalSkips
+    | doc "Steps omitted from both CLI routing and the todo list when --minimal is set."
+    = ["docs", "hickey-lowy", "police", "evidence"],
+  ReviewSkips
+    | doc "Steps omitted from both CLI routing and the todo list when --review is not set."
+    = ["plan-approval"],
 
   # ── Helper functions ───────────────────────────────────────────────────────
 
-  # Get last element of array, or fallback
-  get_last | not_exported = fun arr fallback =>
+  get_last
+    | not_exported
+    | doc "Last element of the array, or `fallback` when the array is empty."
+    = fun arr fallback =>
     if std.array.length arr == 0 then
       fallback
     else
@@ -276,20 +324,20 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
 
     ## Examples
 
-    ```nickel
-    should_skip "branch" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
+    ```nickel multiline
+    should_skip "branch" { active = "working", status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
     # => true
 
-    should_skip "docs" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    should_skip "docs" { active = "working", status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
     # => true
 
-    should_skip "create-pr" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'bitbucket, supportsPrCreate = false, supportsPrComment = false, supportsIssueView = false, supportsPrChecks = false, task = "test" }
+    should_skip "create-pr" { active = "working", status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'bitbucket, supportsPrCreate = false, supportsPrComment = false, supportsIssueView = false, supportsPrChecks = false, task = "test" }
     # => true
 
     should_skip "evidence" _test_state
     # => false
 
-    should_skip "ci" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
+    should_skip "ci" { active = "working", status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
     # => false
     ```
   "%
@@ -305,14 +353,14 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
 
     ## Examples
 
-    ```nickel
-    get_next "check" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    ```nickel multiline
+    get_next "check" { active = "working", status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
     # => "fmt"
 
-    get_next "research" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, task = "test" }
+    get_next "research" { active = "working", status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, task = "test" }
     # => "plan-approval"
 
-    get_next "fmt" { active = true, status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
+    get_next "fmt" { active = "working", status = 'running, steps = [], noVcs = true, minimal = false, review = false, forge = 'github, task = "test" }
     # => "hickey-lowy"
     ```
   "%
@@ -323,12 +371,16 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
       else
         step_def.next,
 
-  # Whether --minimal omits a step from both cli routing and todo seeding.
-  is_minimal_omission | not_exported = fun step_name state =>
+  is_minimal_omission
+    | not_exported
+    | doc "Whether --minimal omits a step from both CLI routing and todo seeding."
+    = fun step_name state =>
     state.minimal && std.array.any (fun skipped => skipped == step_name) MinimalSkips,
 
-  # Follow graph edges until reaching a step present in a minimal run.
-  next_runnable | not_exported = fun step_name state =>
+  next_runnable
+    | not_exported
+    | doc "Follow graph edges until reaching a step present in a minimal run."
+    = fun step_name state =>
     if step_name == "" then
       ""
     else if is_minimal_omission step_name state then
@@ -336,8 +388,10 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     else
       step_name,
 
-  # Terminal workflow status wins; otherwise resume unfinished steps.
-  compute_next | not_exported = fun state =>
+  compute_next
+    | not_exported
+    | doc "Terminal workflow status wins; otherwise resume unfinished steps."
+    = fun state =>
     if state.status == 'failed || state.status == 'completed then
       ""
     else
@@ -351,17 +405,16 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
       else
         last_step.name,
 
-  # Resolve an entry point ID to its declared starting step.
-  # Empty input uses the manifest default. Any other missing ID is a Nickel
-  # evaluation error rather than an implicit restart at sync.
   resolve_entry
     | not_exported
     | doc m%"
-    Maps a declared entry point ID to its starting step name.
+    Maps a declared entry point ID to its starting step name. Empty input
+    uses the manifest default. Any other missing ID is a Nickel evaluation
+    error rather than an implicit restart at sync.
 
     ## Examples
 
-    ```nickel
+    ```nickel multiline
     resolve_entry "followup"
     # => "implement"
 
@@ -377,12 +430,17 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
         Vocabulary.entryPoints.default
       else
         Vocabulary.entryPoints."%{from}",
-  # Seed the step list for todo UI given a --from entry point and state.
-  # Returns: [{ name, initial_status }]
-  #   initial_status: 'completed for pre-steps, 'pending for the rest
-  #   MinimalSkips steps are omitted entirely when state.minimal is true
-  #   (--minimal was passed); otherwise they're included as normal steps.
-  seed_steps | not_exported = fun from state =>
+  seed_steps
+    | not_exported
+    | doc m%"
+    Seed the step list for todo UI given a --from entry point and state.
+    Returns `[{ name, initial_status }]`:
+
+    - `initial_status`: 'completed for pre-steps, 'pending for the rest
+    - MinimalSkips steps are omitted entirely when state.minimal is true
+      (--minimal was passed); otherwise they're included as normal steps.
+  "%
+    = fun from state =>
     let start = resolve_entry from in
     (
       std.array.fold_left
@@ -411,21 +469,24 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     ).list,
 
   # ── CLI output ─────────────────────────────────────────────────────────────
-  # Called by the agent: nickel eval workflow.ncl --field cli --arg "$state_json"
-  # Returns: { step, skip, pattern, instructions, requires, pattern_config }
-  #   or { done = true } when workflow is complete
 
   cli
     | not_exported
     | doc m%"
-    Returns the next step to execute given current state.
+    Returns the next step to execute given current state. Called by the agent
+    via the workflow tool (`workflow cli`); direct callers use `nickel eval
+    workflow.ncl --field cli --arg "$state_json"`.
+
+    Returns `{ step, skip, pattern, instructions, requires, pattern_config }`,
+    or `{ done = true }` when the workflow is complete.
 
     ## Examples
 
     ```nickel multiline
     cli _test_state
     # => { step = "sync", skip = false, pattern = 'one-shot, instructions = "nodes/sync.md", requires = [], pattern_config = {} }
-    cli { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'github, from = "polish", task = "test" }
+
+    cli { active = "working", status = 'running, steps = [], noVcs = false, minimal = false, review = false, forge = 'github, from = "polish", task = "test" }
     # => { step = "hickey-lowy", skip = false, pattern = 'fanout-fix, instructions = "nodes/hickey-lowy.md", requires = ["diff", "research.context"], pattern_config = { cross_validate = true } }
     ```
   "%
@@ -444,8 +505,6 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
           requires = step_def.requires,
           pattern_config = step_def.pattern_config,
         },
-
-  # ── Seed CLI: returns the full step list for todo UI initialization ────────
 
   cli_seed
     | not_exported
@@ -467,15 +526,15 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
     cli_seed "polish" _test_state
-    # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
+    # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "docs", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "" { active = true, status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, task = "test" }
+    cli_seed "" { active = "working", status = 'running, steps = [], noVcs = false, minimal = false, review = true, forge = 'github, task = "test" }
     # => [{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "plan-approval", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    cli_seed "" { active = "working", status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
     # => [{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
 
-    cli_seed "polish" { active = true, status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
+    cli_seed "polish" { active = "working", status = 'running, steps = [], noVcs = false, minimal = true, review = false, forge = 'github, task = "test" }
     # => [{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]
     ```
   "%
@@ -484,19 +543,20 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
 
   # ── Test fixtures ──────────────────────────────────────────────────────────
 
-  # Default state for doc tests
-  _test_state = {
-    active = true,
-    status = 'running,
-    steps = [],
-    noVcs = false,
-    minimal = false,
-    review = false,
-    forge = 'github,
-    supportsPrCreate = true,
-    supportsPrComment = true,
-    supportsIssueView = true,
-    supportsPrChecks = true,
-    task = "test",
-  },
+  _test_state
+    | doc "Default state for doc tests, run through the State contract so fixture drift fails loudly."
+    = normalize_state {
+      active = "working",
+      status = 'running,
+      steps = [],
+      noVcs = false,
+      minimal = false,
+      review = false,
+      forge = 'github,
+      supportsPrCreate = true,
+      supportsPrComment = true,
+      supportsIssueView = true,
+      supportsPrChecks = true,
+      task = "test",
+    },
 }

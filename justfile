@@ -28,6 +28,14 @@ test-integration: build nickel-build
 test-pure:
     {{ nix_shell }} bash -c 'cd pure && spago test -m Test.Main'
 
+# Run the Nickel WASM VM unit tests in the artifact's build profile. Debug
+# asserts stay out on purpose: nickel-lang-core 0.18.0's fixpoint debug_assert
+# (value.is_constant() in eval/fixpoint.rs) misfires on open record-contract
+# application in debug builds, while the shipped WASM is release and smoke
+# verifies release semantics byte-for-byte.
+test-vm:
+    {{ nix_shell }} bash -c 'cd nickel-vm && cargo test --release'
+
 # Run shellcheck on all bash scripts
 # SC2148/SC1113/SC2096: scripts are intentionally shebang-less (run via `bash script`)
 lint:
@@ -53,8 +61,8 @@ build: workflow-vocabulary
         && spago bundle --module Agency.Scripts.Do.Api \
             --outfile dist/agency-api.js --force --platform node --bundle-type=module'
 
-# Full CI: bats + typed tool boundary + PureScript tests + all quality gates.
-ci: test test-pure lint lint-skills runtime-check
+# Full CI: bats + typed tool boundary + PureScript and VM unit tests + all quality gates.
+ci: test test-pure test-vm lint lint-skills runtime-check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
 # staged imports, catalog consistency (when --catalog is passed), and the
