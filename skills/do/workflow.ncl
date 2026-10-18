@@ -29,7 +29,8 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     `supports` operation; nodes and skip predicates branch on them instead of
     on the forge string, so the forge → supported-ops map lives in one place
     (the forge tool's capability table). Only ops with readers are
-    pre-computed; pr-view/pr-edit are trusted to follow pr-create.
+    pre-computed; pr-view/pr-edit are trusted to follow pr-create. When #10
+    lands, only the forge tool's table + dispatch arms change.
   "%
     = fun raw =>
     raw
