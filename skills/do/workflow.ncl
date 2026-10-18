@@ -548,7 +548,15 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
   # ── Test fixtures ──────────────────────────────────────────────────────────
 
   _test_state
-    | doc "Default state for doc tests, run through the State contract so fixture drift fails loudly. Example states vary it as `& { … }` deltas; `noVcs`/`minimal`/`review`/`forge` are `| default` so deltas merge over them."
+    | doc m%"
+    Default state for doc tests, run through the State contract so fixture
+    drift fails loudly. Example states vary it as `& { … }` deltas:
+
+    - `noVcs`/`minimal`/`review`/`forge` are `| default`, so plain delta
+      values merge over them.
+    - Capability flags stay concrete: `| default` would conflict with the
+      contract's `| default = false`, so a delta overrides them with `| force`.
+  "%
     = normalize_state {
       active = "working",
       status = 'running,
