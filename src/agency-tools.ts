@@ -269,23 +269,24 @@ export default function (pi: ExtensionAPI) {
     description:
       "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared entry point to seed/resume.",
     parameters: z.union([
-      // zod promotes a lone soft-failing arm's issues, so this arm's bare key
-      // error is what a caller sees for `from` alongside `cli`. Name the
-      // sibling cli_seed arm there instead of the default prose.
-      z.object({ field: z.literal(cliField) }, {
-        error: issue => {
-          // This map also finalizes issues nested under invalid_union when
-          // `field` is misspelled; input.field keeps the hint scoped to a
-          // genuine cli selection so it cannot mislabel foreign payloads.
-          if (issue.code !== "unrecognized_keys" || !issue.keys.includes("from") || issue.input?.field !== cliField) {
-            return undefined;
-          }
-          const others = issue.keys.filter(key => key !== "from");
-          return `cli takes no "from"; use the sibling arm { field: "${cliSeedField}", from: <entry point> } to supply one`
-            + (others.length ? `; also unrecognized keys: ${others.map(JSON.stringify).join(", ")}` : "");
-        },
-      }).strict(),
-      z.object({ field: z.literal(cliSeedField), from: z.enum(workflowEntryPoints) }).strict(),
+      // Both arms reject unrecognized keys in a refinement rather than
+      // strict(): union failures then route through the `field` discriminant
+      // to the aimed arm's own error, and the check names every unrecognized
+      // key in one issue. `from` alongside `cli` names the sibling cli_seed
+      // arm instead of the default prose; a misspelled `field` never sees the
+      // hint because the arm's literal rejects it before the refinement runs.
+      z.object({ field: z.literal(cliField) }).passthrough().superRefine((value, ctx) => {
+        const others = Object.keys(value).filter(key => key !== "field" && key !== "from");
+        const parts = Object.hasOwn(value, "from")
+          ? [`cli takes no "from"; use the sibling arm { field: "${cliSeedField}", from: <entry point> } to supply one`]
+          : [];
+        if (others.length > 0) parts.push(`unrecognized keys: ${others.map(JSON.stringify).join(", ")}`);
+        if (parts.length > 0) ctx.addIssue({ message: parts.join("; ") });
+      }),
+      z.object({ field: z.literal(cliSeedField), from: z.enum(workflowEntryPoints) }).passthrough().superRefine((value, ctx) => {
+        const others = Object.keys(value).filter(key => key !== "field" && key !== "from");
+        if (others.length > 0) ctx.addIssue({ message: `unrecognized keys: ${others.map(JSON.stringify).join(", ")}` });
+      }),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const request = params.field === cliField
@@ -316,9 +317,10 @@ export default function (pi: ExtensionAPI) {
     active: z.enum(["idle", "working", "waiting"]),
     status: z.enum(["idle", "running", "completed", "failed"]),
     from: z.enum(workflowEntryPoints), steps: z.array(recordedStep), pendingStep: pendingStep.nullable(),
-    // The jobs ledger is driver-owned (job-start/job-end only): never() keeps
-    // it out of custom string fields and makes every set spelling unparseable.
-    jobs: z.never(),
+    // The jobs ledger is driver-owned (job-start/job-end only): a value
+    // schema that always rejects keeps it out of custom string fields and
+    // makes every set spelling unparseable.
+    jobs: z.unknown().refine(() => false, "never set directly; the jobs ledger is driver-owned (job-start/job-end only)"),
   };
 
   pi.registerTool({

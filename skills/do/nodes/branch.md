@@ -21,7 +21,10 @@ Call the `vcs_write` tool with `{ op: "branch", name: "<descriptive-name>" }`.
 No base argument — `vcs_write` reads the resolved `base` from state. The tool handles VCS-specific
 details: git creates the branch from `origin/<base>` (hard-erroring if that ref is missing — the
 parent must be pushed before stacking); jj creates a new change on `<base>` and a bookmark pointing
-at it.
+at it. When @ already carries picked-up work (an undescribed change with content), the branch sits
+on top of those changes instead: the bookmark attaches to that change. jj refuses when the work
+sits on the base revision itself — better a hard error than stranding the work or retargeting the
+trunk.
 
 `base` is what makes stacked PRs work: it is the parent branch (not necessarily master/main), resolved
 by sync from `--base <branch>`, `--stack`, or the default branch. create-pr targets this same `base`

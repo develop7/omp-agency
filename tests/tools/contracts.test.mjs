@@ -539,10 +539,10 @@ test("workflow cli + from rejection names the sibling cli_seed arm", () => {
     const result = schema.safeParse({ field: "cli", from });
     assert.equal(result.success, false);
     const [issue] = result.error.issues;
-    assert.equal(issue.code, "unrecognized_keys");
-    assert.deepEqual(issue.keys, ["from"]);
-    // Guidance, not exact prose: the error must point at the cli_seed arm.
+    // Guidance, not exact prose: the error must point at the cli_seed arm and
+    // name the offending key.
     assert.match(issue.message, /cli_seed/);
+    assert.match(issue.message, /from/);
   }
   // The hint keeps enumerating any other unrecognized keys, as the deleted
   // strict-object prose did.
