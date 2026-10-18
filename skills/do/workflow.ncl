@@ -62,19 +62,19 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
         active | String | default = "idle",
         status | std.enum.TagOrString | default = 'idle,
         supportsPrCreate
-          | doc "Whether the forge supports creating PRs (forge tool capability, computed by sync)."
+          | doc "Whether the forge supports creating PRs."
           | Bool
           | default = false,
         supportsPrComment
-          | doc "Whether the forge supports commenting on PRs (forge tool capability, computed by sync)."
+          | doc "Whether the forge supports commenting on PRs."
           | Bool
           | default = false,
         supportsIssueView
-          | doc "Whether the forge supports viewing issues (forge tool capability, computed by sync)."
+          | doc "Whether the forge supports viewing issues."
           | Bool
           | default = false,
         supportsPrChecks
-          | doc "Whether the forge supports reading PR checks (forge tool capability, computed by sync)."
+          | doc "Whether the forge supports reading PR checks."
           | Bool
           | default = false,
         ..
