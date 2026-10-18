@@ -26,6 +26,16 @@ teardown() {
   [ "$output" = "0" ]
 }
 
+@test "nickel test executes doc examples (mutation guard)" {
+  # If fence collection ever drifts, `nickel test` could pass having run zero
+  # examples. Corrupting one known expectation must make it fail, proving the
+  # examples above execute.
+  sed -i "s|# => 'github|# => 'gitea|" workflow.ncl
+  run nickel test workflow.ncl
+  echo "$output"
+  [ "$status" -ne 0 ]
+}
+
 @test "workflow.ncl documentation examples pass nickel test" {
   run nickel test workflow.ncl
   echo "$output"
