@@ -946,6 +946,49 @@ SH
   [[ "$output" == *"feat: remote base"* ]]
 }
 
+@test "jj: branch keeps picked-up working-copy work on the feature bookmark" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > README.md
+  jj describe -m "base"
+  jj bookmark create main -r @
+  echo '{"base":"main"}' > .do-results.json
+
+  jj new main
+  echo feature > feature.txt
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-picked-up
+  [ "$status" -eq 0 ]
+
+  # The bookmark attaches to the change carrying the picked-up work...
+  run jj diff --from main --to feature-picked-up --name-only
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+  # ...the working copy keeps the work, and head-revision sees the branch.
+  [ -f feature.txt ]
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision
+  [ "$status" -eq 0 ]
+  [ "$output" = "feature-picked-up" ]
+}
+
+@test "jj: branch refuses when picked-up work sits on the base revision" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  # The base bookmark lands on an undescribed working change: its content is
+  # picked-up work sitting on the base revision itself.
+  echo base > README.md
+  jj bookmark create main -r @
+  echo '{"base":"main"}' > .do-results.json
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-at-base
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"base revision"* ]]
+  run jj bookmark list --template 'name ++ "\n"'
+  [[ "$output" != *"feature-at-base"* ]]
+}
+
 @test "jj: commit preserves workflow state and never retargets trunk" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"

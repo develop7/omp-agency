@@ -1,13 +1,13 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { z } from "zod";
+import * as zod from "@oh-my-pi/omptype/zod";
 import agencyTools from "../../dist/agency-tools.mjs";
 
 export function registerTools() {
   const tools = new Map();
   agencyTools({
-    zod: z,
+    zod,
     registerTool(tool) {
       tools.set(tool.name, tool);
     },

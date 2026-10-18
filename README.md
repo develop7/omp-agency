@@ -208,7 +208,9 @@ omp plugin install agency@<repo>
 ```
 
 All test and build tools (bats, shellcheck, purs, spago, git, jj, Node.js) come from the
-pinned Nix dev shell. Tool boundary tests install the lockfile-pinned Zod development dependency via `npm ci`. The `/do`
+pinned Nix dev shell. Tool boundary tests install the lockfile-pinned OMP zod
+builder (`@oh-my-pi/omptype`, pinned to the OMP version) via `npm ci`, so the
+tested schema surface is the one OMP injects at runtime. The `/do`
 operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and
 `agency_driver`) is implemented in PureScript under `pure/`. The CLI bundle,
 `pure/dist/agency-do.js`, is the black-box test entrypoint and is built by

@@ -7,10 +7,12 @@
   "scripts": {
     "test:tools": "node --test tests/tools/*.test.mjs"
   },
-  "devDependencies": {
-    "zod": "4.6.5"
-  },
   "omp": {
-    "extensions": ["./src/agency-tools.ts"]
+    "extensions": [
+      "./src/agency-tools.ts"
+    ]
+  },
+  "devDependencies": {
+    "@oh-my-pi/omptype": "18.12.2"
   }
 }

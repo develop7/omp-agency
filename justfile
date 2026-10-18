@@ -8,8 +8,10 @@ nix_shell := if env('IN_NIX_SHELL', '') != '' { '' } else { 'nix develop ' + rep
 test: test-tools
     {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/
 
-# Build the extension with the pinned esbuild and run real-Zod/real-API
-# boundary tests. npm ci is deterministic from the committed lockfile.
+# Build the extension with the pinned esbuild and run boundary tests against
+# OMP's own zod builder (the @oh-my-pi/omptype facade, pinned to the OMP
+# version) and the real API. npm ci is deterministic from the committed
+# lockfile.
 test-tools: build nickel-build
     {{ nix_shell }} npm ci
     {{ nix_shell }} esbuild src/agency-tools.ts --bundle --format=esm --platform=node --packages=external --external:../pure/dist/agency-api.js --external:../nickel-vm/scripts/workflow-runtime.mjs --outfile=dist/agency-tools.mjs

@@ -601,8 +601,23 @@ branch context name = case validateBranchName name of
         case parent of
           Left error -> pure (failureLine error)
           Right ref -> do
-            first <- passthroughCommand context Binaries.jj [ "new", ref ]
-            if first.exit == 0 then passthroughCommand context Binaries.jj [ "bookmark", "create", name, "--revision", "@" ] else pure first
+            let createBookmark = passthroughCommand context Binaries.jj [ "bookmark", "create", name, "--revision", "@" ]
+            pickedUp <- jjPickedUpWork
+            case pickedUp of
+              Left error -> pure (failureLine error)
+              Right false -> do
+                first <- passthroughCommand context Binaries.jj [ "new", ref ]
+                if first.exit == 0 then createBookmark else pure first
+              Right true -> do
+                -- Picked-up work already lives in @: the fresh branch must sit on
+                -- top of these changes (matching the git arm's checkout -b), so the
+                -- bookmark attaches to the change carrying them instead of
+                -- `jj new` stranding them behind an empty bookmarked change.
+                atBase <- sameJjRevision "@" ref
+                case atBase of
+                  Left error -> pure (failureLine error)
+                  Right true -> pure (failureLine ("vcs-op branch: the picked-up working copy changes sit on the base revision '" <> ref <> "'; refusing to strand them or retarget the trunk"))
+                  Right false -> createBookmark
       Unknown -> pure noVcsOutcome
 
 commit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
@@ -939,6 +954,21 @@ sameGitRevision left right = do
   rightResult <- Sys.exec Binaries.git [ "rev-parse", right ]
   pure if leftResult.code /= 0 || rightResult.code /= 0 then Left "vcs-op: unable to compare current branch with default"
   else Right (trim leftResult.stdout == trim rightResult.stdout)
+
+-- | Whether @ carries picked-up work: an undescribed change with content
+-- beyond the workflow state file (which preserveState owns, not the repo).
+-- `jj new` would strand exactly such a change behind an empty bookmarked one,
+-- so the feature branch must attach to it instead. Described changes are
+-- commits — they stay where their author put them.
+jjPickedUpWork :: Effect (Either String Boolean)
+jjPickedUpWork = do
+  described <- Sys.exec Binaries.jj [ "log", "--revisions", "@", "--no-graph", "--template", "description" ]
+  if described.code /= 0 then pure (Left (commandError "vcs-op: unable to inspect jj working copy for branch" described))
+  else if trim described.stdout /= "" then pure (Right false)
+  else do
+    probe <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--name-only" ]
+    if probe.code /= 0 then pure (Left (commandError "vcs-op: unable to inspect jj working copy for branch" probe))
+    else pure (Right (Array.any (\path -> path /= ".do-results.json") (lines probe.stdout)))
 
 sameJjRevision :: String -> String -> Effect (Either String Boolean)
 sameJjRevision left right = do
