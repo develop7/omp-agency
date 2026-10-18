@@ -100,7 +100,8 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
 
   Steps
     | doc m%"
-    Step definitions, driven by the `cli`/`cli_seed` outputs. Each step:
+    Step definitions. Consumed by `cli`; `cli_seed` seeds from the manifest's
+    step list. Each step:
     `{ pattern, pattern_config, next, skip_when, requires, instructions }`
 
     - `pattern`: which retry/parallel shape to use
