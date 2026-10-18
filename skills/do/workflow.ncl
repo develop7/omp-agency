@@ -320,7 +320,6 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     else
       std.array.last arr,
 
-  # Check if a step should be skipped given current state
   should_skip
     | not_exported
     | doc m%"
@@ -349,7 +348,6 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
       let step_def = Steps."%{step_name}" in
       step_def.skip_when state,
 
-  # Get next step name (resolves function or returns static string)
   get_next
     | not_exported
     | doc m%"
