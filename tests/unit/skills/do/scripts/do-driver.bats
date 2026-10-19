@@ -4,6 +4,7 @@
 
 setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
+  load "$REPO_ROOT/tests/helpers/git-fixtures.bash"
   setup_test_dir
 }
 
@@ -19,18 +20,6 @@ run_api_driver() {
   run env AGENCY_API_BUNDLE="${AGENCY_API_BUNDLE:-$REPO_ROOT/pure/dist/agency-api.js}" \
     node --input-type=module --eval \
       'const { runTool } = await import(process.env.AGENCY_API_BUNDLE); const result = await runTool({ tool: "agency_driver", args: JSON.parse(process.env.AGENCY_DRIVER_ARGS), captureOutput: true })(); process.stdout.write(JSON.stringify(result)); process.exitCode = result.exit'
-}
-
-# A VCS-backed fixture with a real `main` ref: `set base` validates the value
-# against the repository, so carry-forward tests need a base that exists.
-make_git_base() {
-  git init -q
-  git config user.email "test@test.com"
-  git config user.name "Test"
-  echo base > file.txt
-  git add file.txt
-  git commit -q -m base
-  git branch -M main
 }
 
 @test "init creates .do-results.json with default flags" {
@@ -118,7 +107,7 @@ make_git_base() {
   # first commit failed with the raw jj guard. Init carries the finished run's
   # base forward. The git fixture declares the run VCS-backed so the carry
   # path is reached.
-  make_git_base
+  mk_git_base
   run_driver init "first task"
   [ "$status" -eq 0 ]
   run_driver set base main
@@ -137,7 +126,7 @@ make_git_base() {
 @test "API init --from=followup carries base forward (typed tool path)" {
   # Regression (#87) on the exact consumer path from the report: the typed
   # agency_driver tool, not just the do-driver CLI bundle.
-  make_git_base
+  mk_git_base
   AGENCY_DRIVER_ARGS='["init","first task"]' run_api_driver
   [ "$status" -eq 0 ]
   AGENCY_DRIVER_ARGS='["set","base","main"]' run_api_driver
@@ -172,7 +161,7 @@ make_git_base() {
   # entry runs sync, and a failed sync must fall back to the missing-base
   # diagnostics rather than a stale carried value. Both CLI spellings pinned.
   # Git fixture so the default-entry gate, not the VCS gate, excludes.
-  make_git_base
+  mk_git_base
   run_driver init "first task"
   [ "$status" -eq 0 ]
   run_driver set base main
@@ -195,7 +184,7 @@ make_git_base() {
 
 @test "init --no-vcs leaves base unset even when the prior run had one" {
   # Git fixture so the --no-vcs gate, not the VCS gate, excludes.
-  make_git_base
+  mk_git_base
   run_driver init "first task"
   [ "$status" -eq 0 ]
   run_driver set base main
