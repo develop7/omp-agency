@@ -589,7 +589,7 @@ jjRangeFrom context base = do
       let revset = "heads(ancestors(@) & ancestors(" <> ref <> "))"
       result <- jjCommitIds revset
       pure case result of
-        Left _ -> Left (failureLine ("vcs-op: unable to resolve merge-base for base '" <> base <> "'"))
+        Left failure -> Left (failureLine (commandError ("vcs-op: unable to resolve merge-base for base '" <> base <> "'") failure))
         Right [] -> Right ref
         Right [ sha ] -> Right sha
         Right shas -> Left (failureLines
