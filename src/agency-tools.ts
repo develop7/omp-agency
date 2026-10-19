@@ -331,8 +331,12 @@ export default function (pi: ExtensionAPI) {
     from: z.enum(workflowEntryPoints), steps: z.array(recordedStep), pendingStep: pendingStep.nullable(),
     // The jobs ledger is driver-owned (job-start/job-end only): a value
     // schema that always rejects keeps it out of custom string fields and
-    // makes every set spelling unparseable.
-    jobs: z.unknown().refine(() => false, "never set directly; the jobs ledger is driver-owned (job-start/job-end only)"),
+    // makes every set spelling unparseable. The wire schema says the same
+    // (`not: {}`), as the deleted z.never() emitted.
+    jobs: pi.arktype.withJsonSchema(
+      z.unknown().refine(() => false, "never set directly; the jobs ledger is driver-owned (job-start/job-end only)"),
+      { not: {} },
+    ),
   };
 
   pi.registerTool({
