@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const runtimeRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-/** @typedef {{ exit: number, stdout: string, stderr: string }} WorkflowResult */
+/** @typedef {{ exit: number, stdout: string, stderr: string, value: unknown }} WorkflowResult */
 
 /**
  * @typedef {{ operation: "cli", cwd?: string } | { operation: "cli_seed", seed: string, cwd?: string }} WorkflowRequest
@@ -31,9 +31,9 @@ export async function evaluateWorkflow(request) {
     const evaluatorRequest = { workflow_source, vocabulary_source, state_source, operation };
     if (operation === "cli_seed") evaluatorRequest.seed = parsed.seed;
     const result = workflowResult(await nickel.eval_workflow(evaluatorRequest));
-    return result.exit === 0
-      ? { ...result, stdout: renderWorkflowOutput(operation, result.stdout) }
-      : result;
+    if (result.exit !== 0) return { ...result, value: null };
+    const rendered = renderWorkflowOutput(operation, result.stdout);
+    return { ...result, stdout: rendered.stdout, value: rendered.value };
   } catch (error) {
     return workflowFailure(error);
   }
@@ -45,6 +45,7 @@ export function workflowFailure(error) {
     exit: 1,
     stdout: "",
     stderr: error instanceof Error ? error.stack || error.message : String(error),
+    value: null,
   };
 }
 
@@ -166,8 +167,8 @@ function renderWorkflowOutput(operation, source) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`workflow: Nickel returned invalid JSON output: ${detail}`);
   }
-  if (operation === "cli") return renderCli(value);
-  if (operation === "cli_seed") return renderCliSeed(value);
+  if (operation === "cli") return { value, stdout: renderCli(value) };
+  if (operation === "cli_seed") return { value, stdout: renderCliSeed(value) };
   throw new Error(`workflow: unsupported operation '${operation}'`);
 }
 

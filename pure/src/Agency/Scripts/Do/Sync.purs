@@ -12,7 +12,7 @@ import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.Vcs as Vcs
-import Data.Argonaut.Core (fromBoolean, fromString)
+import Data.Argonaut.Core (fromBoolean, fromString, jsonNull)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (trim)
@@ -159,6 +159,7 @@ quietResult result = case result.output of
   Outcome.Passthrough -> result
   Outcome.Captured output ->
     { exit: result.exit
+    , value: jsonNull
     , output: Outcome.Captured
         { stdout: ""
         , stderr: output.stderr

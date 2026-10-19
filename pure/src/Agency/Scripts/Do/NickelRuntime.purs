@@ -18,7 +18,7 @@ import Foreign.Object as Obj
 import Effect (Effect)
 
 -- | Forward a workflow request to the Node adapter, which owns workflow asset
--- | and state discovery and returns a JSON-encoded exit/stdout/stderr result.
+-- | and state discovery and returns a JSON-encoded exit/stdout/stderr/value result.
 -- | The context's captureOutput flag is intentionally ignored: the bridge
 -- | communicates over stdin/stdout.
 run :: WorkflowContext -> Maybe String -> Effect Outcome.OpOutcome
@@ -45,11 +45,13 @@ bridgeOutcome result =
   else case jsonParser result.stdout >>= decodeBridge of
     Left error -> Outcome.failure 1 ("nickel-cli: invalid bridge response: " <> error <> "\n")
     Right value ->
-      { exit: value.exit
-      , output: Outcome.Captured { stdout: value.stdout, stderr: value.stderr, stderrFirst: false }
-      }
+      Outcome.withValue value.value
+        { exit: value.exit
+        , output: Outcome.Captured { stdout: value.stdout, stderr: value.stderr, stderrFirst: false }
+        , value: Json.jsonNull
+        }
 
-decodeBridge :: Json -> Either String { exit :: Int, stdout :: String, stderr :: String }
+decodeBridge :: Json -> Either String { exit :: Int, stdout :: String, stderr :: String, value :: Json }
 decodeBridge json = do
   object <- case Json.toObject json of
     Nothing -> Left "response must be an object"
@@ -59,7 +61,10 @@ decodeBridge json = do
     Just value -> Right (floor value)
   stdout <- requiredJsonString "stdout" object
   stderr <- requiredJsonString "stderr" object
-  pure { exit, stdout, stderr }
+  value <- case Obj.lookup "value" object of
+    Nothing -> Left "response value is required"
+    Just value -> Right value
+  pure { exit, stdout, stderr, value }
 
 requiredJsonString :: String -> Obj.Object Json -> Either String String
 requiredJsonString field object = case Obj.lookup field object >>= Json.toString of

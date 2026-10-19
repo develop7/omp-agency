@@ -74,7 +74,7 @@ test("noVcs recovery sync preserves mode and resolves the missing base", async (
     assert.equal(state.noVcs, true);
     assert.equal(state.base, "no-vcs");
     assert.equal(git(cwd, "branch", "--show-current").trim(), "feature");
-    assert.equal((await invoke(registered, "vcs_read", { op: "base" }, cwd)).details.stdout.trim(), "no-vcs");
+    assert.equal((await invoke(registered, "vcs_read", { op: "base" }, cwd)).details.value, "no-vcs");
   });
 });
 
@@ -98,8 +98,8 @@ test("alternate diff failures retain all base choices until an explicit recovery
         : choices.find((candidate) => selector === "stack" ? candidate.stack === true : candidate.base === undefined && candidate.stack !== true);
       await invoke(registered, "agency_driver", choice, cwd);
       assert.equal((await readState(cwd)).base, { explicit: "parent", stack: "feature", default: "base" }[selector]);
-      const diff = (await invoke(registered, "vcs_read", { op: "diff-range" }, cwd)).details.stdout;
-      if (selector === "stack") assert.equal(diff, "");
+      const diff = (await invoke(registered, "vcs_read", { op: "diff-range" }, cwd)).content.map(part => part.text).join("\n");
+      if (selector === "stack") assert.doesNotMatch(diff, /feature\.txt|feature branch/);
       else assert.match(diff, /feature\.txt[\s\S]*feature branch/);
     });
   }

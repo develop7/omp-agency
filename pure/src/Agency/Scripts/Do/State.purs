@@ -23,6 +23,9 @@ module Agency.Scripts.Do.State
   , noVcsBaseValue
   , parseState
   , stringifyState
+  , encodeState
+  , stepJson
+  , jobJson
   , readState
   , withStateLock
   , writeState
@@ -478,6 +481,7 @@ parseState source = do
     , extras
     }
 
+-- | Canonical step result, including verification and any failure/skip reason.
 stepJson :: Step -> Json
 stepJson step =
   let
@@ -501,6 +505,7 @@ pendingJson pending =
       , Tuple "startedAt" (fromString pending.startedAt)
       ])
 
+-- | Canonical job result, including its completion evidence when present.
 jobJson :: Job -> Json
 jobJson job =
   let
@@ -524,9 +529,13 @@ jobJson job =
         Nothing -> fromObject withOutcome
         Just verification -> fromObject (Obj.insert "verification" (fromString verification) withOutcome)
 
--- | Encode known fields in the historical order and unknown fields sorted by key.
+-- | Serialize the canonical state value for the persisted file.
 stringifyState :: State -> String
-stringifyState state =
+stringifyState = Json.stringify <<< encodeState
+
+-- | Encode known fields in the historical order and unknown fields sorted by key.
+encodeState :: State -> Json
+encodeState state =
   let
     known =
       [ Tuple "workflow" (fromString state.workflow)
@@ -545,7 +554,7 @@ stringifyState state =
       else withPending <> [ Tuple "jobs" (fromArray (map jobJson state.jobs)) ]
     extras =
       Array.sortWith fst (Map.toUnfoldable state.extras :: Array (Tuple String Json))
-  in Json.stringify (fromObject (Obj.fromFoldable (withJobs <> extras)))
+  in fromObject (Obj.fromFoldable (withJobs <> extras))
 
 stateGetJson :: String -> State -> Maybe Json
 stateGetJson key state =

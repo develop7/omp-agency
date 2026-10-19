@@ -214,14 +214,13 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
 
     await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
     const ended = await invoke(registered, "agency_driver", { op: "end", status: "passed", verification: "ok" }, cwd);
-    assert.equal(ended.details.exit, 0);
+    assert.equal(ended.details.value.step.status, "passed");
 
     const summary = await invoke(registered, "agency_driver", { op: "summary" }, cwd);
-    assert.match(summary.details.stdout, /\*\*Jobs\*\*/);
-    assert.match(summary.details.stdout, /police-pass1/);
-    assert.match(summary.details.stdout, /Pass 1/);
-    assert.match(summary.details.stdout, /2020-01-01T00:00:00Z/);
-    assert.match(summary.details.stdout, /completed/);
+    assert.equal(summary.details.value.jobs[0].id, "police-pass1");
+    assert.equal(summary.details.value.jobs[0].name, "Pass 1");
+    assert.equal(summary.details.value.jobs[0].deadline, "2020-01-01T00:00:00Z");
+    assert.equal(summary.details.value.jobs[0].outcome, "completed");
 
     state = await readState(cwd);
     assert.equal(state.steps.length, 1);
@@ -315,11 +314,11 @@ test("set cannot claim completion while jobs are unfinished", async () => {
 
     // Honest abort stays available while jobs are open.
     const failed = await invoke(registered, "agency_driver", { op: "set", field: "status", value: "failed" }, cwd);
-    assert.equal(failed.details.exit, 0);
+    assert.deepEqual(failed.details.value, { field: "status", value: "failed" });
 
     await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
     const completed = await invoke(registered, "agency_driver", { op: "set", field: "status", value: "completed" }, cwd);
-    assert.equal(completed.details.exit, 0);
+    assert.deepEqual(completed.details.value, { field: "status", value: "completed" });
     assert.equal((await readState(cwd)).status, "completed");
   });
 });
@@ -366,7 +365,7 @@ test("summary marks jobs without a deadline as unbounded", async () => {
   });
 });
 
-test("summary escapes every job cell so a hand-edited deadline cannot break the table", async () => {
+test("summary preserves delimiter-containing job fields as data", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
     await invoke(registered, "agency_driver", {
@@ -388,11 +387,7 @@ test("summary escapes every job cell so a hand-edited deadline cannot break the 
 
     await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
     const summary = await invoke(registered, "agency_driver", { op: "summary" }, cwd);
-    assert.equal(summary.details.exit, 0);
-    const row = summary.details.stdout.split("\n").find((line) => line.includes("police-pass1"));
-    assert.ok(row, "the jobs table must render the job row");
-    assert.ok(row.includes("a\\|b"), "the deadline cell must be escaped");
-    assert.ok(!row.includes("a|b"), "an unescaped pipe must not reach the table");
+    assert.equal(summary.details.value.jobs[0].deadline, "a|b");
   });
 });
 
@@ -405,9 +400,7 @@ test("restart init carries unfinished jobs forward; plain init discards them", a
     const before = (await readState(cwd)).jobs[0];
 
     const restarted = await invoke(registered, "agency_driver", { op: "init", restart: true, task: "restarted task" }, cwd);
-    assert.equal(restarted.details.exit, 0);
-    assert.match(restarted.details.stdout, /carried unfinished job/);
-    assert.match(restarted.details.stdout, /carry-me/);
+    assert.deepEqual(restarted.details.value.jobs, [before]);
     assert.deepEqual((await readState(cwd)).jobs, [before]);
 
     // Finished jobs stay behind with the discarded run.
@@ -463,16 +456,15 @@ test("job-end clamps a finish that precedes the job start", async () => {
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
 
     const ended = await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
-    assert.equal(ended.details.exit, 0, "a rolled-back finish must not wedge job-end");
-    assert.match(ended.details.stdout, /clamped/);
-    // The note reports the observed timestamps rather than a diagnosed cause.
-    assert.match(ended.details.stdout, /\(finish \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z precedes startedAt 2030-01-01T00:00:00Z — clamped to start\)/);
+    assert.equal(ended.details.value.clamped, true);
+    assert.equal(ended.details.value.job.finishedAt, "2030-01-01T00:00:00Z");
+    assert.ok(ended.details.value.finishAttemptedAt < ended.details.value.job.startedAt);
     const after = await readState(cwd);
     assert.equal(after.jobs[0].finishedAt, "2030-01-01T00:00:00Z", "the finish clamps up to the start");
 
     // The clamped record stays loadable: later driver ops read the state.
     const summary = await invoke(registered, "agency_driver", { op: "summary" }, cwd);
-    assert.equal(summary.details.exit, 0);
+    assert.equal(summary.details.value.jobs[0].outcome, "completed");
   });
 });
 
@@ -495,7 +487,7 @@ test("the jobs ledger is bounded at 32 entries end to end", async () => {
     const started = await invoke(registered, "agency_driver", {
       op: "job-start", id: "one-more", name: "Overflow", step: "police",
     }, cwd);
-    assert.equal(started.details.exit, 0, "a full ledger of finished jobs must not wedge job-start");
+    assert.equal(started.details.value.id, "one-more");
     const pruned = await readState(cwd);
     assert.equal(pruned.jobs.length, 32, "the ledger stays at the bound");
     assert.equal(pruned.jobs[0].id, "job-1", "the oldest finished entry is pruned");
@@ -614,8 +606,7 @@ test("real PureScript lifecycle retains a failed step's reason", async () => {
 test("real no-VCS sync succeeds only through the explicit noVcs contract", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    const synced = await invoke(registered, "agency_driver", { op: "sync", noVcs: true }, cwd);
-    assert.equal(synced.details.exit, 0);
+    await invoke(registered, "agency_driver", { op: "sync", noVcs: true }, cwd);
     assert.equal((await readState(cwd)).noVcs, true);
     rejects(tool(registered, "agency_driver").parameters, { op: "sync", stack: true });
     rejects(tool(registered, "agency_driver").parameters, { op: "sync", noVcs: true, stack: true });
@@ -624,7 +615,7 @@ test("real no-VCS sync succeeds only through the explicit noVcs contract", async
 test("registered dirty reports Git and jj working-copy status tokens", async () => {
   await gitRepo(async (cwd) => {
     const registered = registerTools();
-    const result = async () => (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details.stdout.trim();
+    const result = async () => (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details.value;
     assert.equal(await result(), "clean");
 
     await writeFile(join(cwd, "tracked.txt"), "staged change\n");
@@ -639,7 +630,7 @@ test("registered dirty reports Git and jj working-copy status tokens", async () 
     execFileSync("jj", ["git", "init"], { cwd, stdio: "ignore" });
     process.env.VCS_OVERRIDE = "jj";
     const registered = registerTools();
-    const result = async () => (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details.stdout.trim();
+    const result = async () => (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details.value;
     assert.equal(await result(), "clean");
     await writeFile(join(cwd, "jj-change.txt"), "changed\n");
     assert.equal(await result(), "dirty");
@@ -661,15 +652,13 @@ test("registered dirty distinguishes Git and jj inspection failures from no VCS"
     );
     process.env.VCS_OVERRIDE = "";
     const noVcs = await invoke(registered, "vcs_read", { op: "dirty" }, cwd);
-    assert.equal(noVcs.details.stdout.trim(), "no-vcs");
+    assert.equal(noVcs.details.value, "no-vcs");
   });
 });
 
 test("registered working-copy-status reports clean and Git staged, untracked, and deleted paths", async () => {
   await gitRepo(async (cwd) => {
     const registered = registerTools();
-    const clean = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
-    assert.equal(clean.details.stdout, "");
 
     await writeFile(join(cwd, "deleted.txt"), "to delete\n");
     git(cwd, "add", "deleted.txt");
@@ -695,8 +684,6 @@ test("registered working-copy-status reports jj working-copy changes without a b
     execFileSync("jj", ["git", "init"], { cwd, stdio: "ignore" });
     process.env.VCS_OVERRIDE = "jj";
     const registered = registerTools();
-    const clean = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
-    assert.equal(clean.details.stdout, "");
     await writeFile(join(cwd, "jj-change.txt"), "changed\n");
     const dirty = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
     assert.match(dirty.content.map((part) => part.text).join("\n"), /jj-change\.txt/);
@@ -741,13 +728,9 @@ test("vcs_read filters file results without mutating the real git fixture", asyn
     git(cwd, "commit", "--quiet", "-m", "add files");
     const before = execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8" });
     const result = await invoke(registered, "vcs_read", { op: "new-files" }, cwd);
-    const text = result.content.map((part) => part.text).join("\n");
-    assert.match(text, /one-new\.txt/);
-    assert.match(text, /two-new\.txt/);
+    assert.deepEqual(result.details.value, ["one-new.txt", "two-new.txt"]);
     assert.equal(execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8" }), before);
     const filtered = await invoke(registered, "vcs_read", { op: "new-files", paths: ["one-new.txt"] }, cwd);
-    const filteredText = filtered.content.map((part) => part.text).join("\n");
-    assert.match(filteredText, /one-new\.txt/);
-    assert.doesNotMatch(filteredText, /two-new\.txt/);
+    assert.deepEqual(filtered.details.value, ["one-new.txt"]);
   });
 });

@@ -175,12 +175,12 @@ parseVcsOp args =
 -- | inherit the adapter streams.
 runVcsOp :: WorkflowContext -> VcsOp -> Effect Outcome.OpOutcome
 runVcsOp context operation = case operation of
-  Detect -> pure (Outcome.withStdout (vcsName context.vcs <> "\n"))
+  Detect -> pure (Outcome.withValue (Json.fromString (vcsName context.vcs)) (Outcome.withStdout (vcsName context.vcs <> "\n")))
   Fetch -> fetchValue context
   RemoteUrl -> renderValue <$> remoteUrlResult context
   HeadRevision -> renderValue <$> headRevisionValue context
   HeadCommitSha -> case context.vcs of
-    Git -> capturedCommand Binaries.git [ "rev-parse", "HEAD" ] context
+    Git -> headCommitShaGit
     Jj -> headCommitShaJj context
     Unknown -> pure noVcsOutcome
   DefaultBranch -> renderValue <$> defaultBranchValue context
@@ -266,7 +266,7 @@ baseSyncForms =
 -- | Read the persisted base from the context resolved by the adapter.
 resolveBase :: WorkflowContext -> Effect Outcome.OpOutcome
 resolveBase context = case context.base of
-  Just value -> pure (Outcome.withStdout (value <> "\n"))
+  Just value -> pure (Outcome.withValue (Json.fromString value) (Outcome.withStdout (value <> "\n")))
   Nothing -> do
     stateResult <- State.readState (statePath context)
     pure case stateResult of
@@ -448,9 +448,9 @@ dirty :: WorkflowContext -> Effect Outcome.OpOutcome
 dirty context = do
   state <- inspectDirty context
   pure case state of
-    Clean -> Outcome.withStdout "clean\n"
-    DirtyDetected -> Outcome.withStdout "dirty\n"
-    NoVcsDetected -> Outcome.withStdout "no-vcs\n"
+    Clean -> Outcome.withValue (Json.fromString "clean") (Outcome.withStdout "clean\n")
+    DirtyDetected -> Outcome.withValue (Json.fromString "dirty") (Outcome.withStdout "dirty\n")
+    NoVcsDetected -> Outcome.withValue (Json.fromString "no-vcs") (Outcome.withStdout "no-vcs\n")
     InspectionFailed outcome -> outcome
 
 diffRange :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
@@ -474,13 +474,30 @@ diffNames context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
     Git -> withGitReadBase context value \base ->
-      passthroughCommand context Binaries.git ([ "diff", base <> "...HEAD", "--name-only", "--" ] <> paths)
+      namedPaths context Binaries.git ([ "diff", base <> "...HEAD", "--name-only", "-z", "--" ] <> paths)
     Jj -> do
       source <- jjRangeFrom context value
       case source of
         Left outcome -> pure outcome
-        Right from -> passthroughCommand context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--name-only", "--" ] <> paths)
+        Right from -> namedPaths context Binaries.jj ([ "diff", "--from", from, "--to", "@", "--name-only", "--" ] <> paths)
     Unknown -> pure noVcsOutcome
+
+-- Git's NUL-delimited path mode preserves filenames containing newlines.
+-- The captured adapter gets semantic paths; the CLI keeps its line-oriented
+-- command and inherited output unchanged.
+namedPaths :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
+namedPaths context command args =
+  if context.captureOutput then do
+    result <- Sys.exec command args
+    if result.code /= 0 then pure (Outcome.captured result)
+    else
+      let delimiter = if command == Binaries.git then Pattern "\x0000" else Pattern "\n"
+          paths = Array.filter (_ /= "") (split delimiter result.stdout)
+          stdout = if Array.null paths then "" else joinWith "\n" paths <> "\n"
+      in pure (Outcome.withValue (Json.fromArray (map Json.fromString paths)) (Outcome.withStdout stdout))
+  else
+    let humanArgs = Array.filter (_ /= "-z") args
+    in passthroughCommand context command humanArgs
 
 diffStat :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 diffStat context paths = case context.base of
@@ -502,7 +519,7 @@ newFiles context paths = case context.base of
   Nothing -> resolveBase context
   Just value -> case context.vcs of
     Git -> withGitReadBase context value \base ->
-      passthroughCommand context Binaries.git ([ "diff", "--diff-filter=A", "--name-only", base <> "...HEAD", "--" ] <> paths)
+      namedPaths context Binaries.git ([ "diff", "--diff-filter=A", "--name-only", "-z", base <> "...HEAD", "--" ] <> paths)
     Jj -> do
       source <- jjRangeFrom context value
       case source of
@@ -512,12 +529,12 @@ newFiles context paths = case context.base of
           if result.code /= 0 then pure (Outcome.captured result)
           else
             let added = Array.mapMaybe addedName (split (Pattern "\n") result.stdout)
-            in pure (Outcome.withStdout (if Array.null added then "" else joinWith "\n" added <> "\n"))
+                stdout = if Array.null added then "" else joinWith "\n" added <> "\n"
+            in pure (Outcome.withValue (Json.fromArray (map Json.fromString added)) (Outcome.withStdout stdout))
     Unknown -> pure noVcsOutcome
   where
   addedName line =
-    let tokens = Array.filter (_ /= "") (split (Pattern " " ) (trim line))
-    in if Array.head tokens == Just "A" then Array.index tokens 1 else Nothing
+    if Args.startsWith "A " line then Just (drop 2 line) else Nothing
 
 logRange :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 logRange context paths = case context.base of
@@ -535,6 +552,7 @@ logRange context paths = case context.base of
           else do
             let target = if trim probe.stdout /= "" then "@" else "@-"
             passthroughCommand context Binaries.jj ([ "log", "--revision", base <> ".." <> target, "--no-graph", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"", "--" ] <> paths)
+
     Unknown -> pure noVcsOutcome
 
 -- | The commit CI will run against, post-commit: the feature bookmark's
@@ -544,15 +562,15 @@ logRange context paths = case context.base of
 -- | revision is resolvable: jj's null root commit (all zeros) is not an
 -- | identity, so a fresh repository has no CI target.
 headCommitShaJj :: WorkflowContext -> Effect Outcome.OpOutcome
-headCommitShaJj context = do
+headCommitShaJj _ = do
   found <- jjFeatureBookmark
   case found of
     Left outcome -> pure outcome
-    Right (Just name) -> capturedCommand Binaries.jj [ "log", "--revision", name, "--no-graph", "--template", "commit_id ++ \"\\n\"" ] context
+    Right (Just name) -> scalarCommand Binaries.jj [ "log", "--revision", name, "--no-graph", "--template", "commit_id ++ \"\\n\"" ]
     Right Nothing -> do
       parent <- jjCommitId "@-"
       case parent of
-        Just sha -> pure (Outcome.withStdout (sha <> "\n"))
+        Just sha -> pure (Outcome.withValue (Json.fromString sha) (Outcome.withStdout (sha <> "\n")))
         Nothing -> pure (failureLine "vcs-op: no resolvable CI-target revision (fresh repository with only the null root commit)")
 
 -- | commit_id of a revision, Nothing when the query fails, resolves to
@@ -788,14 +806,23 @@ renderValue result =
         if result.code == 0 then
           if result.value == "" then "" else result.value <> "\n"
         else result.stdout
-  in
+  in Outcome.withValue (if result.code == 0 then Json.fromString result.value else Json.jsonNull)
     { exit: result.code
     , output: Outcome.Captured
         { stdout
         , stderr: result.stderr
         , stderrFirst: false
         }
+    , value: Json.jsonNull
     }
+
+scalarCommand :: String -> Array String -> Effect Outcome.OpOutcome
+scalarCommand command args = do
+  result <- Sys.exec command args
+  pure (renderValue (valueResult result (trim result.stdout)))
+
+headCommitShaGit :: Effect Outcome.OpOutcome
+headCommitShaGit = scalarCommand Binaries.git [ "rev-parse", "HEAD" ]
 
 capturedCommand :: String -> Array String -> WorkflowContext -> Effect Outcome.OpOutcome
 capturedCommand command args _ = Outcome.captured <$> Sys.exec command args

@@ -487,7 +487,9 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     workflow.ncl --field cli --arg "$state_json"`.
 
     Returns `{ step, skip, pattern, instructions, requires, pattern_config }`,
-    or `{ done = true }` when the workflow is complete.
+    or `{ done = true }` when the workflow is complete. The OMP tool exposes
+    this value as JSON (enum tags become strings), with `{ "done": true }` for
+    completion. CLI stdout retains the human-readable Nickel rendering.
 
     ## Examples
 
@@ -518,7 +520,9 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
   cli_seed
     | not_exported
     | doc m%"
-    Returns the seeded step list for todo UI initialization.
+    Returns the seeded step list for todo UI initialization. The OMP tool exposes
+    the list as a JSON array of `{ name, initial_status }` objects; CLI stdout
+    retains the Nickel rendering.
 
     `_test_state` has `minimal = false` and `review = false`, so every
     non-review step is emitted. When `state.minimal = true`, the four

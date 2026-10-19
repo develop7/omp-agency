@@ -34,14 +34,14 @@ A `failed` step always blocks `"completed"` — no redefining "passed". Update v
 
 #### Timing summary
 
-Call the `agency_driver` tool with `{ op: "summary" }`. It emits the markdown timing table
-(steps ≥30% of total time bold), the total wall-clock line, the `**Slowest step**:` line, and a
-`<<<FACTS ... FACTS` block with machine-readable data (`totalSeconds`, `slowestStep`, `dominantSteps`,
-`skippedSteps`, `failedSteps`). Do not compute durations yourself.
+Call the `agency_driver` tool with `{ op: "summary" }`. Its JSON result contains
+`workflow`, `steps`, `pendingStep`, `jobs`, `totalSeconds`, `slowest` (`{name, seconds}` or null),
+`dominantSteps`, `skippedSteps`, and `failedSteps`. Step/job records retain their evidence.
+Use these computed facts directly; do not parse the CLI's Markdown/FACTS rendering or compute durations yourself.
 
 #### Optimization suggestions
 
-From the FACTS block, generate **2–4 concrete suggestions** for reducing time-to-completion in future
+From the summary JSON, generate **2–4 concrete suggestions** for reducing time-to-completion in future
 runs — specific to this run's data (dominant step, flaky retries, useful `--from` entry point), not
 generic advice.
 

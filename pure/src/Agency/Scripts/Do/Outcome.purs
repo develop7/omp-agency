@@ -3,6 +3,7 @@ module Agency.Scripts.Do.Outcome
   , OpOutcome
   , success
   , withStdout
+  , withValue
   , captured
   , failure
   , passthrough
@@ -12,6 +13,7 @@ module Agency.Scripts.Do.Outcome
 import Prelude
 
 import Agency.Scripts.Do.Sys as Sys
+import Data.Argonaut.Core (Json, jsonNull)
 
 -- | Captured output is rendered by the adapter; passthrough output has already
 -- | been connected to the adapter's streams by its child process.
@@ -28,20 +30,27 @@ data OpOutput
 type OpOutcome =
   { exit :: Int
   , output :: OpOutput
+  , value :: Json
   }
 
 -- | A successful operation with no output.
 success :: OpOutcome
-success = { exit: 0, output: Captured { stdout: "", stderr: "", stderrFirst: false } }
+success = { exit: 0, output: Captured { stdout: "", stderr: "", stderrFirst: false }, value: jsonNull }
 
 -- | A successful operation with adapter-rendered standard output.
 withStdout :: String -> OpOutcome
-withStdout stdout = { exit: 0, output: Captured { stdout, stderr: "", stderrFirst: false } }
+withStdout stdout = { exit: 0, output: Captured { stdout, stderr: "", stderrFirst: false }, value: jsonNull }
+
+-- | Attach a semantic result without changing the human CLI rendering.
+withValue :: Json -> OpOutcome -> OpOutcome
+withValue value outcome =
+  if outcome.exit == 0 then outcome { value = value } else outcome
 
 -- | Convert captured subprocess output into an adapter-rendered outcome.
 captured :: Sys.ExecResult -> OpOutcome
 captured result =
   { exit: result.code
+  , value: jsonNull
   , output: Captured
       { stdout: result.stdout
       , stderr: result.stderr
@@ -53,18 +62,20 @@ captured result =
 failure :: Int -> String -> OpOutcome
 failure code message =
   { exit: code
+  , value: jsonNull
   , output: Captured { stdout: "", stderr: message, stderrFirst: true }
   }
 
 -- | A child process has inherited the adapter's streams and already rendered.
 passthrough :: Int -> OpOutcome
-passthrough code = { exit: code, output: Passthrough }
+passthrough code = { exit: code, output: Passthrough, value: jsonNull }
 
--- | Concatenate sequential outcomes while retaining stream ordering metadata.
+-- | Compose streams, not semantic results. A composite declares its own value.
 append :: OpOutcome -> OpOutcome -> OpOutcome
 append first second =
   { exit: if first.exit /= 0 then first.exit else second.exit
   , output: appendOutput first.output second.output
+  , value: jsonNull
   }
 
 appendOutput :: OpOutput -> OpOutput -> OpOutput

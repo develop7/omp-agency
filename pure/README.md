@@ -27,10 +27,17 @@ and the `OpOutcome` output seam.
   and done-summary formatting without direct process or filesystem calls.
 - `Cli` is the Node CLI adapter. It dispatches `argv[0]` to the legacy
   operation entrypoints used by the bundled CLI and test harness.
-- `Api` is the Node-facing OMP tool adapter. `runTool` mirrors the CLI
-  dispatch table, resolves `WorkflowContext`, requests captured output, and
-  returns `{ exit, stdout, stderr }` to `src/agency-tools.ts`; it does not
-  duplicate the operation runners.
+- `Api` is the Node-facing OMP tool adapter. `runTool` resolves
+  `WorkflowContext`, requests captured output, and returns
+  `{ exit, stdout, stderr, value }` to `src/agency-tools.ts`; it does not
+  duplicate the operation runners. `value` is semantic JSON, or null for prose
+  and failures. The workflow tool invokes the shared Node evaluator directly.
+- `Outcome` keeps semantic values alongside CLI stream output. `withValue`
+  attaches values only to successful outcomes; `append` combines streams and
+  drops intermediate values, so composite operations declare their own result.
+- `State` owns the canonical state, step, and job JSON encoders used both for
+  persistence and result data; result producers do not serialize and reparse
+  state to recover structure.
 
 Sync policy is represented by two explicit VCS operations:
 

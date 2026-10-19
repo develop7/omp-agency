@@ -17,14 +17,17 @@ import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
+import Data.Argonaut.Core (Json, fromArray, fromNumber, fromObject, fromString, jsonNull)
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Int as Int
 import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
 import Data.String (Pattern(..), Replacement(..), joinWith, replaceAll)
 import Data.String.CodeUnits (drop)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
+import Foreign.Object as Obj
 
 run :: WorkflowContext -> Effect Outcome.OpOutcome
 run context = do
@@ -36,7 +39,7 @@ run context = do
         summary <- compute state
         case summary of
           Left error -> pure (failText ("done: " <> error))
-          Right value -> pure (Outcome.withStdout (renderMarkdown value <> renderFacts value))
+          Right value -> pure (Outcome.withValue (summaryValue state value) (Outcome.withStdout (renderMarkdown value <> renderFacts value)))
       jobs -> do
         now <- Sys.nowIso
         current <- Sys.isoToEpoch now
@@ -237,6 +240,52 @@ skippedName step = step.name <> ":" <> fromMaybe "unspecified" step.reason
 
 fmtDur :: Int -> String
 fmtDur seconds = if seconds < 60 then show seconds <> "s" else show (seconds `div` 60) <> "m " <> show (seconds `mod` 60) <> "s"
+summaryValue :: State.State -> DoneSummary -> Json
+summaryValue state summary = objectValue
+  [ Tuple "workflow" (objectValue
+      [ Tuple "workflow" (fromString state.workflow)
+      , Tuple "startedAt" (fromString state.startedAt)
+      , Tuple "active" (fromString (State.renderActiveStatus state.active))
+      , Tuple "status" (fromString (State.renderWorkflowStatus state.status))
+      ])
+  , Tuple "steps" (fromArray (map rowValue summary.rows))
+  , Tuple "pendingStep" (case summary.pending of
+      Nothing -> jsonNull
+      Just pending -> objectValue
+        [ Tuple "name" (fromString pending.name)
+        , Tuple "seconds" (numberValue pending.seconds)
+        ])
+  , Tuple "jobs" (fromArray (map State.jobJson summary.jobs))
+  , Tuple "totalSeconds" (numberValue summary.totalSeconds)
+  , Tuple "slowest" (maybe jsonNull (\(Tuple name seconds) -> objectValue
+      [ Tuple "name" (fromString name)
+      , Tuple "seconds" (numberValue seconds)
+      ]) summary.slowest)
+  , Tuple "dominantSteps" (stringArray summary.dominant)
+  , Tuple "skippedSteps" (stringArray summary.skipped)
+  , Tuple "failedSteps" (stringArray summary.failed)
+  ]
+
+rowValue :: DoneRow -> Json
+rowValue row = objectValue
+  ( [ Tuple "name" (fromString row.step.name)
+    , Tuple "status" (fromString (State.renderStepStatus row.step.status))
+    , Tuple "verification" (fromString row.step.verification)
+    , Tuple "startedAt" (fromString row.step.startedAt)
+    , Tuple "completedAt" (fromString row.step.completedAt)
+    , Tuple "seconds" (numberValue row.seconds)
+    ] <> maybe [] (\reason -> [ Tuple "reason" (fromString reason) ]) row.step.reason
+  )
+
+
+objectValue :: Array (Tuple String Json) -> Json
+objectValue fields = fromObject (Obj.fromFoldable fields)
+
+numberValue :: Int -> Json
+numberValue = fromNumber <<< Int.toNumber
+
+stringArray :: Array String -> Json
+stringArray = fromArray <<< map fromString
 
 escapeVerification :: String -> String
 escapeVerification value = replaceAll (Pattern "|") (Replacement "\\|") (replaceAll (Pattern "\n") (Replacement " ") value)

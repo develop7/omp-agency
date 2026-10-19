@@ -20,9 +20,10 @@
  *       distribution commit exists so sha is the real dist commit.
  */
 
-import { readFile, writeFile, mkdir, stat, rm, cp } from "node:fs/promises";
+import { readFile, writeFile, mkdir, stat, rm, cp, readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
 
 const USAGE = `usage: package-runtime.mjs --out <dir> [--catalog <repo> <ref> <sha> <version>] [--verify]`;
 
@@ -31,6 +32,7 @@ const USAGE = `usage: package-runtime.mjs --out <dir> [--catalog <repo> <ref> <s
 const RUNTIME_FILES = [
   "src/agency-tools.ts",
   "src/workflow-vocabulary.ts",
+  "src/tool-results.ts",
   "pure/dist/agency-api.js",
   "nickel-vm/scripts/workflow-runtime.mjs",
   "nickel-vm/dist/nickel_vm.js",
@@ -113,6 +115,24 @@ async function stage(repoRoot, outDir) {
     await mkdir(dirname(target), { recursive: true });
     await cp(source, target);
   }
+  // Marketplace installs may not install npm dependencies. Ship the renderer's
+  // focused wrapping library in its runtime module, not as a node_modules tree.
+  execFileSync("esbuild", [
+    join(repoRoot, "src/tool-results.ts"), "--bundle", "--format=esm", "--platform=node",
+    `--outfile=${join(outDir, "src/tool-results.ts")}`,
+  ], { stdio: "inherit" });
+  const lock = JSON.parse(await readFile(join(repoRoot, "package-lock.json"), "utf8"));
+  const notices = [];
+  for (const [path, pkg] of Object.entries(lock.packages)) {
+    if (!path || pkg.dev) continue;
+    const directory = join(repoRoot, path);
+    const licenses = (await readdir(directory)).filter(name => /^licen[cs]e(?:[.-]|$)/i.test(name));
+    if (licenses.length === 0) fail(`missing bundled dependency license: ${path}`);
+    for (const license of licenses) {
+      notices.push(`${path} ${pkg.version}\n\n${await readFile(join(directory, license), "utf8")}`);
+    }
+  }
+  await writeFile(join(outDir, "THIRD-PARTY-LICENSES.txt"), notices.join("\n\n"));
   for (const dir of RUNTIME_DIRS) {
     const source = join(repoRoot, dir);
     if (!(await exists(source))) fail(`missing runtime directory in the build tree: ${dir}`);
@@ -293,8 +313,8 @@ async function verifyNickel(outDir) {
     if (result.exit !== 0) {
       fail(`staged Nickel runtime evaluation failed (exit ${result.exit}): ${(result.stderr || result.stdout).slice(0, 300)}`);
     }
-    if (!/step = /i.test(result.stdout)) {
-      fail(`staged Nickel runtime produced unexpected output: ${result.stdout.slice(0, 200)}`);
+    if (result.value?.step !== "research" || result.value.skip !== false) {
+      fail(`staged Nickel runtime produced an unexpected decision: ${JSON.stringify(result.value)}`);
     }
   } finally {
     await rm(statePath, { force: true });

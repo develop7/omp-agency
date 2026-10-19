@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { evaluateWorkflow } from "../nickel-vm/scripts/workflow-runtime.mjs";
 import { workflowEntryPoints, workflowSteps } from "./workflow-vocabulary.js";
+import { toolResult, renderResult, describeResult } from "./tool-results.js";
 
 type ApiRequest = {
   tool: string;
@@ -14,6 +15,7 @@ type ApiResult = {
   exit: number;
   stdout: string;
   stderr: string;
+  value: unknown;
 };
 
 type AgencyApi = {
@@ -31,19 +33,13 @@ async function loadApi(): Promise<AgencyApi> {
   return apiPromise;
 }
 
-async function executeApi(tool: string, args: string[]): Promise<{
-  content: Array<{ type: "text"; text: string }>;
-  details: ApiResult;
-}> {
+async function executeApi(tool: string, args: string[]) {
   const api = await loadApi();
   const result = await api.runTool({ tool, args, captureOutput: true })();
   if (result.exit !== 0) {
     throw new Error(result.stderr || result.stdout || emptyFailureMessage(tool, args, result.exit));
   }
-  return {
-    content: [{ type: "text", text: result.stdout || "ok" }],
-    details: result,
-  };
+  return toolResult(args[0], result);
 }
 
 function emptyFailureMessage(tool: string, args: string[], exit: number): string {
@@ -91,6 +87,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "vcs_read",
     label: "VCS Read",
+    renderResult,
+    describeResult,
     description:
       "Read-only VCS operations selected by op. Diff, new-files, and log-range optionally filter paths. dirty reports clean/dirty/no-vcs status, not a file list; these are successful results, while inspection errors fail. working-copy-status reports the working-copy changes for supported Git/jj repositories. head-revision/current-branch return the current branch/bookmark (under jj, on @ or its parent); head-commit-sha returns the feature commit CI will run against. Sync owns fetching. No raw CLI arguments are accepted.",
     parameters: z.union([
@@ -105,6 +103,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "vcs_write",
     label: "VCS Write",
+    renderResult,
+    describeResult,
     description:
       "Mutating VCS operations: branch requires name; commit/fix-commit require message and files; push accepts ref. Only files the caller actually changed may be committed. Fields from other operations are rejected.",
     parameters: z.union([
@@ -171,6 +171,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "forge",
     label: "Forge",
+    renderResult,
+    describeResult,
     description:
       "Forge operations with named fields, never CLI flags. pr/issue identify a number, URL, or (PR only) branch; absent pr selects the current branch. JSON field names are supplied as a list. body and bodyFile are mutually exclusive. GitHub-only options such as jq, commit-based fill, and editor flows belong in github. Backend capability checks remain authoritative.",
     parameters: z.union([
@@ -289,6 +291,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "workflow",
     label: "Workflow",
+    renderResult,
+    describeResult,
     description:
       "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared entry point to seed/resume.",
     // The model-facing schema stays closed like the deleted `.strict()` arms
@@ -308,10 +312,7 @@ export default function (pi: ExtensionAPI) {
       if (result.exit !== 0) {
         throw new Error(result.stderr || result.stdout || `workflow: evaluation failed with exit ${result.exit}`);
       }
-      return {
-        content: [{ type: "text", text: result.stdout || "ok" }],
-        details: result,
-      };
+      return toolResult(params.field, result);
     },
   });
 
@@ -342,6 +343,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "agency_driver",
     label: "Agency Driver",
+    renderResult,
+    describeResult,
     description:
       "Advance/inspect /do state with operation-specific named fields. init accepts task/review/noVcs/minimal/restart/from; base and stack belong to sync and are mutually exclusive. start/skip use step; end uses status/verification/reason. job-start records a bounded worker job (id/name/step, optional budgetMinutes 1-120, driver-computed timestamps); job-end resolves it with an outcome plus optional verification. set takes typed value: booleans for capability/options, structured values for steps/pendingStep, strings for custom fields; the jobs ledger itself is never set directly. Step names and entry points come from the workflow manifest. No raw CLI args.",
     parameters: z.union([
