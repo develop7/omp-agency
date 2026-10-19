@@ -617,7 +617,15 @@ branch context name = case validateBranchName name of
                 case atBase of
                   Left error -> pure (failureLine error)
                   Right true -> pure (failureLine ("vcs-op branch: the picked-up working copy changes sit on the base revision '" <> ref <> "'; refusing to strand them or retarget the trunk"))
-                  Right false -> createBookmark
+                  Right false -> do
+                    -- The deleted `jj new ref` anchored every branch at the
+                    -- base; attaching to picked-up work must keep that
+                    -- parentage guarantee or refuse.
+                    stacked <- sameJjRevision "@-" ref ("vcs-op branch: unable to compare the picked-up working copy's parent with base '" <> ref <> "'")
+                    case stacked of
+                      Left error -> pure (failureLine error)
+                      Right false -> pure (failureLine ("vcs-op branch: the picked-up working copy changes are not stacked on the base revision '" <> ref <> "'; refusing to attach the feature bookmark off-base"))
+                      Right true -> createBookmark
       Unknown -> pure noVcsOutcome
 
 commit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome

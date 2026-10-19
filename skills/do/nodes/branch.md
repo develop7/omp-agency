@@ -23,8 +23,8 @@ details: git creates the branch from `origin/<base>` (hard-erroring if that ref 
 parent must be pushed before stacking); jj creates a new change on `<base>` and a bookmark pointing
 at it. When @ already carries picked-up work (an undescribed change with content), the branch sits
 on top of those changes instead: the bookmark attaches to that change. jj refuses when the work
-sits on the base revision itself — better a hard error than stranding the work or retargeting the
-trunk.
+sits on the base revision itself or is not stacked on it — better a hard error than stranding the
+work or retargeting the trunk.
 
 `base` is what makes stacked PRs work: it is the parent branch (not necessarily master/main), resolved
 by sync from `--base <branch>`, `--stack`, or the default branch. create-pr targets this same `base`
