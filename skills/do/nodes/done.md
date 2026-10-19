@@ -59,8 +59,9 @@ generic advice.
   `vcs_read` with `{ op: "remote-url" }`) instead of a PR URL. Print to the terminal only; post
   nothing.
 - **If `supportsPrComment`**: report the PR URL. Post the final step status table as a PR comment by
-  calling the `forge` tool with `{ op: "pr-comment", body: "<comment>" }` — use the emitted
-  table and slowest-step line verbatim, strip the trailing FACTS block. Format:
+  calling the `forge` tool with `{ op: "pr-comment", body: "<comment>" }`. Format the table from the
+  summary JSON's step records and computed `totalSeconds`/`slowest` facts; do not parse the CLI-only
+  Markdown/FACTS representation or recompute durations. Include the recorded verification fields. Format:
 
 ```text
 call the `forge` tool with `{ op: "pr-comment", body: "..." }`
