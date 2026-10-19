@@ -563,6 +563,14 @@ test("workflow wire schema stays closed like the runtime contract", () => {
   for (const arm of workflow.anyOf) assert.equal(arm.additionalProperties, false);
 });
 
+test("jobs wire schema stays impossible like the runtime contract", () => {
+  // The runtime value schema always rejects; the model-facing schema must
+  // declare the same impossibility, as the deleted z.never() emitted.
+  const driver = tool(tools, "agency_driver").parameters.toJsonSchema();
+  const jobsArm = driver.anyOf.find(member => member.properties?.field?.const === "jobs");
+  assert.deepEqual(jobsArm.properties.value, { not: {} });
+});
+
 test("forge rejects injected selectors, arbitrary argv, and conflicting bodies", () => {
   const schema = tool(tools, "forge").parameters;
   rejects(schema, { op: "pr-view", pr: "--repo=evil" });
