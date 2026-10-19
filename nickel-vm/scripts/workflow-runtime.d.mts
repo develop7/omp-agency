@@ -9,11 +9,12 @@ export type WorkflowRequest =
       cwd?: string;
     };
 
-/** Public result envelope. `stdout` is rendered in the legacy Nickel-text workflow protocol. */
+/** Public result envelope. `stdout` retains legacy Nickel rendering; `value` carries validated JSON semantics on success and null on failure. */
 export type WorkflowResult = {
   exit: number;
   stdout: string;
   stderr: string;
+  value: unknown | null;
 };
 
 /** Evaluate a /do workflow from its operation, seed, and working directory. */

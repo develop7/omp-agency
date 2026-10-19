@@ -24,12 +24,15 @@ import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.Vcs as Vcs
-import Data.Argonaut.Core (Json, fromBoolean, fromString, toString)
+import Data.Argonaut.Core (Json, fromBoolean, fromNumber, fromObject, fromString, jsonNull, toString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Int as Int
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
+import Foreign.Object as Obj
 
 -- | The legacy reset primitive: it still resets whatever it finds — no
 -- | prior run, stale extras, even corrupt state — EXCEPT for one
@@ -46,8 +49,9 @@ runInit context = do
   case blocking of
     [] -> do
       timestamp <- Sys.nowIso
-      State.writeState (Context.statePath context) (State.initState timestamp)
-      pure (Outcome.withStdout ("init: startedAt=" <> timestamp <> "\n"))
+      let state = State.initState timestamp
+      State.writeState (Context.statePath context) state
+      pure (Outcome.withValue (State.encodeState state) (Outcome.withStdout ("init: startedAt=" <> timestamp <> "\n")))
     open -> pure (failText ("do-results: unfinished job(s) block init: " <> State.jobIdList open <> " — resolve with job-end first"))
 
 runStepStart :: WorkflowContext -> String -> Effect Outcome.OpOutcome
@@ -55,8 +59,13 @@ runStepStart context name = withLoadedState context \state -> case state.pending
   Just pending -> pure (failText ("do-results: pendingStep '" <> pending.name <> "' already active — call step-end before starting '" <> name <> "'"))
   Nothing -> do
     timestamp <- Sys.nowIso
-    State.writeState (Context.statePath context) (State.startPending { name, startedAt: timestamp } state)
-    pure (Outcome.withStdout ("pending: " <> name <> "\n"))
+    let pending = { name, startedAt: timestamp }
+        updated = State.startPending pending state
+    State.writeState (Context.statePath context) updated
+    pure
+      ( Outcome.withValue (objectValue [ Tuple "pendingStep" (fromMaybeJson (State.stateGetJson "pendingStep" updated)) ]) $
+          Outcome.withStdout ("pending: " <> name <> "\n")
+      )
 
 -- | Unfinished jobs block every path that records the step as complete —
 -- | step-end and the corrective `step` record alike — so neither can yield
@@ -99,7 +108,10 @@ runStepEnd context status verification reason = withLoadedState context \state -
         Right appended -> do
           let updated = terminalize pending.name status (State.finishPending appended)
           State.writeState (Context.statePath context) updated
-          pure (Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n"))
+          pure
+            ( Outcome.withValue (recordedStepValue updated) $
+                Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n")
+            )
 
 runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStep context name status verification startedAt completedAt reason = withLoadedState context \state ->
@@ -118,7 +130,10 @@ runStep context name status verification startedAt completedAt reason = withLoad
             Right appended -> do
               let updated = terminalize name status appended
               State.writeState (Context.statePath context) updated
-              pure (Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n"))
+              pure
+                ( Outcome.withValue (recordedStepValue updated) $
+                    Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n")
+                )
 
 -- | Append a worker-owned job under a fresh id with a driver-computed
 -- | startedAt and optional deadline (startedAt + budgetMinutes). Callers
@@ -145,7 +160,10 @@ runJobStart context input = withLoadedState context \state -> do
         Left error -> pure (failText error)
         Right appended -> do
           State.writeState (Context.statePath context) appended
-          pure (Outcome.withStdout ("job-start: " <> input.id <> " step=" <> input.step <> deadlineText <> "\n"))
+          pure
+            ( Outcome.withValue (State.jobJson job) $
+                Outcome.withStdout ("job-start: " <> input.id <> " step=" <> input.step <> deadlineText <> "\n")
+            )
 
 -- | A job's deadline is driver-computed as startedAt + budgetMinutes and is
 -- | persisted in the same canonical UTC format as every other timestamp.
@@ -169,15 +187,21 @@ runJobEnd context input = withLoadedState context \state -> do
     Left error -> pure (failText error)
     Right resolved -> do
       State.writeState (Context.statePath context) resolved
-      -- A finish that lands before the job's start was clamped up to
-      -- `startedAt` inside `resolveJob`; surface the observed timestamps
-      -- loudly instead of silently rewriting the recorded duration — what
-      -- caused the inversion is not assumed here.
-      let clampNote = case Array.find (State.unfinishedJobWithId input.id) state.jobs of
-            Just job | State.finishNeedsClamp job completed ->
-              " (finish " <> completed <> " precedes startedAt " <> job.startedAt <> " — clamped to start)"
-            _ -> ""
-      pure (Outcome.withStdout ("job-end: " <> input.id <> " " <> State.renderJobOutcome input.outcome <> clampNote <> "\n"))
+      let
+        finishedJob = Array.find (\job -> job.id == input.id) resolved.jobs
+        clampNote = case Array.find (State.unfinishedJobWithId input.id) state.jobs of
+          Just job | State.finishNeedsClamp job completed ->
+            " (finish " <> completed <> " precedes startedAt " <> job.startedAt <> " — clamped to start)"
+          _ -> ""
+        result = case finishedJob of
+          Just job -> objectValue
+            [ Tuple "job" (State.jobJson job)
+            , Tuple "clamped" (fromBoolean (clampNote /= ""))
+            , Tuple "finishAttemptedAt" (fromString completed)
+            , Tuple "clampNote" (if clampNote == "" then jsonNull else fromString clampNote)
+            ]
+          Nothing -> jsonNull
+      pure (Outcome.withValue result (Outcome.withStdout ("job-end: " <> input.id <> " " <> State.renderJobOutcome input.outcome <> clampNote <> "\n")))
 
 runSet :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runSet context field value = withLoadedState context \state -> do
@@ -190,7 +214,10 @@ runSet context field value = withLoadedState context \state -> do
     Left error -> pure (failText error)
     Right final -> do
       State.writeState (Context.statePath context) final
-      pure (Outcome.withStdout ("set: " <> field <> "=" <> value <> "\n"))
+      pure
+        ( Outcome.withValue (objectValue [ Tuple "field" (fromString field), Tuple "value" (fromMaybeJson (State.stateGetJson field final)) ]) $
+            Outcome.withStdout ("set: " <> field <> "=" <> value <> "\n")
+        )
 
 -- | `base` names the PR-target ref every later diff op resolves and the
 -- | trunk guards compare against; a value that names no ref is rejected here,
@@ -248,16 +275,15 @@ runDriverInit context options = do
         Left error -> pure (failText error)
         Right final -> do
           State.writeState (Context.statePath context) final
-          let fromText = if isDefaultEntry then "default" else options.from
-              -- A recovered run must see its pending work at once: when
-              -- --restart carried jobs, name them on the init line's tail.
-              carriedText =
-                if Array.null carriedJobs then ""
-                else
-                  "carried unfinished job(s): "
-                    <> State.jobIdList carriedJobs
-                    <> "\n"
-          pure (Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n" <> carriedText))
+          let
+            fromText = if isDefaultEntry then "default" else options.from
+            carriedText =
+              if Array.null carriedJobs then ""
+              else "carried unfinished job(s): " <> State.jobIdList carriedJobs <> "\n"
+          pure
+            ( Outcome.withValue (State.encodeState final) $
+                Outcome.withStdout ("init: review=" <> show options.review <> " noVcs=" <> show options.noVcs <> " minimal=" <> show options.minimal <> " from=" <> fromText <> " vcs=" <> Vcs.vcsName context.vcs <> "\n" <> carriedText)
+            )
 
 -- | `skip` is `step-start` + `step-end` under one lock, so its job guard
 -- | must run against the state loaded BEFORE the first half writes: a
@@ -272,7 +298,7 @@ runDriverSkip context step reason = withLoadedState context \state -> case unfin
     if started.exit /= 0 then pure started
     else do
       ended <- runStepEnd context "skipped" "" (Args.nonEmpty reason)
-      pure (Outcome.append started ended)
+      pure (Outcome.withValue ended.value (Outcome.append started ended))
 
 validInterval :: String -> String -> Effect (Either String Unit)
 validInterval startedAt completedAt = do
@@ -341,3 +367,25 @@ failText message = Outcome.failure 1 (message <> "\n")
 
 failWithCode :: Int -> String -> Outcome.OpOutcome
 failWithCode code message = Outcome.failure code (message <> "\n")
+
+objectValue :: Array (Tuple String Json) -> Json
+objectValue fields = fromObject (Obj.fromFoldable fields)
+
+fromMaybeJson :: Maybe Json -> Json
+fromMaybeJson = case _ of
+  Nothing -> jsonNull
+  Just value -> value
+
+recordedStepValue :: State.State -> Json
+recordedStepValue state =
+  let
+    recorded = Array.last state.steps
+    step = case recorded of
+      Nothing -> jsonNull
+      Just value -> State.stepJson value
+  in objectValue
+    [ Tuple "step" step
+    , Tuple "steps" (fromNumber (Int.toNumber (Array.length state.steps)))
+    , Tuple "pendingStep" (fromMaybeJson (State.stateGetJson "pendingStep" state))
+    ]
+

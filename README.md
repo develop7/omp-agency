@@ -228,6 +228,32 @@ The model-facing contracts use named operands rather than CLI argument arrays:
 common values at the top level; GitHub-specific options are namespaced, such as
 `forge {op: "pr-view", json: ["number"], github: {jq: ".number"}}`.
 
+Tool results retain semantic data instead of only subprocess streams. Objects and
+arrays appear once as fenced JSON in model-facing `content`; scalar strings stay
+bare. `details: { op, value }` carries the same value for hooks, renderers, and
+session consumers. The previous `details.exit/stdout/stderr` envelope is removed.
+Values larger than 32 KiB of serialized UTF-8 JSON remain complete in `content`
+(and can use OMP's normal spill machinery), but `details.value` is `null` to avoid
+duplicating large payloads in session history. A `null` value also denotes an
+operation with prose output rather than a semantic result.
+
+- Workflow decisions and seed lists preserve the validated Nickel JSON.
+- Driver operations return state, step, field, or job records; summary returns
+  computed timing, step, and job data, including recorded evidence.
+- VCS scalar queries return values; `diff-names` and `new-files` return path
+  arrays. Git paths preserve embedded newlines and Unicode. Empty path arrays
+  are `[]`, not empty text, and are marked `useless` for compaction.
+- Forge detection/capabilities carry values; GitHub projections carry parsed JSON
+  only with `json` and without `github.jq`/`github.template`. Malformed JSON fails.
+- Diffs, logs, working-copy listings, sync progress, VCS writes, and formatted
+  forge output remain prose. CLI stdout remains human-readable, including
+  Nickel-rendered workflow output.
+
+Terminal result renderers project human-readable views from `details` (including
+a step timeline and job ledger for summaries); headless JSON stays complete.
+The ANSI renderer uses `wrap-ansi` for Unicode-aware wrapping; the native renderer
+emits semantic TSP text nodes.
+
 The `vcs_read {op: "dirty"}` operation returns `clean`, `dirty`, or `no-vcs`
 with exit 0. `no-vcs` means no VCS was detected, not that the tree was inspected
 and found clean. `dirty` is a status, not a file list; genuine VCS inspection

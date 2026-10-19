@@ -18,6 +18,8 @@ import Agency.Scripts.Do.ForgeKind (ForgeKind(..))
 import Agency.Scripts.Do.ForgeKind (ForgeKind(..)) as ForgeKinds
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Sys as Sys
+import Data.Argonaut.Core (fromBoolean, fromString)
+import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
@@ -103,24 +105,34 @@ detectForge override fromState remote =
 -- | captured for tool adapters and inherited for the CLI adapter.
 runForgeOp :: WorkflowContext -> ForgeOp -> Effect Outcome.OpOutcome
 runForgeOp context operation = case operation of
-  Detect -> pure (Outcome.withStdout (forgeName context.forge <> "\n"))
-  Supports name -> pure (if supports context.forge name then Outcome.success else Outcome.failure 1 "")
-  PrView args -> dispatch context.forge "pr-view" "pr" "view" args
-  PrCreate args -> dispatch context.forge "pr-create" "pr" "create" args
-  PrEdit args -> dispatch context.forge "pr-edit" "pr" "edit" args
-  PrComment args -> dispatch context.forge "pr-comment" "pr" "comment" args
-  IssueView args -> dispatch context.forge "issue-view" "issue" "view" args
-  PrChecks args -> dispatch context.forge "pr-checks" "pr" "checks" args
+  Detect -> pure (Outcome.withValue (fromString (forgeName context.forge)) (Outcome.withStdout (forgeName context.forge <> "\n")))
+  Supports name ->
+    let supported = supports context.forge name
+    in pure (Outcome.withValue (fromBoolean supported) (if supported then Outcome.success else Outcome.failure 1 ""))
+  PrView args -> dispatch context "pr-view" "pr" "view" args
+  PrCreate args -> dispatch context "pr-create" "pr" "create" args
+  PrEdit args -> dispatch context "pr-edit" "pr" "edit" args
+  PrComment args -> dispatch context "pr-comment" "pr" "comment" args
+  IssueView args -> dispatch context "issue-view" "issue" "view" args
+  PrChecks args -> dispatch context "pr-checks" "pr" "checks" args
   where
-  dispatch forge opName command subcommand args = case forge of
-    Github ->
-      if context.captureOutput then
-        Outcome.captured <$> Sys.exec Binaries.gh ([ command, subcommand ] <> args)
+  dispatch ctx opName command subcommand args = case ctx.forge of
+    Github -> do
+      let jsonProjection = Array.elem "--json" args
+            && not (Array.elem "--jq" args)
+            && not (Array.elem "--template" args)
+      if ctx.captureOutput then do
+        result <- Sys.exec Binaries.gh ([ command, subcommand ] <> args)
+        if result.code /= 0 then pure (Outcome.captured result)
+        else if jsonProjection then case jsonParser result.stdout of
+          Left _ -> pure (Outcome.failure 1 ("forge-op: gh returned invalid JSON for '" <> opName <> "'\n"))
+          Right value -> pure (Outcome.withValue value (Outcome.captured result))
+        else pure (Outcome.captured result)
       else do
         result <- Sys.execInherit Binaries.gh ([ command, subcommand ] <> args)
         case result.error of
           Just error -> pure (Outcome.failure 1 ("forge-op: gh failed to spawn: " <> error <> "\n"))
           Nothing -> pure (Outcome.passthrough result.code)
     _ -> pure (Outcome.failure 1
-      ("forge-op: forge '" <> forgeName forge <> "' does not support '" <> opName <> "'\n"
+      ("forge-op: forge '" <> forgeName ctx.forge <> "' does not support '" <> opName <> "'\n"
         <> "        Bitbucket support is tracked in srid/agency#10.\n"))

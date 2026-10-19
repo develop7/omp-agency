@@ -14,5 +14,8 @@
   },
   "devDependencies": {
     "@oh-my-pi/omptype": "18.12.2"
+  },
+  "dependencies": {
+    "wrap-ansi": "9.0.2"
   }
 }

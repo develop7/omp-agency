@@ -4,11 +4,11 @@
 
 ## Workflow runtime
 
-`scripts/workflow-runtime.mjs` exports `evaluateWorkflow({ operation: "cli", cwd? } | { operation: "cli_seed", seed: string, cwd? })`, which returns `{ exit, stdout, stderr }`. It is the only Node implementation that loads the WASM glue, discovers workflow assets, reads `.do-results.json`, constructs the evaluator request, validates the JSON evaluator wire, renders the public legacy Nickel text, and converts failures to that result protocol. It loads `skills/do` assets packaged beside the runtime first, then falls back to `<cwd>/skills/do`; state is always `<cwd>/.do-results.json`. The CLI bridge only frames stdin/stdout around this primitive, while the OMP extension invokes it directly.
+`scripts/workflow-runtime.mjs` exports `evaluateWorkflow({ operation: "cli", cwd? } | { operation: "cli_seed", seed: string, cwd? })`, which returns `{ exit, stdout, stderr, value }`. On success, `value` is the validated parsed JSON object or array from Nickel; on failure it is `null`. `stdout` remains the existing human-readable Nickel rendering for CLI users. The runtime is the only Node implementation that loads the WASM glue, discovers workflow assets, reads `.do-results.json`, constructs the evaluator request, validates the JSON evaluator wire, preserves its semantic value, renders legacy Nickel text, and converts failures to that result protocol. It loads `skills/do` assets packaged beside the runtime first, then falls back to `<cwd>/skills/do`; state is always `<cwd>/.do-results.json`. The CLI bridge frames the complete result envelope over stdin/stdout, while the OMP extension invokes the runtime directly.
 
 ## Evaluation seam
 
-The WASM-level `eval_workflow` function accepts the workflow source, workflow vocabulary manifest, `.do-results.json` source, and a discriminated operation (`cli` with no seed or `cli_seed` with a required string seed). The shared Node runtime supplies those sources after discovery. It registers one in-memory `main.ncl` invocation and injects `workflow.ncl`, `workflow-manifest.json`, and `.do-results.json` into Nickel's source cache, plus `seed.json` for `cli_seed`. The invocation imports them through Nickel's `%inmem_src%:` seam, so no temporary files or working-directory imports are needed. On success, the WASM evaluator returns the workflow result as JSON text; the runtime validates its operation-specific shape and renders the existing Nickel-text `stdout` contract. Seed values are serialized as JSON strings rather than interpolated into Nickel source.
+The WASM-level `eval_workflow` function accepts the workflow source, workflow vocabulary manifest, `.do-results.json` source, and a discriminated operation (`cli` with no seed or `cli_seed` with a required string seed). The shared Node runtime supplies those sources after discovery. It registers one in-memory `main.ncl` invocation and injects `workflow.ncl`, `workflow-manifest.json`, and `.do-results.json` into Nickel's source cache, plus `seed.json` for `cli_seed`. The invocation imports them through Nickel's `%inmem_src%:` seam, so no temporary files or working-directory imports are needed. On success, the WASM evaluator returns the workflow result as JSON text; the runtime parses it once, validates its operation-specific shape, returns the parsed JSON in `value`, and renders the existing Nickel-text `stdout` for CLI consumers. Seed values are serialized as JSON strings rather than interpolated into Nickel source.
 
 The evaluator intentionally uses the single-input path: merging multiple input documents would change the workflow/state contract by merging state fields into the workflow record.
 
@@ -21,7 +21,7 @@ normalize call. This is the patch's upstreaming candidate; until upstream
 accepts it, the flake applies it at build time via a `patchedNickelCore`
 derivation (fetchCrate + patch), which the wasm build consumes through
 `[patch.crates-io]`. `Cargo.lock` pins the full dependency graph; bumping
-the core version requires re-verifying the smoke goldens.
+the core version requires re-verifying semantic-value smoke assertions.
 
 ## Build and smoke test
 
@@ -43,5 +43,5 @@ node nickel-vm/scripts/smoke.mjs
 For one-off invocations outside the dev shell, pin the interpreter the same
 way: `nix develop --command node nickel-vm/scripts/smoke.mjs`.
 
-The smoke test compares the documented valid `cli` and `cli_seed` results byte-for-byte through the shared runtime, rejects contradictory operation-and-seed states, verifies that an unknown nonempty `cli_seed` entry point is rejected, and checks that a missing state file reports the initialization action.
+The smoke test checks semantic `cli` objects, `cli_seed` arrays, terminal `{ done: true }`, failure `null` values, contradictory operation-and-seed rejection, unknown nonempty `cli_seed` entry-point rejection, and actionable missing-state errors. It intentionally does not pin incidental Nickel text formatting.
 

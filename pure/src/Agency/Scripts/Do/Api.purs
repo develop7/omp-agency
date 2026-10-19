@@ -10,6 +10,7 @@ import Agency.Scripts.Do.Ops as Ops
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Vcs as Vcs
 import Data.Array as Array
+import Data.Argonaut.Core (Json, jsonNull)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.String (joinWith)
@@ -19,6 +20,7 @@ type ToolResult =
   { exit :: Int
   , stdout :: String
   , stderr :: String
+  , value :: Json
   }
 
 -- | Run one model-facing tool through the same parsers and runners as the CLI.
@@ -29,7 +31,6 @@ runTool request = case request.tool of
   "vcs_read" -> runVcsRead request
   "vcs_write" -> runVcsWrite request
   "forge" -> runForge request
-  "workflow" -> runWorkflow request
   "agency_driver" -> runAgencyDriver request
   _ -> pure (failureResult 1 ("agency: unknown tool '" <> request.tool <> "'"))
 
@@ -45,13 +46,6 @@ runVcsWrite request = case parseVcsWrite request.args of
 
 runForge :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
 runForge request = runParsed request.captureOutput (parseMessageError (Forge.parseForgeOp request.args)) Forge.runForgeOp
-
-runWorkflow :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
-runWorkflow request =
-  if Array.head request.args == Just "cli" && Array.length request.args > 1 then
-    pure (failureResult 1 "workflow: from is only valid with cli_seed")
-  else
-    runParsed request.captureOutput (Ops.parseNickelOp request.args) Ops.runNickelOp
 
 runAgencyDriver :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
 runAgencyDriver request = case Array.uncons request.args of
@@ -172,11 +166,13 @@ outcomeResult outcome = case outcome.output of
     { exit: outcome.exit
     , stdout: output.stdout
     , stderr: output.stderr
+    , value: outcome.value
     }
   Outcome.Passthrough ->
     { exit: outcome.exit
     , stdout: ""
     , stderr: ""
+    , value: outcome.value
     }
 
 failureResult :: Int -> String -> ToolResult
@@ -184,4 +180,5 @@ failureResult exit message =
   { exit
   , stdout: ""
   , stderr: message <> "\n"
+  , value: jsonNull
   }

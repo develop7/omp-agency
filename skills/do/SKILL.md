@@ -26,9 +26,9 @@ sensible default choices and keep moving.
    `sync` (they select the stacked-PR base, which sync resolves and persists — `agency_driver` `init` rejects them).
 2. Call `agency_driver` with `{ op: "init", task?: <task>, review?: <bool>, noVcs?: <bool>, minimal?: <bool>, restart?: <bool>, from?: <entry> }` to initialize state.
 3. Seed the task checklist by calling the `workflow` tool with `{ field: "cli_seed", from: "<from>" }` — it returns
-   `[{ name, initial_status }]`; mark `completed` steps and seed the todo UI.
-4. For each step, call the `workflow` tool with `{ field: "cli" }` — it returns
-   `{ step, skip, pattern, instructions, requires, pattern_config }`.
+   a JSON array `[{ name, initial_status }]`; mark `completed` steps and seed the todo UI.
+4. For each step, call the `workflow` tool with `{ field: "cli" }` — it returns a JSON object
+   `{ step, skip, pattern, instructions, requires, pattern_config }`, or `{ "done": true }`.
     - If `skip` is true, call the `agency_driver` tool with `{ op: "skip", step: <step>, reason: <reason> }` and continue.
     - Otherwise: call `agency_driver` with `{ op: "start", step: <step> }`, read `nodes/<step>.md`, do the work,
       then call `agency_driver` with `{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }`.
@@ -68,10 +68,16 @@ state at `init`; for a different PR target set it explicitly with `agency_driver
 Every node is bookended by calling `agency_driver` with `{ op: "start", step: <name> }` before work and
 `{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }` after verification. The driver records step state in
 `.do-results.json`.
-**Trust the driver's stdout.** Every mutation echoes a one-line confirmation. State schema, commands, and the full
-field list (`vcs`, `forge`, `noVcs`, `minimal`, `review`, `base`, `active`, `status`) live in `.do-results.json` —
+**Trust the driver's result data.** Mutations return their resulting state, step, field, or job as JSON; sync retains its prose protocol.
+The state schema, commands, and field list (`vcs`, `forge`, `noVcs`, `minimal`, `review`, `base`, `active`, `status`) live in `.do-results.json` —
 use `agency_driver` and `vcs_read` rather than re-deriving here. The one field worth calling out is `base`: written
 by sync, read by every diff/log/branch op — it is what makes stacked PRs work.
+
+Data results are JSON in model-facing content and available as `details: { op, value }`.
+Oversized values (more than 32 KiB of serialized UTF-8 JSON) remain complete in content
+but have `details.value: null`; prose-only operations also have a null value.
+File-list reads return JSON arrays: `[]` means no matching paths, not a nonempty listing.
+The CLI still emits its human-readable confirmations.
 
 **Discipline**: never call `end` without a prior `start`, and never use the `step` operation with `now` for both
 timestamps. Don't run `date` yourself — `agency_driver` resolves UTC internally. Exceptions: sync is recorded by the

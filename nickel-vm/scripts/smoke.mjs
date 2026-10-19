@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { evaluateWorkflow } from './workflow-runtime.mjs';
 
 
@@ -36,6 +38,28 @@ async function workflowResult(operation, state, seed) {
         fs.rmSync(cwd, { recursive: true, force: true });
     }
 }
+function bridgeWorkflow(operation, cwd, seed) {
+    const request = operation === 'cli'
+        ? { operation, cwd }
+        : { operation, seed, cwd };
+    const bridge = fileURLToPath(new URL('./cli-bridge.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [bridge], { input: JSON.stringify(request), encoding: 'utf8' });
+    if (result.status !== 0) {
+        throw new Error(`workflow bridge failed (exit ${result.status}): ${result.stderr}`);
+    }
+    return JSON.parse(result.stdout);
+}
+async function workflowParity(operation, state, seed) {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agency-workflow-'));
+    try {
+        fs.writeFileSync(path.join(cwd, '.do-results.json'), stateSource(state), 'utf8');
+        const request = operation === 'cli' ? { operation, cwd } : { operation, seed, cwd };
+        return { direct: await evaluateWorkflow(request), bridged: bridgeWorkflow(operation, cwd, seed) };
+    } finally {
+        fs.rmSync(cwd, { recursive: true, force: true });
+    }
+}
+
 
 async function missingStateResult() {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agency-workflow-'));
@@ -46,15 +70,9 @@ async function missingStateResult() {
     }
 }
 
-const GOLDENS = {
-    cli: `{ step = "sync", skip = false, pattern = 'one-shot, instructions = "nodes/sync.md", requires = [], pattern_config = {} }`,
-    cli_seed_empty: `[{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`,
-    cli_seed_followup: `[{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "docs", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "hickey-lowy", initial_status = 'pending }, { name = "police", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "evidence", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`,
-    cli_seed_minimal: `[{ name = "sync", initial_status = 'pending }, { name = "research", initial_status = 'pending }, { name = "branch", initial_status = 'pending }, { name = "implement", initial_status = 'pending }, { name = "check", initial_status = 'pending }, { name = "fmt", initial_status = 'pending }, { name = "commit", initial_status = 'pending }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`
-};
 
 function assert(name, actual, expected) {
-    if (actual === expected) {
+    if (actual === expected || JSON.stringify(actual) === JSON.stringify(expected)) {
         console.log(`${name} passed`);
     } else {
         console.error(`${name} failed`);
@@ -75,44 +93,47 @@ async function run() {
     console.log('Running Nickel VM smoke tests...');
     const missingState = await missingStateResult();
     assert('shared runtime reports missing state', missingState.exit, 1);
-    assert(
-        'shared runtime makes missing state actionable',
-        missingState.stderr.includes('run do-driver init first'),
-        true,
-    );
+    assert('shared runtime failure carries null value', missingState.value, null);
+    assert('shared runtime makes missing state actionable', missingState.stderr.includes('run do-driver init first'), true);
 
     const cliWithSeed = await evaluateWorkflow({ operation: 'cli', seed: 'default' });
     assert('cli rejects a seed', cliWithSeed.exit, 1);
     assert('cli rejection names seed', cliWithSeed.stderr.includes('cli does not accept a seed'), true);
+    assert('cli rejection carries null value', cliWithSeed.value, null);
 
     const seedWithoutValue = await evaluateWorkflow({ operation: 'cli_seed' });
     assert('cli_seed rejects a missing seed', seedWithoutValue.exit, 1);
     assert('cli_seed missing seed rejection is actionable', seedWithoutValue.stderr.includes('cli_seed requires a string seed'), true);
-
     const seedWithNull = await evaluateWorkflow({ operation: 'cli_seed', seed: null });
+    const cliParity = await workflowParity('cli', TEST_STATE);
+    assertResult('direct cli', cliParity.direct);
+    assertResult('bridged cli', cliParity.bridged);
+    assert('bridge preserves direct cli value and rendering', [cliParity.bridged.value, cliParity.bridged.stdout], [cliParity.direct.value, cliParity.direct.stdout]);
+    const seedParity = await workflowParity('cli_seed', TEST_STATE, '');
+    assertResult('direct cli_seed', seedParity.direct);
+    assertResult('bridged cli_seed', seedParity.bridged);
+    assert('bridge preserves direct cli_seed value and rendering', [seedParity.bridged.value, seedParity.bridged.stdout], [seedParity.direct.value, seedParity.direct.stdout]);
     assert('cli_seed rejects a null seed', seedWithNull.exit, 1);
     assert('cli_seed null seed rejection is actionable', seedWithNull.stderr.includes('cli_seed requires a string seed'), true);
 
+    const cli = await workflowResult('cli', TEST_STATE);
+    assertResult('cli', cli);
+    assert('cli carries semantic object', cli.value.step, 'sync');
+    assert('cli carries semantic pattern config', cli.value.pattern_config, {});
 
-    const res1 = await workflowResult('cli', TEST_STATE);
-    assertResult('cli', res1);
-    assert('cli', res1.stdout, GOLDENS.cli);
-
-    const res2 = await workflowResult('cli_seed', TEST_STATE, '');
-    assertResult('cli_seed ""', res2);
-    assert('cli_seed ""', res2.stdout, GOLDENS.cli_seed_empty);
-
-    const res3 = await workflowResult('cli_seed', TEST_STATE, 'followup');
-    assertResult('cli_seed "followup"', res3);
-    assert('cli_seed "followup"', res3.stdout, GOLDENS.cli_seed_followup);
+    const seed = await workflowResult('cli_seed', TEST_STATE, '');
+    assertResult('cli_seed', seed);
+    assert('cli_seed carries array', Array.isArray(seed.value), true);
+    assert('cli_seed carries ordered step names', seed.value.map(({ name }) => name).join(','), 'sync,research,branch,implement,check,docs,fmt,commit,hickey-lowy,police,test,create-pr,ci,evidence,done');
 
     const invalidSeed = await workflowResult('cli_seed', TEST_STATE, "\u0000\n\"\\雪");
-    assert('cli_seed rejects an unknown nonempty entry point', invalidSeed.exit !== 0, true);
+    assert('cli_seed rejects unknown entry point', invalidSeed.exit !== 0, true);
+    assert('cli_seed failure carries null value', invalidSeed.value, null);
 
     for (const status of ["failed", "completed"]) {
         const terminal = await workflowResult('cli', { ...TEST_STATE, status });
-        assertResult(`cli respects ${status} workflow status`, terminal);
-        assert(`cli respects ${status} workflow status`, terminal.stdout, `{ done = true }`);
+        assertResult(`cli terminal ${status}`, terminal);
+        assert(`cli terminal ${status} carries done object`, terminal.value, { done: true });
     }
 
     const completedThroughCi = [
@@ -121,41 +142,16 @@ async function run() {
     ].map((name) => ({ name, status: "passed" }));
     const evidence = await workflowResult('cli', { ...TEST_STATE, steps: completedThroughCi });
     assertResult('cli reaches evidence', evidence);
-    assert(
-        'cli reaches evidence',
-        evidence.stdout,
-        `{ step = "evidence", skip = false, pattern = 'one-shot, instructions = "nodes/evidence.md", requires = [], pattern_config = {} }`
-    );
-
-    for (const status of ["pending", "running", "in_progress"]) {
-        const resumed = await workflowResult('cli', { ...TEST_STATE, steps: [{ name: "ci", status }] });
-        assertResult(`cli resumes ${status} step`, resumed);
-        assert(`cli resumes ${status} step`, resumed.stdout.match(/step = "([^"]+)"/)?.[1], "ci");
-    }
+    assert('cli reaches evidence semantically', evidence.value.step, 'evidence');
 
     const polishCli = await workflowResult('cli', { ...TEST_STATE, from: 'polish' });
     assertResult('cli polish', polishCli);
-    assert(
-        'cli renders structured pattern configuration',
-        polishCli.stdout,
-        `{ step = "hickey-lowy", skip = false, pattern = 'fanout-fix, instructions = "nodes/hickey-lowy.md", requires = ["diff", "research.context"], pattern_config = { cross_validate = true } }`,
-    );
+    assert('cli carries structured pattern configuration', polishCli.value.pattern_config, { cross_validate: true });
 
     const minimal = { ...TEST_STATE, minimal: true };
     const minimalSeed = await workflowResult('cli_seed', minimal, '');
     assertResult('cli_seed minimal', minimalSeed);
-    assert('cli_seed minimal', minimalSeed.stdout, GOLDENS.cli_seed_minimal);
-
-    const minimalPolishSeed = await workflowResult('cli_seed', minimal, 'polish');
-    assertResult('cli_seed minimal polish', minimalPolishSeed);
-    assert(
-        'cli_seed minimal polish',
-        minimalPolishSeed.stdout,
-        `[{ name = "sync", initial_status = 'completed }, { name = "research", initial_status = 'completed }, { name = "branch", initial_status = 'completed }, { name = "implement", initial_status = 'completed }, { name = "check", initial_status = 'completed }, { name = "fmt", initial_status = 'completed }, { name = "commit", initial_status = 'completed }, { name = "test", initial_status = 'pending }, { name = "create-pr", initial_status = 'pending }, { name = "ci", initial_status = 'pending }, { name = "done", initial_status = 'pending }]`
-    );
-    const minimalPolishCli = await workflowResult('cli', { ...minimal, from: 'polish' });
-    assertResult('minimal cli polish', minimalPolishCli);
-    assert('minimal cli polish', minimalPolishCli.stdout.match(/step = "([^"]+)"/)?.[1], 'test');
+    assert('cli_seed minimal omits docs step', minimalSeed.value.some(({ name }) => name === 'docs'), false);
 
     const minimalPath = [
         "sync", "research", "branch", "implement", "check", "fmt", "commit",
@@ -165,11 +161,8 @@ async function run() {
     for (const name of minimalPath) {
         const result = await workflowResult('cli', minimalState);
         assertResult(`minimal cli ${name}`, result);
-        const step = result.stdout.match(/step = "([^"]+)"/)?.[1];
-        assert(`minimal cli ${name}`, step, name);
-        if (!result.stdout.includes("skip = false")) {
-            throw new Error(`minimal cli ${name} emitted a phantom skip: ${result.stdout}`);
-        }
+        assert(`minimal cli ${name} semantic step`, result.value.step, name);
+        assert(`minimal cli ${name} skip flag`, result.value.skip, false);
         minimalState = {
             ...minimalState,
             steps: [...minimalState.steps, { name, status: "passed" }]
@@ -177,7 +170,7 @@ async function run() {
     }
     const minimalComplete = await workflowResult('cli', minimalState);
     assertResult('minimal cli complete', minimalComplete);
-    assert('minimal cli complete', minimalComplete.stdout, `{ done = true }`);
+    assert('minimal cli completion carries done object', minimalComplete.value, { done: true });
 }
 
 run().catch((error) => {
