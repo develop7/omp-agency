@@ -555,12 +555,15 @@ headCommitShaJj context = do
         Just sha -> pure (Outcome.withStdout (sha <> "\n"))
         Nothing -> pure (failureLine "vcs-op: no resolvable CI-target revision (fresh repository with only the null root commit)")
 
--- | commit_id of a revision, Nothing when the query fails or the revision
--- | is jj's null root commit (all zeros), which names no real change.
+-- | commit_id of a revision, Nothing when the query fails, resolves to
+-- | several commits, or the revision is jj's null root commit (all zeros),
+-- | which names no real change.
 jjCommitId :: String -> Effect (Maybe String)
 jjCommitId revision = do
-  result <- Sys.exec Binaries.jj [ "log", "--revision", revision, "--no-graph", "--template", "commit_id" ]
-  pure if result.code /= 0 then Nothing else Args.nonEmpty (trim result.stdout) >>= nullShaGuard
+  result <- jjCommitIds revision
+  pure case result of
+    Right [ sha ] -> nullShaGuard sha
+    _ -> Nothing
 
 nullShaGuard :: String -> Maybe String
 nullShaGuard sha = if isNullSha sha then Nothing else Just sha
@@ -584,9 +587,10 @@ jjRangeFrom context base = do
     Left error -> pure (Left (failureLine error))
     Right ref -> do
       let revset = "heads(ancestors(@) & ancestors(" <> ref <> "))"
-      result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "commit_id ++ \"\\n\"" ]
-      if result.code /= 0 then pure (Left (failureLine ("vcs-op: unable to resolve merge-base for base '" <> base <> "'")))
-      else pure (Right (if trim result.stdout == "" then ref else firstLine result.stdout))
+      result <- jjCommitIds revset
+      pure case result of
+        Left _ -> Left (failureLine ("vcs-op: unable to resolve merge-base for base '" <> base <> "'"))
+        Right shas -> Right (if Array.null shas then ref else fromMaybe ref (Array.head shas))
 
 branch :: WorkflowContext -> String -> Effect Outcome.OpOutcome
 branch context name = case validateBranchName name of
@@ -955,6 +959,16 @@ jjResolveBase context base = do
             Right (Just sha) -> Right sha
             Right Nothing -> Left (baseNotBookmark base)
 
+-- | The one "revset → commit IDs" query: one template contract (one commit ID
+-- | per line), one parse. Callers classify the result; the raw result rides
+-- | along on failure so stderr keeps reaching each caller's error rendering.
+-- | `head-commit-sha` deliberately stays outside this seam: its contract is
+-- | byte-faithful passthrough of jj's stdout, with nothing to classify.
+jjCommitIds :: String -> Effect (Either Sys.ExecResult (Array String))
+jjCommitIds revset = do
+  result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "commit_id ++ \"\\n\"" ]
+  pure if result.code /= 0 then Left result else Right (lines result.stdout)
+
 -- | The one commit a bookmark names, optionally scoped to a remote. Right
 -- | Nothing when no bookmark matches; a conflicted bookmark names several
 -- | commits, so nothing can be pinned and the error lists every target. The
@@ -968,12 +982,12 @@ jjBookmarkCommit name remote = do
       revset = case remote of
         Nothing -> "bookmarks(" <> exactPattern name <> ")"
         Just scope -> "remote_bookmarks(" <> exactPattern name <> ", remote=" <> exactPattern scope <> ")"
-  result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "commit_id ++ \"\\n\"" ]
-  pure if result.code /= 0 then Left (commandError ("vcs-op: unable to resolve jj bookmark '" <> label <> "'") result)
-  else case lines result.stdout of
-    [] -> Right Nothing
-    [ sha ] -> Right (Just sha)
-    shas -> Left (joinLines
+  result <- jjCommitIds revset
+  pure case result of
+    Left failure -> Left (commandError ("vcs-op: unable to resolve jj bookmark '" <> label <> "'") failure)
+    Right [] -> Right Nothing
+    Right [ sha ] -> Right (Just sha)
+    Right shas -> Left (joinLines
       [ "vcs-op: jj bookmark '" <> label <> "' is conflicted (targets: " <> joinWith ", " shas <> ")"
       , case remote of
           Nothing -> "        Nothing can be pinned while it names several revisions; point it at one with `jj bookmark set " <> name <> " -r <commit-id>`."
