@@ -956,18 +956,20 @@ sameGitRevision left right = do
   else Right (trim leftResult.stdout == trim rightResult.stdout)
 
 -- | Whether @ carries picked-up work: an undescribed change with content
--- beyond the workflow state file (which preserveState owns, not the repo).
--- `jj new` would strand exactly such a change behind an empty bookmarked one,
--- so the feature branch must attach to it instead. Described changes are
--- commits — they stay where their author put them.
+-- beyond the workflow state file (owned by Context.stateFile, carried by
+-- preserveState — not repo work). `jj new` would strand exactly such a change
+-- behind an empty bookmarked one, so the feature branch must attach to it
+-- instead. Described changes are commits — they stay where their author put
+-- them.
 jjPickedUpWork :: Effect (Either String Boolean)
 jjPickedUpWork = do
+  let inspectFallback = "vcs-op: unable to inspect jj working copy for branch"
   described <- Sys.exec Binaries.jj [ "log", "--revisions", "@", "--no-graph", "--template", "description" ]
-  if described.code /= 0 then pure (Left (commandError "vcs-op: unable to inspect jj working copy for branch" described))
+  if described.code /= 0 then pure (Left (commandError inspectFallback described))
   else if trim described.stdout /= "" then pure (Right false)
   else do
     probe <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--name-only" ]
-    if probe.code /= 0 then pure (Left (commandError "vcs-op: unable to inspect jj working copy for branch" probe))
+    if probe.code /= 0 then pure (Left (commandError inspectFallback probe))
     else pure (Right (Array.any (\path -> path /= stateFile) (lines probe.stdout)))
 
 sameJjRevision :: String -> String -> Effect (Either String Boolean)
