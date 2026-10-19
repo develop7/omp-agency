@@ -408,7 +408,7 @@ currentAtDefault context base = case context.vcs of
       Left error -> pure (Left error)
       Right ref -> sameGitRevision "HEAD" ref
   Jj -> do
-    defaultRef <- jjBaseRevset context base
+    defaultRef <- jjResolveBase context base
     case defaultRef of
       Left error -> pure (Left error)
       Right ref -> sameJjRevision "@" ref "vcs-op: unable to compare current branch with default"
@@ -420,7 +420,7 @@ validateBase context base
   | base == "" = pure (Left "base must not be empty")
   | otherwise = case context.vcs of
       Git -> map (map (\_ -> unit)) (gitReadBase context base)
-      Jj -> map (map (\_ -> unit)) (jjBaseRevset context base)
+      Jj -> map (map (\_ -> unit)) (jjResolveBase context base)
       Unknown -> pure (Left "vcs-op: no VCS detected")
 
 -- | Inspect the working copy without conflating a clean tree with a failed
@@ -526,7 +526,7 @@ logRange context paths = case context.base of
     Git -> withGitReadBase context value \base ->
       passthroughCommand context Binaries.git ([ "log", base <> "..HEAD", "--oneline", "--" ] <> paths)
     Jj -> do
-      source <- jjBaseRevset context value
+      source <- jjResolveBase context value
       case source of
         Left error -> pure (failureLine error)
         Right base -> do
@@ -574,16 +574,19 @@ logHead context = case context.vcs of
   Jj -> passthroughCommand context Binaries.jj [ "log", "--revision", "@-", "--no-graph", "--limit", "1", "--template", "separate(\" \", commit_id.shortest(8), change_id.shortest(8), description.first_line()) ++ \"\\n\"" ]
   Unknown -> pure noVcsOutcome
 
+-- | The merge-base pin every range op diffs from: always a commit ID, so the
+-- | later `jj diff --from` stays unambiguous even when the merge-base change
+-- | is divergent (a change-ID revset errors then).
 jjRangeFrom :: WorkflowContext -> String -> Effect (Either Outcome.OpOutcome String)
 jjRangeFrom context base = do
-  resolved <- jjBaseRevset context base
+  resolved <- jjResolveBase context base
   case resolved of
     Left error -> pure (Left (failureLine error))
     Right ref -> do
       let revset = "heads(ancestors(@) & ancestors(" <> ref <> "))"
-      result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "change_id" ]
+      result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "commit_id ++ \"\\n\"" ]
       if result.code /= 0 then pure (Left (failureLine ("vcs-op: unable to resolve merge-base for base '" <> base <> "'")))
-      else pure (Right (if trim result.stdout == "" then ref else trim result.stdout))
+      else pure (Right (if trim result.stdout == "" then ref else firstLine result.stdout))
 
 branch :: WorkflowContext -> String -> Effect Outcome.OpOutcome
 branch context name = case validateBranchName name of
@@ -597,7 +600,7 @@ branch context name = case validateBranchName name of
           Left error -> pure (failureLine error)
           Right ref -> passthroughCommand context Binaries.git [ "checkout", "-b", name, ref ]
       Jj -> preserveState context do
-        parent <- jjBaseRevset context value
+        parent <- jjResolveBase context value
         case parent of
           Left error -> pure (failureLine error)
           Right ref -> do
@@ -879,16 +882,16 @@ localGitDefault = do
 
 localJjDefault :: Effect VcsValue
 localJjDefault = do
-  main <- jjRevisionExists "main"
+  main <- jjBookmarkCommit "main" (localBookmarkRevset "main")
   case main of
     Left error -> pure (failureValue error)
-    Right true -> pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
-    Right false -> do
-      master <- jjRevisionExists "master"
+    Right (Just _) -> pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
+    Right Nothing -> do
+      master <- jjBookmarkCommit "master" (localBookmarkRevset "master")
       pure case master of
         Left error -> failureValue error
-        Right true -> { code: 0, value: "master", stdout: "master\n", stderr: "" }
-        Right false -> failureValue "vcs-op: unable to resolve default branch (no remote main/master bookmark and no verified local main/master) — pass --base <branch> explicitly"
+        Right (Just _) -> { code: 0, value: "master", stdout: "master\n", stderr: "" }
+        Right Nothing -> failureValue "vcs-op: unable to resolve default branch (no remote main/master bookmark and no verified local main/master) — pass --base <branch> explicitly"
 
 firstKnownDefault :: Array String -> Maybe String
 firstKnownDefault = Array.find (\name -> name == "main" || name == "master")
@@ -931,30 +934,58 @@ gitRefExists ref = do
 gitLocalRef :: String -> Effect (Either String Boolean)
 gitLocalRef name = gitRefExists ("refs/heads/" <> name)
 
-jjBaseRevset :: WorkflowContext -> String -> Effect (Either String String)
-jjBaseRevset context base = do
-  local <- jjRevisionExists base
+-- | Resolve a base selector to the one commit its bookmark names. State keeps
+-- | the bookmark name so `base` follows the advancing trunk, while jj argv
+-- | receives the commit ID: a commit ID resolves even when its change is
+-- | divergent, where a change-ID revset errors.
+jjResolveBase :: WorkflowContext -> String -> Effect (Either String String)
+jjResolveBase context base = do
+  local <- jjBookmarkCommit base (localBookmarkRevset base)
   case local of
     Left error -> pure (Left error)
-    Right true -> pure (Right base)
-    Right false -> do
+    Right (Just sha) -> pure (Right sha)
+    Right Nothing -> do
       remote <- remoteName context
       case remote of
-        Left _ -> pure (Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark"))
+        Left _ -> pure (Left (baseNotBookmark base))
         Right name -> do
-          let remoteBase = base <> "@" <> name
-          exists <- jjRevisionExists remoteBase
-          pure case exists of
+          remoteFound <- jjBookmarkCommit (base <> "@" <> name) (remoteBookmarkRevset base name)
+          pure case remoteFound of
             Left error -> Left error
-            Right true -> Right remoteBase
-            Right false -> Left ("vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark")
+            Right (Just sha) -> Right sha
+            Right Nothing -> Left (baseNotBookmark base)
 
-jjRevisionExists :: String -> Effect (Either String Boolean)
-jjRevisionExists revision = do
-  result <- Sys.exec Binaries.jj [ "log", "--revision", revision, "--no-graph", "--template", "change_id" ]
-  pure if result.code == 0 then Right (trim result.stdout /= "")
-  else if contains (Pattern "Revision `") result.stderr && contains (Pattern "` doesn't exist") result.stderr then Right false
-  else Left (commandError ("vcs-op: unable to resolve jj revision '" <> revision <> "'") result)
+-- | The one commit a bookmark names. Right Nothing when no bookmark matches;
+-- | a conflicted bookmark names several commits, so nothing can be pinned and
+-- | the error lists every target.
+jjBookmarkCommit :: String -> String -> Effect (Either String (Maybe String))
+jjBookmarkCommit label revset = do
+  result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "commit_id ++ \"\\n\"" ]
+  pure if result.code /= 0 then Left (commandError ("vcs-op: unable to resolve jj bookmark '" <> label <> "'") result)
+  else case lines result.stdout of
+    [] -> Right Nothing
+    [ sha ] -> Right (Just sha)
+    shas -> Left (joinLines
+      [ "vcs-op: jj bookmark '" <> label <> "' is conflicted (targets: " <> joinWith ", " shas <> ")"
+      , "        Nothing can be pinned while it names several revisions; point it at one with `jj bookmark set " <> label <> " -r <commit-id>`."
+      ])
+
+localBookmarkRevset :: String -> String
+localBookmarkRevset name = "bookmarks(" <> exactPattern name <> ")"
+
+remoteBookmarkRevset :: String -> String -> String
+remoteBookmarkRevset name remote = "remote_bookmarks(" <> exactPattern name <> ", remote=" <> exactPattern remote <> ")"
+
+-- | An exact jj string pattern: a bookmark name is an opaque literal, never a
+-- | glob (jj parses bare strings as glob patterns).
+exactPattern :: String -> String
+exactPattern value = "exact:" <> revsetString value
+
+revsetString :: String -> String
+revsetString value = "\"" <> replaceAll (Pattern "\\") (Replacement "\\\\") (replaceAll (Pattern "\"") (Replacement "\\\"") value) <> "\""
+
+baseNotBookmark :: String -> String
+baseNotBookmark base = "vcs-op: base '" <> base <> "' does not name a local or selected-remote bookmark"
 
 sameGitRevision :: String -> String -> Effect (Either String Boolean)
 sameGitRevision left right = do

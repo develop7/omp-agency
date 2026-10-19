@@ -242,7 +242,10 @@ prior run's resolved `base` at init — the follow-up's PR target — and the
 `no-vcs` sentinel never crosses into a VCS-backed run; a jj commit that still
 finds no `base` reports the unresolved base and names the
 `agency_driver({ op: "set", field: "base", value: "<target>" })` remedy instead
-of surfacing raw jj internals. An active
+of surfacing raw jj internals. A `base` value must name a real ref — a git
+branch or jj bookmark, local or on the selected remote — and `set base` rejects
+values that name none; jj range ops resolve the base through its bookmark to a
+commit ID, so a divergent (duplicated) change never breaks a diff. An active
 `noVcs: true` run receives its sync invocation; an active VCS run must select
 the explicit base, stack, or default branch because an incomplete sync does not
 persist that intent. Absent or inactive runs and invalid state name the unresolved
