@@ -362,7 +362,7 @@ resolveWorkflowContext captureOutput allowCorruptState = do
   root <- Sys.cwd
   vcsOverrideText <- Sys.getEnv "VCS_OVERRIDE"
   forgeOverrideText <- Sys.getEnv "FORGE_OVERRIDE"
-  stateResult <- State.readState (root <> "/.do-results.json")
+  stateResult <- State.readState (root <> "/" <> Context.stateFile)
   case stateResult of
     Left error | not allowCorruptState ->
       pure (Left ("workflow: .do-results.json is corrupt or unreadable — " <> error <> "; resolve the reported state-read error before choosing a run or base"))
