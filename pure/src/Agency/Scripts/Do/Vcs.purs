@@ -1029,12 +1029,16 @@ jjPickedUpWork = do
     if probe.code /= 0 then pure (Left (commandError inspectFallback probe))
     else pure (Right (Array.any (\path -> path /= stateFile) (lines probe.stdout)))
 
+-- | Whether a revision is the pinned commit. Only the left side is queried:
+-- | the right side arrives already pinned by jjResolveBase, so resolving it
+-- | again would be dead work with an unreachable failure branch.
 sameJjRevision :: String -> String -> String -> Effect (Either String Boolean)
-sameJjRevision left right fallback = do
-  leftResult <- Sys.exec Binaries.jj [ "log", "--revision", left, "--no-graph", "--template", "commit_id" ]
-  rightResult <- Sys.exec Binaries.jj [ "log", "--revision", right, "--no-graph", "--template", "commit_id" ]
-  pure if leftResult.code /= 0 || rightResult.code /= 0 then Left fallback
-  else Right (trim leftResult.stdout == trim rightResult.stdout)
+sameJjRevision left rightSha fallback = do
+  result <- jjCommitIds left
+  pure case result of
+    Left _ -> Left fallback
+    Right [ sha ] -> Right (sha == rightSha)
+    Right _ -> Right false
 
 currentFeatureBookmark :: WorkflowContext -> Effect (Either String String)
 currentFeatureBookmark context = do
