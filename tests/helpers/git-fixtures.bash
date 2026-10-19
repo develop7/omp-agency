@@ -1,4 +1,4 @@
-# Shared git-fixture helpers for integration tests.
+# Shared git-fixture helpers for the test suite.
 # Loaded via:  load "$REPO_ROOT/tests/helpers/git-fixtures.bash"
 # Requires setup_test_dir to have run first (uses $TEST_DIR).
 
@@ -8,6 +8,16 @@ mk_initial_commit() {
   echo "hello" > file.txt
   git add file.txt
   git commit -q -m "initial"
+}
+
+# Create a git repository with one commit and `main` as the current branch —
+# the shape repo-backed tests need before `set base main` can validate.
+mk_git_base() {
+  git init -q
+  git config user.email "test@test.com"
+  git config user.name "Test"
+  mk_initial_commit
+  git branch -M main
 }
 
 # Create a bare remote at $TEST_DIR/remote.git, point origin at it,
