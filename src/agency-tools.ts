@@ -265,11 +265,11 @@ export default function (pi: ExtensionAPI) {
   const cliSeedField = "cli_seed";
   const cliShape = { field: z.literal(cliField) };
   const cliSeedShape = { field: z.literal(cliSeedField), from: z.enum(workflowEntryPoints) };
-  // The one rule for unrecognized keys in both workflow arms: each arm's own
-  // shape owns the recognized set (plus `from`, which the cli hint owns), and
-  // the cli arm's sibling-arm guidance precedes the key enumeration in the
-  // same single issue. The arms' `field` literals run first, so the branch on
-  // value.field below only ever sees its own arm's selection.
+  // The one rule for unrecognized keys across both arms: each arm's own shape
+  // owns the recognized set (plus `from`, which the cli hint owns), and the cli
+  // arm's sibling-arm guidance precedes the key enumeration in the same single
+  // issue. It runs as the union's refinement, so a misspelled `field` never
+  // sees the hint — the arms' literals reject it first.
   function checkWorkflowKeys(
     value: Record<string, unknown>,
     ctx: { addIssue(issue: { message: string }): void },
@@ -284,21 +284,22 @@ export default function (pi: ExtensionAPI) {
       .filter((part): part is string => part !== undefined);
     if (parts.length > 0) ctx.addIssue({ message: parts.join("; ") });
   }
+  const workflowArms = z.union([z.object(cliShape).passthrough(), z.object(cliSeedShape).passthrough()]);
+  const workflowJson = workflowArms.toJsonSchema() as { anyOf: Array<Record<string, unknown>> };
   pi.registerTool({
     name: "workflow",
     label: "Workflow",
     description:
       "Evaluate the Nickel /do workflow. Use field cli for the next-step decision or cli_seed with a declared entry point to seed/resume.",
-    parameters: z.union([
-      // Both arms reject unrecognized keys in a refinement rather than
-      // strict(): union failures then route through the `field` discriminant
-      // to the aimed arm's own error, and the check names every unrecognized
-      // key in one issue. `from` alongside `cli` names the sibling cli_seed
-      // arm instead of the default prose; a misspelled `field` never sees the
-      // hint because the arm's literal rejects it before the refinement runs.
-      z.object(cliShape).passthrough().superRefine(checkWorkflowKeys),
-      z.object(cliSeedShape).passthrough().superRefine(checkWorkflowKeys),
-    ]),
+    // The model-facing schema stays closed like the deleted `.strict()` arms
+    // (each emitted arm carries additionalProperties: false) while the runtime
+    // refinement names unrecognized keys in one issue. The emission override
+    // wraps the union whose members stay pure, so union errors keep routing
+    // through the `field` discriminant to the aimed arm.
+    parameters: pi.arktype.withJsonSchema(workflowArms.superRefine(checkWorkflowKeys), {
+      ...workflowJson,
+      anyOf: workflowJson.anyOf.map(arm => ({ ...arm, additionalProperties: false })),
+    }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const request = params.field === cliField
         ? { operation: cliField, cwd: ctx.cwd }
