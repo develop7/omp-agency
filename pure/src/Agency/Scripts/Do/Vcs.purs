@@ -1011,7 +1011,7 @@ jjBookmarkCommit name remote = do
       [ "vcs-op: jj bookmark '" <> label <> "' is conflicted (targets: " <> joinWith ", " shas <> ")"
       , case remote of
           Nothing -> "        Nothing can be pinned while it names several revisions; point it at one with `jj bookmark set " <> name <> " -r <commit-id>`."
-          Just scope -> "        Nothing can be pinned while the remote bookmark '" <> name <> "' names several revisions on '" <> scope <> "'; resolve it there to a single target."
+          Just scope -> "        Nothing can be pinned while the remote bookmark '" <> name <> "' names several revisions on '" <> scope <> "'; re-sync its record with `jj git fetch --remote " <> scope <> "` and retry, or resolve the remote ref to a single target."
       ])
 
 -- | An exact jj string pattern: a bookmark name is an opaque literal, never a
