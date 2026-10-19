@@ -263,6 +263,27 @@ export default function (pi: ExtensionAPI) {
 
   const cliField = "cli";
   const cliSeedField = "cli_seed";
+  const cliShape = { field: z.literal(cliField) };
+  const cliSeedShape = { field: z.literal(cliSeedField), from: z.enum(workflowEntryPoints) };
+  // The one rule for unrecognized keys in both workflow arms: each arm's own
+  // shape owns the recognized set (plus `from`, which the cli hint owns), and
+  // the cli arm's sibling-arm guidance precedes the key enumeration in the
+  // same single issue. The arms' `field` literals run first, so the branch on
+  // value.field below only ever sees its own arm's selection.
+  function checkWorkflowKeys(
+    value: Record<string, unknown>,
+    ctx: { addIssue(issue: { message: string }): void },
+  ): void {
+    const cli = value.field === cliField;
+    const knownKeys = cli ? [...Object.keys(cliShape), "from"] : Object.keys(cliSeedShape);
+    const hint = cli && Object.hasOwn(value, "from")
+      ? `cli takes no "from"; use the sibling arm { field: "${cliSeedField}", from: <entry point> } to supply one`
+      : undefined;
+    const others = Object.keys(value).filter(key => !knownKeys.includes(key));
+    const parts = [hint, others.length > 0 ? `unrecognized keys: ${others.map(JSON.stringify).join(", ")}` : undefined]
+      .filter((part): part is string => part !== undefined);
+    if (parts.length > 0) ctx.addIssue({ message: parts.join("; ") });
+  }
   pi.registerTool({
     name: "workflow",
     label: "Workflow",
@@ -275,18 +296,8 @@ export default function (pi: ExtensionAPI) {
       // key in one issue. `from` alongside `cli` names the sibling cli_seed
       // arm instead of the default prose; a misspelled `field` never sees the
       // hint because the arm's literal rejects it before the refinement runs.
-      z.object({ field: z.literal(cliField) }).passthrough().superRefine((value, ctx) => {
-        const others = Object.keys(value).filter(key => key !== "field" && key !== "from");
-        const parts = Object.hasOwn(value, "from")
-          ? [`cli takes no "from"; use the sibling arm { field: "${cliSeedField}", from: <entry point> } to supply one`]
-          : [];
-        if (others.length > 0) parts.push(`unrecognized keys: ${others.map(JSON.stringify).join(", ")}`);
-        if (parts.length > 0) ctx.addIssue({ message: parts.join("; ") });
-      }),
-      z.object({ field: z.literal(cliSeedField), from: z.enum(workflowEntryPoints) }).passthrough().superRefine((value, ctx) => {
-        const others = Object.keys(value).filter(key => key !== "field" && key !== "from");
-        if (others.length > 0) ctx.addIssue({ message: `unrecognized keys: ${others.map(JSON.stringify).join(", ")}` });
-      }),
+      z.object(cliShape).passthrough().superRefine(checkWorkflowKeys),
+      z.object(cliSeedShape).passthrough().superRefine(checkWorkflowKeys),
     ]),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const request = params.field === cliField
