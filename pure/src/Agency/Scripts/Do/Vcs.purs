@@ -966,7 +966,8 @@ jjResolveBase context base = do
 
 -- | The one "revset → commit IDs" query: one template contract (one commit ID
 -- | per line), one parse. Callers classify the result; the raw result rides
--- | along on failure so stderr keeps reaching each caller's error rendering.
+-- | along on failure so a caller may render jj's stderr where its own contract
+-- | allows — not every caller does.
 -- | `head-commit-sha` deliberately stays outside this seam: its contract is
 -- | byte-faithful passthrough of jj's stdout, with nothing to classify.
 jjCommitIds :: String -> Effect (Either Sys.ExecResult (Array String))
@@ -1004,6 +1005,9 @@ jjBookmarkCommit name remote = do
 exactPattern :: String -> String
 exactPattern value = "exact:" <> revsetString value
 
+-- | The quoted literal body: backslash and quote are escaped so a name with
+-- | either survives jj's string-literal parsing instead of breaking the
+-- | pattern.
 revsetString :: String -> String
 revsetString value = "\"" <> replaceAll (Pattern "\\") (Replacement "\\\\") (replaceAll (Pattern "\"") (Replacement "\\\"") value) <> "\""
 
