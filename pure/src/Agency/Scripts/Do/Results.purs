@@ -194,7 +194,7 @@ runDriverInit :: WorkflowContext -> { review :: Boolean, noVcs :: Boolean, minim
 runDriverInit context options = do
   existing <- State.readState (Context.statePath context)
   case existing of
-    Left error | not options.restart -> pure (failText ("do-driver: " <> Context.stateFile <> " is corrupt or unreadable — " <> error <> "; restore it or run init --restart"))
+    Left error | not options.restart -> pure (failText (Context.stateCorruptError "do-driver" error "restore it or run init --restart"))
     Right (Just state) | isActiveRun state && not options.restart ->
       pure (failWithCode 2 ("do-driver: a /do run is already active (task: '" <> State.stateGet "task" state <> "', steps: " <> show (Array.length state.steps) <> ") — finish it or run init --restart to discard it"))
     _ -> do
@@ -302,7 +302,7 @@ loadState :: WorkflowContext -> Effect (Either String State.State)
 loadState context = do
   result <- State.readState (Context.statePath context)
   pure case result of
-    Left error -> Left ("do-results: " <> Context.stateFile <> " is corrupt or unreadable — " <> error <> "; restore it or run do-results init --restart")
+    Left error -> Left (Context.stateCorruptError "do-results" error "restore it or run do-results init --restart")
     Right Nothing -> Left ("do-results: " <> Context.stateFile <> " not found — run do-results init first")
     Right (Just state) -> Right state
 

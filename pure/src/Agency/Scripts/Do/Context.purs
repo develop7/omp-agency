@@ -1,5 +1,6 @@
 module Agency.Scripts.Do.Context
   ( WorkflowContext
+  , stateCorruptError
   , stateFile
   , statePath
   ) where
@@ -28,6 +29,11 @@ type WorkflowContext =
 -- agrees on which artifact is state rather than repo work.
 stateFile :: String
 stateFile = ".do-results.json"
+
+-- | The shared corrupt-state error shape: which reader failed, the underlying
+-- read error, and what to do about it.
+stateCorruptError :: String -> String -> String -> String
+stateCorruptError label error remedy = label <> ": " <> stateFile <> " is corrupt or unreadable — " <> error <> "; " <> remedy
 
 -- | Resolve the state file below the run's working directory.
 statePath :: WorkflowContext -> String
