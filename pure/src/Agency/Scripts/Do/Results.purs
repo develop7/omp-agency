@@ -182,17 +182,15 @@ runJobEnd context input = withLoadedState context \state -> do
 runSet :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runSet context field value = withLoadedState context \state -> do
   valid <- validateSetValue context field value
-  case valid of
+  let updated = do
+        _ <- valid
+        json <- jsonValueFor field value
+        State.setField field json state
+  case updated of
     Left error -> pure (failText error)
-    Right _ -> do
-      let updated = do
-            json <- jsonValueFor field value
-            State.setField field json state
-      case updated of
-        Left error -> pure (failText error)
-        Right final -> do
-          State.writeState (Context.statePath context) final
-          pure (Outcome.withStdout ("set: " <> field <> "=" <> value <> "\n"))
+    Right final -> do
+      State.writeState (Context.statePath context) final
+      pure (Outcome.withStdout ("set: " <> field <> "=" <> value <> "\n"))
 
 -- | `base` names the PR-target ref every later diff op resolves and the
 -- | trunk guards compare against; a value that names no ref is rejected here,
