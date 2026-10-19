@@ -590,7 +590,12 @@ jjRangeFrom context base = do
       result <- jjCommitIds revset
       pure case result of
         Left _ -> Left (failureLine ("vcs-op: unable to resolve merge-base for base '" <> base <> "'"))
-        Right shas -> Right (if Array.null shas then ref else fromMaybe ref (Array.head shas))
+        Right [] -> Right ref
+        Right [ sha ] -> Right sha
+        Right shas -> Left (failureLines
+          [ "vcs-op: merge-base for base '" <> base <> "' is ambiguous (heads: " <> joinWith ", " shas <> ")"
+          , "        Several merge bases exist (criss-cross history); diffing would pick one silently. Reconcile the history — for example `jj rebase` — so the range has a single merge base first."
+          ])
 
 branch :: WorkflowContext -> String -> Effect Outcome.OpOutcome
 branch context name = case validateBranchName name of

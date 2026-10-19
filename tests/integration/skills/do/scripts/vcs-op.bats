@@ -1251,3 +1251,24 @@ SH
   [ "$status" -ne 0 ]
   [[ "$output" == *"does not name a local or selected-remote bookmark"* ]]
 }
+
+@test "jj: diff-range names an ambiguous merge-base instead of picking one" {
+  # Criss-cross history: two merges of the same pair of changes give the range
+  # two merge bases. Diffing must not silently pick one.
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo x > x.txt
+  jj describe -m "x"
+  jj bookmark create sx -r @
+  jj new 'root()' -m "y"
+  jj bookmark create sy -r @
+  jj new sx sy -m "m1"
+  jj bookmark create main -r @
+  jj new sx sy -m "m2"
+  echo '{"base":"main"}' > .do-results.json
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is ambiguous"* ]]
+}
