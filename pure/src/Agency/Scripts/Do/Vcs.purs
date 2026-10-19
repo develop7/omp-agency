@@ -882,12 +882,12 @@ localGitDefault = do
 
 localJjDefault :: Effect VcsValue
 localJjDefault = do
-  main <- jjBookmarkCommit "main" (localBookmarkRevset "main")
+  main <- jjBookmarkCommit "main" Nothing
   case main of
     Left error -> pure (failureValue error)
     Right (Just _) -> pure { code: 0, value: "main", stdout: "main\n", stderr: "" }
     Right Nothing -> do
-      master <- jjBookmarkCommit "master" (localBookmarkRevset "master")
+      master <- jjBookmarkCommit "master" Nothing
       pure case master of
         Left error -> failureValue error
         Right (Just _) -> { code: 0, value: "master", stdout: "master\n", stderr: "" }
@@ -940,7 +940,7 @@ gitLocalRef name = gitRefExists ("refs/heads/" <> name)
 -- | divergent, where a change-ID revset errors.
 jjResolveBase :: WorkflowContext -> String -> Effect (Either String String)
 jjResolveBase context base = do
-  local <- jjBookmarkCommit base (localBookmarkRevset base)
+  local <- jjBookmarkCommit base Nothing
   case local of
     Left error -> pure (Left error)
     Right (Just sha) -> pure (Right sha)
@@ -949,17 +949,25 @@ jjResolveBase context base = do
       case remote of
         Left _ -> pure (Left (baseNotBookmark base))
         Right name -> do
-          remoteFound <- jjBookmarkCommit (base <> "@" <> name) (remoteBookmarkRevset base name)
+          remoteFound <- jjBookmarkCommit base (Just name)
           pure case remoteFound of
             Left error -> Left error
             Right (Just sha) -> Right sha
             Right Nothing -> Left (baseNotBookmark base)
 
--- | The one commit a bookmark names. Right Nothing when no bookmark matches;
--- | a conflicted bookmark names several commits, so nothing can be pinned and
--- | the error lists every target.
-jjBookmarkCommit :: String -> String -> Effect (Either String (Maybe String))
-jjBookmarkCommit label revset = do
+-- | The one commit a bookmark names, optionally scoped to a remote. Right
+-- | Nothing when no bookmark matches; a conflicted bookmark names several
+-- | commits, so nothing can be pinned and the error lists every target. The
+-- | label and revset derive from the same name here so an actionable error can
+-- | never cite a bookmark the probe did not query.
+jjBookmarkCommit :: String -> Maybe String -> Effect (Either String (Maybe String))
+jjBookmarkCommit name remote = do
+  let label = case remote of
+        Nothing -> name
+        Just scope -> name <> "@" <> scope
+      revset = case remote of
+        Nothing -> "bookmarks(" <> exactPattern name <> ")"
+        Just scope -> "remote_bookmarks(" <> exactPattern name <> ", remote=" <> exactPattern scope <> ")"
   result <- Sys.exec Binaries.jj [ "log", "--revision", revset, "--no-graph", "--template", "commit_id ++ \"\\n\"" ]
   pure if result.code /= 0 then Left (commandError ("vcs-op: unable to resolve jj bookmark '" <> label <> "'") result)
   else case lines result.stdout of
@@ -969,12 +977,6 @@ jjBookmarkCommit label revset = do
       [ "vcs-op: jj bookmark '" <> label <> "' is conflicted (targets: " <> joinWith ", " shas <> ")"
       , "        Nothing can be pinned while it names several revisions; point it at one with `jj bookmark set " <> label <> " -r <commit-id>`."
       ])
-
-localBookmarkRevset :: String -> String
-localBookmarkRevset name = "bookmarks(" <> exactPattern name <> ")"
-
-remoteBookmarkRevset :: String -> String -> String
-remoteBookmarkRevset name remote = "remote_bookmarks(" <> exactPattern name <> ", remote=" <> exactPattern remote <> ")"
 
 -- | An exact jj string pattern: a bookmark name is an opaque literal, never a
 -- | glob (jj parses bare strings as glob patterns).
