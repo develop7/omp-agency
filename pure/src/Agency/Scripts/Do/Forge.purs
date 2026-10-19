@@ -18,7 +18,7 @@ import Agency.Scripts.Do.ForgeKind (ForgeKind(..))
 import Agency.Scripts.Do.ForgeKind (ForgeKind(..)) as ForgeKinds
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Sys as Sys
-import Data.Argonaut.Core (fromBoolean, fromString)
+import Data.Argonaut.Core (fromString)
 import Data.Argonaut.Parser (jsonParser)
 import Data.Array as Array
 import Data.Either (Either(..))
@@ -106,9 +106,7 @@ detectForge override fromState remote =
 runForgeOp :: WorkflowContext -> ForgeOp -> Effect Outcome.OpOutcome
 runForgeOp context operation = case operation of
   Detect -> pure (Outcome.withValue (fromString (forgeName context.forge)) (Outcome.withStdout (forgeName context.forge <> "\n")))
-  Supports name ->
-    let supported = supports context.forge name
-    in pure (Outcome.withValue (fromBoolean supported) (if supported then Outcome.success else Outcome.failure 1 ""))
+  Supports name -> pure (if supports context.forge name then Outcome.success else Outcome.failure 1 "")
   PrView args -> dispatch context "pr-view" "pr" "view" args
   PrCreate args -> dispatch context "pr-create" "pr" "create" args
   PrEdit args -> dispatch context "pr-edit" "pr" "edit" args

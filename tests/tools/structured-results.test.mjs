@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -73,5 +73,22 @@ test("forge rejects malformed JSON projections but leaves jq text uninterpreted"
     const projected = await invoke(tools, "forge", { op: "pr-view", pr: "42", json: ["title"], github: { jq: ".title" } }, cwd);
     assert.equal(projected.details.value, null);
     assert.equal(projected.content[0].text, "not-json\n");
+  });
+});
+
+test("forge capability absence is data but unsupported operations still fail", async () => {
+  const cliPath = new URL("../../pure/dist/agency-do.js", import.meta.url).pathname;
+  await withIsolatedRepo(async cwd => {
+    const tools = registerTools();
+    for (const forge of ["github", "unknown"]) {
+      process.env.FORGE_OVERRIDE = forge;
+      const supported = forge === "github";
+      const result = await invoke(tools, "forge", { op: "supports", operation: "pr-create" }, cwd);
+      assert.equal(modelValue(result), supported);
+      assert.equal(result.details.value, supported);
+      const cli = spawnSync(process.execPath, [cliPath, "forge-op", "supports", "pr-create"], { cwd });
+      assert.equal(cli.status, supported ? 0 : 1, "the CLI retains shell-predicate exit codes");
+    }
+    await assert.rejects(invoke(tools, "forge", { op: "pr-view", pr: "42" }, cwd), /does not support/);
   });
 });

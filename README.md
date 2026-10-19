@@ -243,8 +243,10 @@ operation with prose output rather than a semantic result.
 - VCS scalar queries return values; `diff-names` and `new-files` return path
   arrays. Git paths preserve embedded newlines and Unicode. Empty path arrays
   are `[]`, not empty text, and are marked `useless` for compaction.
-- Forge detection/capabilities carry values; GitHub projections carry parsed JSON
-  only with `json` and without `github.jq`/`github.template`. Malformed JSON fails.
+- Forge capability queries return booleans, including successful `false` results
+  for unsupported operations; trying to execute such an operation still fails.
+  The CLI capability predicate retains exit 0/1. GitHub projections carry parsed
+  JSON only with `json` and without `github.jq`/`github.template`; malformed JSON fails.
 - Diffs, logs, working-copy listings, sync progress, VCS writes, and formatted
   forge output remain prose. CLI stdout remains human-readable, including
   Nickel-rendered workflow output.
