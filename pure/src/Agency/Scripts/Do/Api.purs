@@ -10,7 +10,7 @@ import Agency.Scripts.Do.Ops as Ops
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Vcs as Vcs
 import Data.Array as Array
-import Data.Argonaut.Core (Json, jsonNull)
+import Data.Argonaut.Core (Json, fromBoolean, jsonNull)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.String (joinWith)
@@ -45,7 +45,14 @@ runVcsWrite request = case parseVcsWrite request.args of
   Right operation -> runOperation request.captureOutput false Vcs.runVcsOp operation
 
 runForge :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
-runForge request = runParsed request.captureOutput (parseMessageError (Forge.parseForgeOp request.args)) Forge.runForgeOp
+runForge request =
+  runParsed request.captureOutput (parseMessageError (Forge.parseForgeOp request.args)) \context operation ->
+    case operation of
+      -- A tool capability query returns data, including false. The CLI's
+      -- separate shell predicate keeps its nonzero exit for unsupported ops.
+      Forge.Supports name ->
+        pure (Outcome.withValue (fromBoolean (Forge.supports context.forge name)) Outcome.success)
+      _ -> Forge.runForgeOp context operation
 
 runAgencyDriver :: { tool :: String, args :: Array String, captureOutput :: Boolean } -> Effect ToolResult
 runAgencyDriver request = case Array.uncons request.args of

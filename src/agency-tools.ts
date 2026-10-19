@@ -38,18 +38,11 @@ async function executeApi(tool: string, args: string[]) {
   const api = await loadApi();
   const result = await api.runTool({ tool, args, captureOutput: true })();
   if (result.exit !== 0) {
-    throw new Error(result.stderr || result.stdout || emptyFailureMessage(tool, args, result.exit));
+    throw new Error(result.stderr || result.stdout || `${tool} ${args[0] ?? "operation"} failed: exit ${result.exit} (no output)`);
   }
   return toolResult(args[0], result);
 }
 
-function emptyFailureMessage(tool: string, args: string[], exit: number): string {
-  const operation = args[0] ?? "operation";
-  if (tool === "forge" && operation === "supports") {
-    return `forge supports ${args[1] ?? "operation"}: not supported`;
-  }
-  return `${tool} ${operation} failed: exit ${exit} (no output)`;
-}
 
 // Lower typed option values into the existing CLI parser's operands. Lists remain
 // lists of values; models never supply flag syntax or positional argument vectors.
