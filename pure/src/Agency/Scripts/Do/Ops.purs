@@ -365,7 +365,7 @@ resolveWorkflowContext captureOutput allowCorruptState = do
   stateResult <- State.readState (root <> "/" <> Context.stateFile)
   case stateResult of
     Left error | not allowCorruptState ->
-      pure (Left ("workflow: .do-results.json is corrupt or unreadable — " <> error <> "; resolve the reported state-read error before choosing a run or base"))
+      pure (Left ("workflow: " <> Context.stateFile <> " is corrupt or unreadable — " <> error <> "; resolve the reported state-read error before choosing a run or base"))
     _ -> do
       jjPresent <- Sys.isDir (root <> "/.jj")
       gitPresent <- Sys.isDir (root <> "/.git")
