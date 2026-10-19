@@ -33,6 +33,7 @@ const RUNTIME_FILES = [
   "src/agency-tools.ts",
   "src/workflow-vocabulary.ts",
   "src/tool-results.ts",
+  "src/tool-result-renderer.ts",
   "pure/dist/agency-api.js",
   "nickel-vm/scripts/workflow-runtime.mjs",
   "nickel-vm/dist/nickel_vm.js",
@@ -118,8 +119,8 @@ async function stage(repoRoot, outDir) {
   // Marketplace installs may not install npm dependencies. Ship the renderer's
   // focused wrapping library in its runtime module, not as a node_modules tree.
   execFileSync("esbuild", [
-    join(repoRoot, "src/tool-results.ts"), "--bundle", "--format=esm", "--platform=node",
-    `--outfile=${join(outDir, "src/tool-results.ts")}`,
+    join(repoRoot, "src/tool-result-renderer.ts"), "--bundle", "--format=esm", "--platform=node",
+    `--outfile=${join(outDir, "src/tool-result-renderer.ts")}`,
   ], { stdio: "inherit" });
   const lock = JSON.parse(await readFile(join(repoRoot, "package-lock.json"), "utf8"));
   const notices = [];
