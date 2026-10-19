@@ -3,7 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { evaluateWorkflow } from "../nickel-vm/scripts/workflow-runtime.mjs";
 import { workflowEntryPoints, workflowSteps } from "./workflow-vocabulary.js";
-import { toolResult, renderResult, describeResult } from "./tool-results.js";
+import { toolResult } from "./tool-results.js";
+import { renderResult, describeResult } from "./tool-result-renderer.js";
 
 type ApiRequest = {
   tool: string;
