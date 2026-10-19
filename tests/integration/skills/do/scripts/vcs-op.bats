@@ -972,6 +972,28 @@ SH
   [ "$output" = "feature-picked-up" ]
 }
 
+@test "jj: branch refuses picked-up work not stacked on the base" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > README.md
+  jj describe -m "base"
+  jj bookmark create main -r @
+  echo '{"base":"main"}' > .do-results.json
+
+  jj new main
+  echo side > side.txt
+  jj describe -m "side"
+  jj new
+  echo feature > feature.txt
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-off-base
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not stacked"* ]]
+  run jj bookmark list --template 'name ++ "\n"'
+  [[ "$output" != *"feature-off-base"* ]]
+}
+
 @test "jj: branch refuses when picked-up work sits on the base revision" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
