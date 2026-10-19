@@ -23,7 +23,7 @@ import Prelude
 
 import Agency.Scripts.Do.Args as Args
 import Agency.Scripts.Do.Binaries as Binaries
-import Agency.Scripts.Do.Context (WorkflowContext, statePath)
+import Agency.Scripts.Do.Context (WorkflowContext, stateFile, statePath)
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.State as State
@@ -968,7 +968,7 @@ jjPickedUpWork = do
   else do
     probe <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--name-only" ]
     if probe.code /= 0 then pure (Left (commandError "vcs-op: unable to inspect jj working copy for branch" probe))
-    else pure (Right (Array.any (\path -> path /= ".do-results.json") (lines probe.stdout)))
+    else pure (Right (Array.any (\path -> path /= stateFile) (lines probe.stdout)))
 
 sameJjRevision :: String -> String -> Effect (Either String Boolean)
 sameJjRevision left right = do
@@ -993,7 +993,7 @@ validateBranchName name =
 
 preserveState :: WorkflowContext -> Effect Outcome.OpOutcome -> Effect Outcome.OpOutcome
 preserveState context action = do
-  let path = context.stateDir <> "/.do-results.json"
+  let path = statePath context
   present <- Sys.exists path
   saved <- if present then Just <$> Sys.readUtf8 path else pure Nothing
   outcome <- action

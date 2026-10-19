@@ -1,5 +1,6 @@
 module Agency.Scripts.Do.Context
   ( WorkflowContext
+  , stateFile
   , statePath
   ) where
 
@@ -23,6 +24,11 @@ type WorkflowContext =
   , captureOutput :: Boolean
   }
 
+-- | The workflow state file's name, owned here so every construction site
+-- agrees on which artifact is state rather than repo work.
+stateFile :: String
+stateFile = ".do-results.json"
+
 -- | Resolve the state file below the run's working directory.
 statePath :: WorkflowContext -> String
-statePath context = context.stateDir <> "/.do-results.json"
+statePath context = context.stateDir <> "/" <> stateFile
