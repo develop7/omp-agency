@@ -255,6 +255,10 @@ Terminal result renderers project human-readable views from `details` (including
 a step timeline and job ledger for summaries); headless JSON stays complete.
 The ANSI renderer uses `wrap-ansi` for Unicode-aware wrapping; the native renderer
 emits semantic TSP text nodes.
+`just node-deps` installs the lockfile-pinned Node dependencies; both
+`test-tools` and standalone `runtime-check` depend on it, and publication runs it
+before staging. Runtime staging bundles the renderer library and license notices
+so the installed package does not need a separate npm install.
 
 The `vcs_read {op: "dirty"}` operation returns `clean`, `dirty`, or `no-vcs`
 with exit 0. `no-vcs` means no VCS was detected, not that the tree was inspected
