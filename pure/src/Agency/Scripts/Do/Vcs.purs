@@ -411,7 +411,7 @@ currentAtDefault context base = case context.vcs of
     defaultRef <- jjBaseRevset context base
     case defaultRef of
       Left error -> pure (Left error)
-      Right ref -> sameJjRevision "@" ref
+      Right ref -> sameJjRevision "@" ref "vcs-op: unable to compare current branch with default"
   Unknown -> pure (Left "vcs-op: no VCS detected")
 
 -- | Validate persisted and explicit base names against actual refs.
@@ -613,7 +613,7 @@ branch context name = case validateBranchName name of
                 -- top of these changes (matching the git arm's checkout -b), so the
                 -- bookmark attaches to the change carrying them instead of
                 -- `jj new` stranding them behind an empty bookmarked change.
-                atBase <- sameJjRevision "@" ref
+                atBase <- sameJjRevision "@" ref ("vcs-op branch: unable to compare the working copy with base '" <> ref <> "'")
                 case atBase of
                   Left error -> pure (failureLine error)
                   Right true -> pure (failureLine ("vcs-op branch: the picked-up working copy changes sit on the base revision '" <> ref <> "'; refusing to strand them or retarget the trunk"))
@@ -972,11 +972,11 @@ jjPickedUpWork = do
     if probe.code /= 0 then pure (Left (commandError inspectFallback probe))
     else pure (Right (Array.any (\path -> path /= stateFile) (lines probe.stdout)))
 
-sameJjRevision :: String -> String -> Effect (Either String Boolean)
-sameJjRevision left right = do
+sameJjRevision :: String -> String -> String -> Effect (Either String Boolean)
+sameJjRevision left right fallback = do
   leftResult <- Sys.exec Binaries.jj [ "log", "--revision", left, "--no-graph", "--template", "commit_id" ]
   rightResult <- Sys.exec Binaries.jj [ "log", "--revision", right, "--no-graph", "--template", "commit_id" ]
-  pure if leftResult.code /= 0 || rightResult.code /= 0 then Left "vcs-op: unable to compare current branch with default"
+  pure if leftResult.code /= 0 || rightResult.code /= 0 then Left fallback
   else Right (trim leftResult.stdout == trim rightResult.stdout)
 
 currentFeatureBookmark :: WorkflowContext -> Effect (Either String String)
