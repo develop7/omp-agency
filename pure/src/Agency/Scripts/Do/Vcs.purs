@@ -946,23 +946,37 @@ gitLocalRef name = gitRefExists ("refs/heads/" <> name)
 -- | Resolve a base selector to the one commit its bookmark names. State keeps
 -- | the bookmark name so `base` follows the advancing trunk, while jj argv
 -- | receives the commit ID: a commit ID resolves even when its change is
--- | divergent, where a change-ID revset errors.
+-- | divergent, where a change-ID revset errors. A selector is a local bookmark
+-- | name or a remote-qualified `name@remote`; unqualified names fall back to
+-- | the selected remote.
 jjResolveBase :: WorkflowContext -> String -> Effect (Either String String)
 jjResolveBase context base = do
   local <- jjBookmarkCommit base Nothing
   case local of
     Left error -> pure (Left error)
     Right (Just sha) -> pure (Right sha)
-    Right Nothing -> do
-      remote <- remoteName context
-      case remote of
-        Left _ -> pure (Left (baseNotBookmark base))
-        Right name -> do
-          remoteFound <- jjBookmarkCommit base (Just name)
-          pure case remoteFound of
-            Left error -> Left error
-            Right (Just sha) -> Right sha
-            Right Nothing -> Left (baseNotBookmark base)
+    Right Nothing -> case splitRemoteRef base of
+      Just { name, scope } -> remoteCommit name (Just scope)
+      Nothing -> do
+        remote <- remoteName context
+        case remote of
+          Left _ -> pure (Left (baseNotBookmark base))
+          Right scope -> remoteCommit base (Just scope)
+  where
+  remoteCommit name scope = do
+    found <- jjBookmarkCommit name scope
+    pure case found of
+      Left error -> Left error
+      Right (Just sha) -> Right sha
+      Right Nothing -> Left (baseNotBookmark base)
+
+-- | `name@remote` addresses a remote-tracking bookmark in jj revsets, and jj
+-- | refuses `@` in bookmark names — so a two-part `@` split is exactly that
+-- | form and nothing else.
+splitRemoteRef :: String -> Maybe { name :: String, scope :: String }
+splitRemoteRef value = case split (Pattern "@") value of
+  [ name, scope ] | name /= "" && scope /= "" -> Just { name, scope }
+  _ -> Nothing
 
 -- | The one "revset → commit IDs" query: one template contract (one commit ID
 -- | per line), one parse. Callers classify the result; the raw result rides
