@@ -1,12 +1,27 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type } from "@oh-my-pi/omptype";
 import * as zod from "@oh-my-pi/omptype/zod";
 import agencyTools from "../../dist/agency-tools.mjs";
+
+// Facade schemas carry safeParse; core omptype wrappers (type.withJsonSchema)
+// are callable validators returning type.errors. Normalize both to one result
+// shape so assertions read the schema contract, not the builder flavor.
+export function parseInput(schema, value) {
+  if (typeof schema.safeParse === "function") return schema.safeParse(value);
+  const out = schema(value);
+  if (!(out instanceof type.errors)) return { success: true, data: out };
+  return {
+    success: false,
+    error: { message: out.summary, issues: out.map(issue => ({ path: [...issue.path], message: issue.problem })) },
+  };
+}
 
 export function registerTools() {
   const tools = new Map();
   agencyTools({
+    arktype: type,
     zod,
     registerTool(tool) {
       tools.set(tool.name, tool);
@@ -23,8 +38,9 @@ export function tool(tools, name) {
 
 export async function invoke(tools, name, input, cwd = process.cwd()) {
   const definition = tool(tools, name);
-  const params = definition.parameters.parse(input);
-  return definition.execute("boundary-test", params, undefined, undefined, { cwd });
+  const params = parseInput(definition.parameters, input);
+  if (!params.success) throw new Error(params.error.message);
+  return definition.execute("boundary-test", params.data, undefined, undefined, { cwd });
 }
 
 export async function withIsolatedRepo(run) {

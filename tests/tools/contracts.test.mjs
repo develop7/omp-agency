@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   initState,
   invoke,
+  parseInput,
   readState,
   registerTools,
   snapshot,
@@ -17,7 +18,7 @@ const tools = registerTools();
 const manifest = JSON.parse(await readFile(new URL("../../skills/do/workflow-manifest.json", import.meta.url), "utf8"));
 
 function rejects(schema, value) {
-  assert.equal(schema.safeParse(value).success, false, `expected schema to reject ${JSON.stringify(value)}`);
+  assert.equal(parseInput(schema, value).success, false, `expected schema to reject ${JSON.stringify(value)}`);
 }
 
 function git(cwd, ...args) {
@@ -536,7 +537,7 @@ test("workflow rejects legacy argv and unknown entry-point selectors", () => {
 test("workflow cli + from rejection names the sibling cli_seed arm", () => {
   const schema = tool(tools, "workflow").parameters;
   for (const from of ["default", "not-an-entry-point"]) {
-    const result = schema.safeParse({ field: "cli", from });
+    const result = parseInput(schema, { field: "cli", from });
     assert.equal(result.success, false);
     const [issue] = result.error.issues;
     // Guidance, not exact prose: the error must point at the cli_seed arm and
@@ -546,13 +547,20 @@ test("workflow cli + from rejection names the sibling cli_seed arm", () => {
   }
   // The hint keeps enumerating any other unrecognized keys, as the deleted
   // strict-object prose did.
-  const mixed = schema.safeParse({ field: "cli", from: "default", junk: 1 });
+  const mixed = parseInput(schema, { field: "cli", from: "default", junk: 1 });
   assert.equal(mixed.success, false);
   assert.match(mixed.error.issues[0].message, /cli_seed/);
   assert.match(mixed.error.issues[0].message, /junk/);
   // Both valid forms keep parsing unchanged.
-  assert.equal(schema.safeParse({ field: "cli" }).success, true);
-  assert.equal(schema.safeParse({ field: "cli_seed", from: "default" }).success, true);
+  assert.equal(parseInput(schema, { field: "cli" }).success, true);
+  assert.equal(parseInput(schema, { field: "cli_seed", from: "default" }).success, true);
+});
+
+test("workflow wire schema stays closed like the runtime contract", () => {
+  // The runtime refinement enumerates unrecognized keys; the model-facing
+  // schema must still declare the arms closed, as the deleted `.strict()` did.
+  const workflow = tool(tools, "workflow").parameters.toJsonSchema();
+  for (const arm of workflow.anyOf) assert.equal(arm.additionalProperties, false);
 });
 
 test("forge rejects injected selectors, arbitrary argv, and conflicting bodies", () => {
