@@ -368,7 +368,7 @@ SH
   mkdir -p "$TEST_DIR/bin"
   cat > "$TEST_DIR/bin/jj" <<'SH'
 #!/bin/sh
-if [ "$1" = "log" ] && [ "$2" = "--revision" ] && [ "$3" = "main" ]; then
+if [ "$1" = "log" ] && [ "$2" = "--revision" ]; then
   echo "forced jj revision failure" >&2
   exit 75
 fi
@@ -1172,4 +1172,82 @@ SH
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op remote-url
   [ "$status" -eq 0 ]
   [ "$output" = "https://github.com/example/repo.git" ]
+}
+
+# ─── jj divergence immunity ───────────────────────────────────────────
+
+@test "jj: diff and log ops survive a divergent merge-base change" {
+  # A divergent change (one change ID, several revisions) makes bare
+  # change-ID revsets error even when the divergence is a benign duplicate.
+  # Range ops pin the merge-base as a commit ID so they keep working.
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > base.txt
+  jj describe -m "base"
+  jj new -m "feature"
+
+  # Rewrite the base change twice from one operation point: its change ID
+  # then has several revisions and the feature stays stacked on one of them.
+  op="$(jj op log --limit 1 --no-graph --template 'id')"
+  jj describe -m "base-v2" @- >/dev/null 2>&1
+  jj --at-op "$op" describe -m "base-v3" @- >/dev/null 2>&1
+  jj bookmark create main -r @- >/dev/null 2>&1
+  echo '{"base":"main"}' > .do-results.json
+
+  echo feature > feature.txt
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-names
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
+  [ "$status" -eq 0 ]
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-stat
+  [ "$status" -eq 0 ]
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op new-files
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-range
+  [ "$status" -eq 0 ]
+}
+
+@test "jj: diff-range names a conflicted base bookmark with its targets" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > base.txt
+  jj describe -m "base"
+  jj new -m "feature"
+  jj bookmark create main -r @- >/dev/null 2>&1
+
+  # Rewrite the bookmarked change twice from one operation point: the change
+  # goes divergent, its bookmark becomes conflicted, and the name now resolves
+  # to several targets — nothing can be pinned.
+  op="$(jj op log --limit 1 --no-graph --template 'id')"
+  jj describe -m "base-v2" @- >/dev/null 2>&1
+  jj --at-op "$op" describe -m "base-v3" @- >/dev/null 2>&1
+  echo '{"base":"main"}' > .do-results.json
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is conflicted"* ]]
+  [[ "$output" == *"targets"* ]]
+}
+
+@test "jj: driver set base rejects a change ID that names no bookmark" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+
+  echo base > base.txt
+  jj describe -m "base"
+  change="$(jj log -r @ --no-graph --template 'change_id')"
+
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init "task" >/dev/null
+  run node "$REPO_ROOT/pure/dist/agency-do.js" do-driver set base "$change"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not name a local or selected-remote bookmark"* ]]
 }
