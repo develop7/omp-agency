@@ -946,6 +946,28 @@ SH
   [[ "$output" == *"feat: remote base"* ]]
 }
 
+@test "jj: a remote-qualified base resolves the remote-tracking bookmark" {
+  command -v jj >/dev/null || skip "jj not installed"
+  jj git init 2>/dev/null || skip "jj git init failed"
+  git init -q --bare "$TEST_DIR/remote.git"
+  git remote set-url origin "$TEST_DIR/remote.git"
+
+  echo base > README.md
+  jj describe -m "base"
+  jj bookmark create main -r @
+  jj git push --remote origin --bookmark main
+  jj bookmark delete main
+  jj git fetch --remote origin
+  echo '{"base":"main@origin"}' > .do-results.json
+
+  jj new
+  echo feature > feature.txt
+
+  run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-names
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+}
+
 @test "jj: branch keeps picked-up working-copy work on the feature bookmark" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
