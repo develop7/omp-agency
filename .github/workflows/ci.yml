@@ -117,8 +117,8 @@ jobs:
           path: .
       # `just build` also regenerated the workflow vocabulary that packaging
       # copies; keep that regeneration without the PureScript rebuild.
-      - name: Generate workflow vocabulary
-        run: nix develop --accept-flake-config -c just workflow-vocabulary
+      - name: Generate workflow vocabulary and install Node dependencies
+        run: nix develop --accept-flake-config -c just workflow-vocabulary node-deps
       - name: Stage runtime package
         run: |
           source_sha="$(git rev-parse HEAD)"

@@ -8,12 +8,15 @@ nix_shell := if env('IN_NIX_SHELL', '') != '' { '' } else { 'nix develop ' + rep
 test: test-tools
     {{ nix_shell }} env REPO_ROOT={{ repo }} bats -r tests/
 
+# Install the lockfile-pinned schema and renderer dependencies for all Node consumers.
+node-deps:
+    {{ nix_shell }} npm ci
+
 # Build the extension with the pinned esbuild and run boundary tests against
 # OMP's own zod builder (the @oh-my-pi/omptype facade, pinned to the OMP
 # version) and the real API. npm ci is deterministic from the committed
 # lockfile.
-test-tools: build nickel-build
-    {{ nix_shell }} npm ci
+test-tools: build nickel-build node-deps
     {{ nix_shell }} esbuild src/agency-tools.ts --bundle --format=esm --platform=node --packages=external --external:../pure/dist/agency-api.js --external:../nickel-vm/scripts/workflow-runtime.mjs --outfile=dist/agency-tools.mjs
     {{ nix_shell }} npm run test:tools
 
@@ -69,9 +72,9 @@ ci: test test-pure test-vm lint lint-skills runtime-check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
 # staged imports, catalog consistency (when --catalog is passed), and the
-# Nickel workflow-contract smoke goldens run against the staged runtime.
-# Builds the generated artifacts first — a clean checkout ships none.
-runtime-check out='dist-package': build nickel-build
+# Nickel workflow-contract smoke scenarios run against the staged runtime.
+# Builds artifacts and installs renderer dependencies even in a clean checkout.
+runtime-check out='dist-package': build nickel-build node-deps
     {{ nix_shell }} bash -c 'set -euo pipefail; \
       trap "rm -rf {{ out }}" EXIT; \
       node scripts/package-runtime.mjs --out {{ out }} --verify \
