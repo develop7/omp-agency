@@ -145,6 +145,9 @@ jobs:
           # under `set -e` and need no split.
           GIT_INDEX_FILE="$(mktemp -u)"
           export GIT_INDEX_FILE
+          # Clean up the temp index on any exit (success or failure) so a
+          # later `set -e` abort doesn't leak the path in /tmp.
+          trap 'rm -f "$GIT_INDEX_FILE"' EXIT
           export GIT_AUTHOR_NAME="github-actions[bot]"
           export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
           export GIT_COMMITTER_NAME="github-actions[bot]"
@@ -153,7 +156,6 @@ jobs:
           GIT_WORK_TREE=/tmp/runtime-package git add -A
           tree="$(git write-tree)"
           dist_commit="$(git commit-tree "$tree" -m "dist: runtime package for ${DIST_SHA}")"
-          rm -f "$GIT_INDEX_FILE"
           echo "sha=${dist_commit}" >> "$GITHUB_OUTPUT"
         env:
           DIST_SHA: ${{ github.sha }}
