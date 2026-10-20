@@ -24,6 +24,12 @@ runs:
     # Cachix signs paths with its own key (so no signing-key secret is needed
     # — only the auth token).
     #
+    # Precondition: the calling job must run actions/checkout first — the
+    # composite is a local-path action (`./.github/actions/setup-nix`), and
+    # the runner resolves it against the checked-out workspace. No
+    # checkout means no action.yml on disk and the step fails before Nix
+    # is even installed.
+    #
     # Composite actions cannot resolve ${{ secrets.* }} directly — only
     # ${{ inputs.* }} — so the workflow job forwards the secret as an
     # explicit input. jobs.<job_id>.steps.with does have the secrets context;
