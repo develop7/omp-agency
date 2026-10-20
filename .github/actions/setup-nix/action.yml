@@ -1,8 +1,15 @@
 name: Set up Nix
 description: >-
   Installs Determinate Nix and wires the Cachix binary cache — Nix builds are
-  substituted from, and pushed back to, a Cachix cache using the
-  CACHIX_AUTH_TOKEN secret.
+  substituted from, and pushed back to, a Cachix cache.
+inputs:
+  cachix-auth-token:
+    description: >-
+      Cachix auth token (stored as the CACHIX_AUTH_TOKEN repo secret).
+      Pull + push requires it: omitted = pull-only (cachix-action will still
+      resolve the cache as a substituter).
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -15,9 +22,13 @@ runs:
     # registers the cache as a substituter (adds it to nix.conf), registers a
     # post-build-hook so newly built store paths are pushed to Cachix, and
     # Cachix signs paths with its own key (so no signing-key secret is needed
-    # — only the auth token). The auth token grants pull + push access to
-    # the named cache; store the token in repo secrets as CACHIX_AUTH_TOKEN.
+    # — only the auth token).
+    #
+    # Composite actions cannot resolve ${{ secrets.* }} directly — only
+    # ${{ inputs.* }} — so the workflow job forwards the secret as an
+    # explicit input. jobs.<job_id>.steps.with does have the secrets context;
+    # the composite's own with: does not.
     - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
       with:
         name: omp-agency
-        authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        authToken: ${{ inputs.cachix-auth-token }}
