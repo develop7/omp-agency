@@ -20,10 +20,12 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      # Install Determinate Nix and wire the Magic Nix Cache (repo-local
-      # GitHub Actions cache — no additional service, no secrets).
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install Determinate Nix and wire the Cachix binary cache (pull + push).
+      # Composite actions can't resolve secrets directly, so the workflow
+      # forwards CACHIX_AUTH_TOKEN to the composite as an input.
       - uses: ./.github/actions/setup-nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
       # `just test` builds the generated CLI/API bundles and the Nickel WASM
@@ -36,6 +38,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop --accept-flake-config -c just lint
 
   lint-skills:
@@ -44,6 +48,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop --accept-flake-config -c just lint-skills
 
   runtime-check:
@@ -52,6 +58,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       # Prove the generated runtime package: stage the minimal closure from the
       # fresh build and verify manifest paths, staged imports, and Nickel
       # workflow evaluation without a checked-in dist tree.
@@ -80,6 +88,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Build generated runtime artifacts
         run: nix develop --accept-flake-config -c just build nickel-build
       - name: Stage runtime package
