@@ -298,9 +298,11 @@
               pkgs.nodejs
               pkgs.just
               # Gate tools driven by the justfile recipes: shellcheck backs
-              # `just lint`; git and jj are the VCS binaries the bats
-              # integration fixtures drive (jj arms skip when absent).
+              # `just lint`; actionlint backs `just lint-workflows`; git and
+              # jj are the VCS binaries the bats integration fixtures drive
+              # (jj arms skip when absent).
               pkgs.shellcheck
+              pkgs.actionlint
               pkgs.git
               pkgs.jujutsu
               (rustToolchainFor system)

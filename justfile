@@ -53,6 +53,13 @@ lint:
 lint-skills:
     {{ nix_shell }} bash scripts/lint-vcs-refs.sh
 
+# Lint GitHub Actions workflow files and local composite actions with
+# actionlint. Bare invocation walks .github/workflows/ from the repo
+# root and follows local `uses: ./.github/actions/*` references for
+# composite actions; non-zero exit on any finding is CI-gateable.
+lint-workflows:
+    {{ nix_shell }} actionlint
+
 # Generate vocabulary consumers from the sole workflow manifest.
 workflow-vocabulary:
     {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs
@@ -66,7 +73,7 @@ build: workflow-vocabulary
       cp -fr "$out/dist/." pure/dist/
 
 # Full CI: bats + typed tool boundary + PureScript and VM unit tests + all quality gates.
-ci: test test-pure test-vm lint lint-skills runtime-check
+ci: test test-pure test-vm lint lint-workflows lint-skills runtime-check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
 # staged imports, catalog consistency (when --catalog is passed), and the
