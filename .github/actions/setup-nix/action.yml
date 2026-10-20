@@ -1,8 +1,8 @@
 name: Set up Nix
 description: >-
-  Installs Determinate Nix and enables the Magic Nix Cache — Nix builds are
-  cached in the GitHub Actions cache, with no additional service and no
-  secrets.
+  Installs Determinate Nix and wires the Cachix binary cache — Nix builds are
+  substituted from, and pushed back to, a Cachix cache using the
+  CACHIX_AUTH_TOKEN secret.
 runs:
   using: composite
   steps:
@@ -11,11 +11,13 @@ runs:
     # tag deliberately to control that rate of change. The install is
     # otherwise pinned by the action's own nix.conf.
     - uses: DeterminateSystems/determinate-nix-action@d0c908e6cbe9f89f36ed8205a3ab6f092636916a # v3
-    # The cache must be configured after Nix is installed. Repo-local cache
-    # only (GitHub Actions cache; not FlakeHub Cache): use-gha-cache is
-    # explicit and FlakeHub is explicitly disabled — under Determinate Nix
-    # its default is opportunistic and would try to register with FlakeHub.
-    - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+    # The cache must be configured after Nix is installed. cachix-action
+    # registers the cache as a substituter (adds it to nix.conf), registers a
+    # post-build-hook so newly built store paths are pushed to Cachix, and
+    # Cachix signs paths with its own key (so no signing-key secret is needed
+    # — only the auth token). The auth token grants pull + push access to
+    # the named cache; store the token in repo secrets as CACHIX_AUTH_TOKEN.
+    - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
       with:
-        use-gha-cache: enabled
-        use-flakehub: disabled
+        name: omp-agency
+        authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
