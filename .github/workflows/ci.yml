@@ -111,6 +111,10 @@ jobs:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v8
         with:
           name: built-runtime
+          # Artifact paths are rooted at the repo, so package-runtime finds
+          # pure/dist/agency-api.js and nickel-vm/dist/* exactly where the
+          # build left them.
+          path: .
       # `just build` also regenerated the workflow vocabulary that packaging
       # copies; keep that regeneration without the PureScript rebuild.
       - name: Generate workflow vocabulary
