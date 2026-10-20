@@ -20,11 +20,7 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # Install Determinate Nix and wire the Cachix binary cache (pull + push).
-      # Composite actions can't resolve secrets directly, so the workflow
-      # forwards CACHIX_AUTH_TOKEN to the composite as an input.
-      - uses: ./.github/actions/setup-nix
+      - uses: ./.github/actions/ci-env
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       # The devShell provides `just` (runners ship neither nix-profiles nor
@@ -48,8 +44,7 @@ jobs:
     name: Shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/setup-nix
+      - uses: ./.github/actions/ci-env
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop --accept-flake-config -c just lint
@@ -58,8 +53,7 @@ jobs:
     name: actionlint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/setup-nix
+      - uses: ./.github/actions/ci-env
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop --accept-flake-config -c just lint-workflows
@@ -68,8 +62,7 @@ jobs:
     name: Skill prose
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/setup-nix
+      - uses: ./.github/actions/ci-env
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop --accept-flake-config -c just lint-skills
@@ -78,8 +71,7 @@ jobs:
     name: Runtime package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: ./.github/actions/setup-nix
+      - uses: ./.github/actions/ci-env
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       # Prove the generated runtime package: stage the minimal closure from the
@@ -106,12 +98,13 @@ jobs:
     env:
       DIST_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: ./.github/actions/setup-nix
+      # Publish needs full git history (fetch-depth: 0) so the orphan commit,
+      # tag, and Pages deploy see every ref. The ci-env composite parameterizes
+      # fetch-depth with a default of 1 for the other jobs.
+      - uses: ./.github/actions/ci-env
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          fetch-depth: 0
       # Consume this run's tested artifacts instead of rebuilding: what passed
       # `just test` is exactly what gets tagged and shipped.
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v8
