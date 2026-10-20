@@ -19,10 +19,15 @@ runs:
     # otherwise pinned by the action's own nix.conf.
     - uses: DeterminateSystems/determinate-nix-action@d0c908e6cbe9f89f36ed8205a3ab6f092636916a # v3
     # The cache must be configured after Nix is installed. cachix-action
-    # registers the cache as a substituter (adds it to nix.conf), registers a
-    # post-build-hook so newly built store paths are pushed to Cachix, and
-    # Cachix signs paths with its own key (so no signing-key secret is needed
-    # — only the auth token).
+    # registers the cache as a substituter (adds it to nix.conf) and
+    # registers a post-build-hook so newly built store paths are pushed to
+    # Cachix. If the `omp-agency` cache uses Cachix-managed signing (the
+    # default for new caches), Cachix signs paths itself and only the auth
+    # token is needed. For self-signed caches, also forward
+    # `secrets.CACHIX_SIGNING_KEY` through a second composite input — the
+    # cachix-action step's signingKey input expects it; a mismatched
+    # signingKey silently fails push (logged at info level, job still
+    # exits green).
     #
     # Precondition: the calling job must run actions/checkout first — the
     # composite is a local-path action (`./.github/actions/setup-nix`), and
