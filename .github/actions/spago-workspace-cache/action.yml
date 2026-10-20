@@ -7,6 +7,18 @@ description: >-
 runs:
   using: composite
   steps:
+    # Fail loud if the caller skipped actions/checkout: hashFiles would then
+    # hash nothing, keying the cache `spago--` and letting the `spago-`
+    # prefix restore unrelated entries.
+    - name: Require a checked-out workspace
+      shell: bash
+      run: |
+        for f in flake.nix pure/spago.yaml; do
+          if [ ! -f "$f" ]; then
+            echo "::error::spago-workspace-cache must run after actions/checkout (missing $f)"
+            exit 1
+          fi
+        done
     # The key covers only toolchain and package-set config: purs recompiles
     # changed sources itself and rejects externs written by another compiler
     # version, so a stale restore is safe and source churn must not mint new
