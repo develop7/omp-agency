@@ -163,22 +163,24 @@ See [Kolu's `.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for 
 ## Development
 
 All recipes self-route through the pinned Nix toolchain (PureScript, Spago,
-esbuild, bats, Node.js, Rust, wasm-bindgen, shellcheck, git, jj, just) — no
-`nix develop` needed first; enter the shell only if you want the tools on
+esbuild, bats, Node.js, Rust, wasm-bindgen, shellcheck, actionlint, git, jj,
+just) — no `nix develop` needed first; enter the shell only if you want the
+tools on
 PATH directly. Nickel remains available as an editor/debugging nicety; runtime
 workflow evaluation is provided by `nickel-vm` WASM:
 
 ```bash
-just test          # build, then run bats and typed tool boundary tests
-just test-pure     # run the PureScript core unit tests
-just test-tools    # test typed contracts against the shared PureScript runtime
-just test-vm       # run the Nickel WASM VM unit tests (release profile)
-just lint          # run shellcheck on bash scripts
-just lint-skills   # lint skill markdown: no raw VCS/forge commands; reviewer skill tool references stay on the executor's allowlist
-just build         # compile and bundle the PureScript core
-just ci            # full CI: tests + lint + skill prose lint + runtime package proof
-just nickel-build  # build the Nickel WASM evaluator and Node glue
-just runtime-check # stage the minimal runtime package and verify it
+just test              # build, then run bats and typed tool boundary tests
+just test-pure         # run the PureScript core unit tests
+just test-tools        # test typed contracts against the shared PureScript runtime
+just test-vm           # run the Nickel WASM VM unit tests (release profile)
+just lint              # run shellcheck on bash scripts
+just lint-workflows    # run actionlint on GitHub Actions workflows + composite actions
+just lint-skills       # lint skill markdown: no raw VCS/forge commands; reviewer skill tool references stay on the executor's allowlist
+just build             # compile and bundle the PureScript core
+just ci                # full CI: tests + lint + actionlint + skill prose lint + runtime package proof
+just nickel-build      # build the Nickel WASM evaluator and Node glue
+just runtime-check     # stage the minimal runtime package and verify it
 node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite (inside nix develop)
 ```
 
@@ -219,8 +221,8 @@ omp plugin marketplace add https://<owner>.github.io/<repo>/marketplace.json
 omp plugin install agency@<repo>
 ```
 
-All test and build tools (bats, shellcheck, purs, spago, git, jj, Node.js) come from the
-pinned Nix dev shell. Tool boundary tests install the lockfile-pinned OMP zod
+All test and build tools (bats, shellcheck, actionlint, purs, spago, git, jj,
+Node.js) come from the pinned Nix dev shell. Tool boundary tests install the lockfile-pinned OMP zod
 builder (`@oh-my-pi/omptype`, pinned to the OMP version) via `npm ci`, so the
 tested schema surface is the one OMP injects at runtime. The `/do`
 operation surface (`vcs_read`, `vcs_write`, `forge`, `workflow`, and
