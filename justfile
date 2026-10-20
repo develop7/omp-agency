@@ -55,10 +55,9 @@ workflow-vocabulary:
     {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs
 
 # Build the PureScript core and bundle the CLI and tool API entrypoints.
-# The pinned spago/purs/esbuild come from the dev shell. `spago bundle`
-# compiles the project before bundling (spago 1.x implements no --no-build),
-# so the two bundles share the first compile's fresh output instead of us
-# chaining a third explicit `spago build`.
+# The pinned spago/purs/esbuild come from the dev shell. Each `spago bundle`
+# compiles first (spago 1.x implements no --no-build to skip it), so the two
+# bundles share the first compile's output and cost two compiles, not three.
 build: workflow-vocabulary
     {{ nix_shell }} bash -c 'cd pure && spago bundle --module Agency.Scripts.Do.Cli \
             --outfile dist/agency-do.js --force --platform node \
