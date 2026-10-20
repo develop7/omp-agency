@@ -175,7 +175,7 @@ just test-pure         # run the PureScript core unit tests
 just test-tools        # test typed contracts against the shared PureScript runtime
 just test-vm           # run the Nickel WASM VM unit tests (release profile)
 just lint              # run shellcheck on bash scripts
-just lint-workflows    # run actionlint on GitHub Actions workflows + composite actions
+just lint-workflows    # run actionlint on GitHub Actions workflows + composite-action metadata
 just lint-skills       # lint skill markdown: no raw VCS/forge commands; reviewer skill tool references stay on the executor's allowlist
 just build             # compile and bundle the PureScript core
 just ci                # full CI: tests + lint + actionlint + skill prose lint + runtime package proof
