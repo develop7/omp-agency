@@ -139,8 +139,10 @@ jobs:
         id: dist
         run: |
           set -euo pipefail
-          # Split declare + assign so `set -e` sees the assignment's exit
-          # status (shellcheck SC2155).
+          # Assign, then export: `export VAR=$(cmd)` masks the command's
+          # exit status (shellcheck SC2155), so `set -e` would not abort.
+          # Plain assignments like `tree=$(git write-tree)` already abort
+          # under `set -e` and need no split.
           GIT_INDEX_FILE="$(mktemp -u)"
           export GIT_INDEX_FILE
           export GIT_AUTHOR_NAME="github-actions[bot]"
@@ -149,14 +151,7 @@ jobs:
           export GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
           git read-tree --empty
           GIT_WORK_TREE=/tmp/runtime-package git add -A
-          # Capture write-tree separately: `set -e` does not see a masked
-          # exit status when assignment+command substitution share a line
-          # (shellcheck SC2155). Splitting ensures a failing `git
-          # write-tree` aborts the step instead of producing a synthetic
-          # empty tree SHA.
-          tree=""
           tree="$(git write-tree)"
-          dist_commit=""
           dist_commit="$(git commit-tree "$tree" -m "dist: runtime package for ${DIST_SHA}")"
           rm -f "$GIT_INDEX_FILE"
           echo "sha=${dist_commit}" >> "$GITHUB_OUTPUT"
