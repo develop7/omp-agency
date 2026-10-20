@@ -53,12 +53,13 @@ lint:
 lint-skills:
     {{ nix_shell }} bash scripts/lint-vcs-refs.sh
 
-# Lint GitHub Actions workflow files and local composite actions with
-# actionlint. Bare invocation walks .github/workflows/ from the repo
-# root and follows local `uses: ./.github/actions/*` references for
-# composite actions; non-zero exit on any finding is CI-gateable.
+# Lint GitHub Actions workflow files with actionlint. `cd` to the repo
+# root first so bare invocation resolves `.github/workflows/` from a
+# cwd-stable location (actionlint exits 3 when no project is found in
+# any parent directory — a git-root requirement that does not constrain
+# the justfile's own cwd). Non-zero exit on any finding is CI-gateable.
 lint-workflows:
-    {{ nix_shell }} actionlint
+    {{ nix_shell }} bash -c 'cd "{{ repo }}" && actionlint'
 
 # Generate vocabulary consumers from the sole workflow manifest.
 workflow-vocabulary:
