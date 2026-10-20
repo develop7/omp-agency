@@ -27,11 +27,36 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      # Warm-start the spago workspace (package downloads + purs compile
+      # cache) across runs. The key covers only toolchain and package-set
+      # config: purs recompiles changed sources itself and rejects externs
+      # written by another compiler version, so a stale restore is safe and
+      # source churn must not mint new cache entries. flake.nix carries the
+      # spago pin that flake.lock does not.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            pure/.spago
+            pure/output
+          key: spago-${{ hashFiles('flake.nix') }}-${{ hashFiles('pure/spago.yaml') }}
+          restore-keys: |
+            spago-${{ hashFiles('flake.nix') }}-
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
       # `just test` builds the generated CLI/API bundles and the Nickel WASM
       # first — a clean source checkout ships no dist artifacts.
       - run: nix develop --accept-flake-config -c just test
+      # Publish ships the exact bytes these tests exercised: hand this run's
+      # built runtime dirs (same commit) to the publish job instead of
+      # rebuilding them there.
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v7
+        if: github.event_name == 'push'
+        with:
+          name: built-runtime
+          path: |
+            pure/dist
+            nickel-vm/dist
+          if-no-files-found: error
 
   lint:
     name: Shellcheck
@@ -61,6 +86,16 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      # Same spago workspace cache as the test job — the key must stay
+      # identical so either job can warm the other on the next run.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            pure/.spago
+            pure/output
+          key: spago-${{ hashFiles('flake.nix') }}-${{ hashFiles('pure/spago.yaml') }}
+          restore-keys: |
+            spago-${{ hashFiles('flake.nix') }}-
       # Prove the generated runtime package: stage the minimal closure from the
       # fresh build and verify manifest paths, staged imports, and Nickel
       # workflow evaluation without a checked-in dist tree.
@@ -91,8 +126,15 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Build generated runtime artifacts
-        run: nix develop --accept-flake-config -c just build nickel-build
+      # Consume this run's tested artifacts instead of rebuilding: what passed
+      # `just test` is exactly what gets tagged and shipped.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v8
+        with:
+          name: built-runtime
+      # `just build` also regenerated the workflow vocabulary that packaging
+      # copies; keep that regeneration without the PureScript rebuild.
+      - name: Generate workflow vocabulary
+        run: nix develop --accept-flake-config -c just workflow-vocabulary
       - name: Stage runtime package
         run: |
           source_sha="$(git rev-parse HEAD)"
