@@ -27,20 +27,9 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      # Warm-start the spago workspace (package downloads + purs compile
-      # cache) across runs. The key covers only toolchain and package-set
-      # config: purs recompiles changed sources itself and rejects externs
-      # written by another compiler version, so a stale restore is safe and
-      # source churn must not mint new cache entries. flake.nix carries the
-      # spago pin that flake.lock does not.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            pure/.spago
-            pure/output
-          key: spago-${{ hashFiles('flake.nix') }}-${{ hashFiles('pure/spago.yaml') }}
-          restore-keys: |
-            spago-${{ hashFiles('flake.nix') }}-
+      # Warm-start the spago workspace across runs (shared with
+      # runtime-check — one key, one home).
+      - uses: ./.github/actions/spago-workspace-cache
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
       # `just test` builds the generated CLI/API bundles and the Nickel WASM
@@ -86,16 +75,9 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      # Same spago workspace cache as the test job — the key must stay
-      # identical so either job can warm the other on the next run.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            pure/.spago
-            pure/output
-          key: spago-${{ hashFiles('flake.nix') }}-${{ hashFiles('pure/spago.yaml') }}
-          restore-keys: |
-            spago-${{ hashFiles('flake.nix') }}-
+      # Warm-start the spago workspace across runs (shared with test —
+      # one key, one home).
+      - uses: ./.github/actions/spago-workspace-cache
       # Prove the generated runtime package: stage the minimal closure from the
       # fresh build and verify manifest paths, staged imports, and Nickel
       # workflow evaluation without a checked-in dist tree.
