@@ -27,8 +27,6 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      # Warm-start the spago workspace across runs.
-      - uses: ./.github/actions/spago-workspace-cache
       # The devShell provides `just` (runners ship neither nix-profiles nor
       # just); IN_NIX_SHELL inside makes the recipes' own nix routing a no-op.
       # `just test` builds the generated CLI/API bundles and the Nickel WASM
@@ -74,8 +72,6 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      # Warm-start the spago workspace across runs.
-      - uses: ./.github/actions/spago-workspace-cache
       # Prove the generated runtime package: stage the minimal closure from the
       # fresh build and verify manifest paths, staged imports, and Nickel
       # workflow evaluation without a checked-in dist tree.

@@ -195,6 +195,18 @@ first. Source checkouts that link the plugin directly
 (`omp plugin link ./path/to/agency`) must run `just build nickel-build` first —
 a linked checkout without built artifacts cannot load the extension.
 
+`just build` installs the `pureScripts` Nix output into `pure/dist/`; build it
+without modifying the checkout with `nix build .#pureScripts --no-link`. The
+[`mkSpagoDerivation`](https://github.com/jeslie0/mkSpagoDerivation) integration
+uses the committed `pure/spago.lock` and the pinned compiler/Spago toolchain.
+Its separate `pureDependencies` output caches compiled dependencies across
+application edits. The bundle derivation regenerates workflow vocabulary from
+the manifest and includes PureScript/FFI and test sources, but excludes unrelated
+repository files. Both outputs are ordinary Nix store paths, so CI's existing
+Cachix integration caches them; there is no separate GitHub Spago workspace
+cache. `just build` also regenerates the checkout's vocabulary for TypeScript
+consumers. After changing Spago dependencies, commit the updated lockfile.
+
 CI builds and verifies the artifacts on every PR, and on pushes to `main`
 publishes the installable runtime: it stages the minimal runtime package
 (`scripts/package-runtime.mjs`), commits it to an orphan distribution commit,

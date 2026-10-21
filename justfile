@@ -57,15 +57,13 @@ lint-skills:
 workflow-vocabulary:
     {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs
 
-# Build the PureScript core and bundle the CLI and tool API entrypoints.
-# The pinned spago/purs/esbuild come from the dev shell. Each `spago bundle`
-# compiles first (spago 1.x implements no --no-build to skip it), so the two
-# bundles share the first compile's output and cost two compiles, not three.
+# Build the CLI/API Nix output and install the Cachix-cacheable bundles.
+# Keep the checkout's generated vocabulary current for TypeScript consumers too.
 build: workflow-vocabulary
-    {{ nix_shell }} bash -c 'cd pure && spago bundle --module Agency.Scripts.Do.Cli \
-            --outfile dist/agency-do.js --force --platform node \
-        && spago bundle --module Agency.Scripts.Do.Api \
-            --outfile dist/agency-api.js --force --platform node --bundle-type=module'
+    @out=$(nix build {{ repo }}#pureScripts --print-out-paths --no-link) && \
+      rm -rf pure/dist && \
+      mkdir -p pure/dist && \
+      cp -fr "$out/dist/." pure/dist/
 
 # Full CI: bats + typed tool boundary + PureScript and VM unit tests + all quality gates.
 ci: test test-pure test-vm lint lint-skills runtime-check

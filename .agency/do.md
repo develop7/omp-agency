@@ -3,10 +3,11 @@
 All commands below self-route through the pinned Nix toolchain (PureScript,
 Spago, esbuild, bats, shellcheck, git, jj, Node.js, just — see the root
 `flake.nix`); run them as-is from a bare host. Enter `nix develop` only to get
-the tools on PATH directly. The Nickel WASM evaluator artifact is produced by
-the flake's `nickelVmWasm` derivation; `just nickel-build` installs a fresh
-build into `nickel-vm/dist/` (a build output, not committed — see
-`nickel-vm/README.md` for the resolver-order patch it carries).
+the tools on PATH directly. The flake's `pureScripts` output supplies the CLI/API
+bundles, with compiled dependencies cached separately by `pureDependencies`;
+`just build` installs them into `pure/dist/`. The Nickel WASM evaluator artifact
+is produced by `nickelVmWasm`; `just nickel-build` installs it into
+`nickel-vm/dist/` (see `nickel-vm/README.md` for the resolver-order patch).
 
 ## Check command
 just lint

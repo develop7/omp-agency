@@ -48,9 +48,19 @@ Sync policy is represented by two explicit VCS operations:
 
 ## Build, bundle, and test
 
-From this directory, the root justfile recipes `just build` and
-`just test-pure` self-route through `nix develop`, so they work from a bare host. After
-entering `nix develop`, run the equivalent commands by hand:
+From this directory, `just build` builds the `pureScripts` Nix output and
+installs its CLI/API bundles into `pure/dist/` at the repository root.
+`nix build .#pureScripts --no-link` from the root builds the same output without
+installing it into the checkout. The `pureDependencies` Nix output compiles
+dependencies separately, so application edits reuse that output through Cachix.
+Both derivations use the pinned toolchain and committed `spago.lock`; commit
+lockfile updates after changing dependencies. The bundle build regenerates
+workflow vocabulary from its manifest inside the sandbox.
+
+`just test-pure` still runs the interactive Spago test workflow through
+`nix develop`. For direct workspace builds, enter the dev shell and run these
+commands from `pure/` (the resulting `.spago/`, `output/`, and `dist/` remain
+local workspace state, not Cachix outputs):
 
 ```sh
 spago build

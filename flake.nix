@@ -3,6 +3,11 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    mk-spago-derivation = {
+      url = "github:jeslie0/mkSpagoDerivation/43dd4c8a0fed8fcfdeb98bd1687f06f198ab4d20";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.ps-overlay.inputs.nixpkgs.follows = "nixpkgs";
+    };
     # Binary-distributed Rust toolchains with cross targets (wasm32 std).
     # nixpkgs' own rustc cannot add wasm32-unknown-unknown, and
     # pkgsCross.wasm32-unknown-unknown.buildPackages.rustc does not exist
@@ -18,6 +23,7 @@
       self,
       nixpkgs,
       rust-overlay,
+      mk-spago-derivation,
     }:
     let
       # nixpkgs unstable dropped x86_64-darwin; re-add when a supported nixpkgs provides it.
@@ -32,7 +38,10 @@
         system:
         import nixpkgs {
           inherit system;
-          overlays = [ rust-overlay.overlays.default ];
+          overlays = [
+            rust-overlay.overlays.default
+            mk-spago-derivation.overlays.default
+          ];
         };
 
       # nickel-lang-core 0.18.0's published crate evaluates the in-memory
@@ -119,6 +128,60 @@
         system:
         let
           pkgs = pkgsFor system;
+          spago = spagoFor system;
+          # Application edits must not invalidate the compiled dependency cache.
+          pureDependencySrc = pkgs.lib.cleanSourceWith {
+            name = "agency-spago-dependencies";
+            src = ./pure;
+            filter =
+              path: type:
+              builtins.elem (baseNameOf path) [
+                "spago.yaml"
+                "spago.lock"
+              ];
+          };
+          pureSrc = pkgs.lib.cleanSourceWith {
+            name = "agency-pure-source";
+            src = ./.;
+            filter =
+              path: type:
+              let
+                relative = pkgs.lib.removePrefix "${toString ./.}/" path;
+              in
+              # Generated vocabulary is rebuilt from the manifest in the sandbox.
+              relative != "pure/src/Agency/Scripts/Do/WorkflowVocabulary.purs"
+              && (
+                builtins.elem relative [
+                  "pure"
+                  "pure/src"
+                  "pure/test"
+                  "pure/package.json"
+                  "pure/spago.yaml"
+                  "pure/spago.lock"
+                  "scripts"
+                  "scripts/generate-workflow-vocabulary.mjs"
+                  "skills"
+                  "skills/do"
+                  "skills/do/workflow-manifest.json"
+                ]
+                || pkgs.lib.hasPrefix "pure/src/" relative
+                || pkgs.lib.hasPrefix "pure/test/" relative
+              );
+          };
+          pureDependencies = pkgs.mkSpagoDerivation {
+            name = "agency-pure-dependencies";
+            src = pureDependencySrc;
+            nativeBuildInputs = [
+              pkgs.purescript
+              spago
+            ];
+            buildPhase = "spago install --offline";
+            installPhase = ''
+              mkdir -p "$out"
+              cp -R output "$out/output"
+            '';
+            dontFixup = true;
+          };
           rustPlatform = rustPlatformFor system;
           rustToolchain = rustToolchainFor system;
           nickelVmSrc = pkgs.lib.cleanSourceWith {
@@ -151,6 +214,37 @@
           };
         in
         {
+
+          # Cachix stores both the reusable compiler output and the final bundles.
+          inherit pureDependencies;
+          pureScripts = pkgs.mkSpagoDerivation {
+            name = "agency-pure-scripts";
+            src = pureSrc;
+            spagoYaml = "${pureSrc}/pure/spago.yaml";
+            spagoLock = "${pureSrc}/pure/spago.lock";
+            nativeBuildInputs = [
+              pkgs.purescript
+              spago
+              pkgs.esbuild
+              pkgs.nodejs
+            ];
+            preBuild = "cd pure";
+            buildPhase = ''
+              cp -R ${pureDependencies}/output .
+              chmod -R u+w output
+              mkdir -p ../src
+              node ../scripts/generate-workflow-vocabulary.mjs
+              spago bundle --offline --module Agency.Scripts.Do.Cli \
+                --outfile dist/agency-do.js --force --platform node
+              spago bundle --offline --module Agency.Scripts.Do.Api \
+                --outfile dist/agency-api.js --force --platform node --bundle-type=module
+            '';
+            installPhase = ''
+              mkdir -p "$out/dist"
+              cp dist/agency-do.js dist/agency-api.js "$out/dist/"
+            '';
+            dontFixup = true;
+          };
 
           nickelVmWasm = pkgs.stdenv.mkDerivation {
             pname = "nickel-vm";
