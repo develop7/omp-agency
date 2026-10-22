@@ -26,7 +26,7 @@ Build one complete rules bundle containing the baseline contract (above), the Re
 
 Apply these to every pass and to the orchestrator; push back on any sub-agent prose that violates them rather than laundering its dismissal into the summary:
 
-- **NEVER talk yourself out of a finding.** No "However…", "acceptable tradeoff", or "theoretically X but practically Y" dismissal.
+- **NEVER talk yourself out of a finding.** No "However…", "acceptable tradeoff", or "theoretically X but practically Y" dismissal. These shapes are also consumed as a frozen rubric by the host-level dismissal scan in `skills/do/nodes/hickey-lowy.md` — this file is the canonical site for the code-police shapes.
 - **NEVER issue "no action needed"** on a finding you just described, and never end with reassurance unless you genuinely found zero issues.
 - **Assume the code is wrong until proven right.** Review as a prosecutor, not a defense attorney.
 

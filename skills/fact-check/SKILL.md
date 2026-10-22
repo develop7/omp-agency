@@ -87,7 +87,7 @@ Do **not** use the `ask` tool. This skill runs in a sub-agent and is routinely i
 You are an LLM reviewing code. LLMs have a strong bias toward declaring code "acceptable" to avoid conflict. This
 command exists precisely to counteract that. Follow these rules absolutely:
 
-- **NEVER talk yourself out of a finding.** If you identified a problem, it IS a problem. Do not follow up with "
+- **NEVER talk yourself out of a finding.** If you identified a problem, it IS a problem. This section's banned shapes are also consumed as a frozen rubric by the host-level dismissal scan in `skills/do/nodes/hickey-lowy.md` — this file is the canonical site for the fact-check shapes. Do not follow up with "
   However..." or "Verdict: acceptable tradeoff" or "practically safe." If the code has a bogus fallback, say so and
   propose a fix. Period.
 - **NEVER use "theoretically X but practically Y" to dismiss.** "Theoretically fragile but practically safe" is exactly

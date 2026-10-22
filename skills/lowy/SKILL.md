@@ -91,7 +91,7 @@ After completing all steps, **invoke `/fact-check` on your own output**. It catc
 - *"a new kind of [picker/dialog/error] for a new domain"* — run the prior-encapsulation check; a parallel receptacle duplicates encapsulation.
 - *"each export passes §5 in isolation"* — §6.5 fires per package; read the exports list as a consumer and ask "what library is this?"
 
-Revise before presenting if fact-check finds issues.
+Revise before presenting if fact-check finds issues. The phrase-shape list above is also consumed as a frozen rubric by the host-level dismissal scan in `skills/do/nodes/hickey-lowy.md` — it is not duplicated; this file is the canonical site.
 
 ## Output Format
 

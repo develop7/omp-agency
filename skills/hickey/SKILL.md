@@ -116,7 +116,7 @@ After all layers, **invoke `/fact-check` on your own output**. It catches findin
 
 These catch fragmentation (Layer 2), concept multiplication missed under diff-anchoring (Layer 3), and placement misses (Layer 4) that the reviewer glossed over. The prosecutor stance applies equally to findings never made and findings made-then-dismissed.
 
-Revise before presenting if fact-check finds issues.
+Revise before presenting if fact-check finds issues. The phrase-shape list above is also consumed as a frozen rubric by the host-level dismissal scan in `skills/do/nodes/hickey-lowy.md` — it is not duplicated; this file is the canonical site.
 
 ## Output Format
 
