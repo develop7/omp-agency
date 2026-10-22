@@ -86,10 +86,10 @@ Each self-contained prompt contains:
 **Phrase-shape dismissal check (host-level, before reconciliation).** Before reconciling, run one host-level dismissal scan over every finding entry produced so far (both lenses × both passes, plus any code-police orchestrator prose the host has pulled into scope — per-task the host decides whether police prose is in scope; for this repo it is). Do not delegate this scan to sub-agents.
 
 1. **Freeze the rubric first.** Read the banned dismissal shapes verbatim from their four canonical sites and treat that snapshot as the rubric for this run — do not re-derive shapes after loading states:
-   - `skills/hickey/SKILL.md:107-115` — "Phrase shapes that mean you stopped one step early"
-   - `skills/lowy/SKILL.md:81-92` — "Phrase shapes that mean you stopped one step early"
-   - `skills/code-police/SKILL.md:29-31` — Reviewing principles ("However…", "acceptable tradeoff", "theoretically X but practically Y")
-   - `skills/fact-check/SKILL.md:87-101` — Anti-patterns in YOUR review (strictly banned)
+   - `skills/hickey/SKILL.md` — `Fact-Check Your Own Evaluation` / `Phrase shapes that mean you stopped one step early`
+   - `skills/lowy/SKILL.md` — `Fact-Check Your Own Evaluation` / `Phrase shapes that mean you stopped one step early`
+   - `skills/code-police/SKILL.md` — `Reviewing principles`
+   - `skills/fact-check/SKILL.md` — `Anti-patterns in YOUR review (strictly banned)`
 2. **One batch classification.** With the frozen rubric, classify each finding entry with the single bool question: "does this entry dismiss or talk itself out of a finding?" Use the dismissal shapes as the criterion. The question is mechanical; the host owns it — it lives at host level and is not a lens concern.
 3. **Flag handling.** Flagged entries do not get deleted or rewritten by the judge. Route each flagged entry back through fact-check (re-run the fact-check pass on that entry's text + its dismissal span). Fact-check's output is authoritative; the judge's flag is advisory.
 4. **Ledger only.** The judge's flags feed the reconciled ledger only — they do not create new findings, do not change dispositions, and are never re-judged. A finding that fact-check clears after a flag keeps its pre-flag disposition; a finding that fact-check sustains keeps or upgrades to **Fix in this PR** per the normal reconciliation rules. Record the flag + fact-check outcome in the ledger row's rationale for auditability.
