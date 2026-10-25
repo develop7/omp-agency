@@ -23,7 +23,11 @@
     edition = "2021";
   };
   programs.alejandra.enable = true;
-  programs.nickel.enable = true;
+  # nickel is npm-only-incompatible: the nixpkgs nickel formatter always
+  # rewrites files (updating mtime), which causes false positives in
+  # treefmt's --ci/--fail-on-change mode. Override with a stdin/stdout
+  # wrapper that only writes when content actually changes.
+  programs.nickel.enable = false;
   programs.taplo.enable = true;
   programs.just.enable = true;
 
@@ -40,41 +44,97 @@
   # Custom formatter for PureScript — purs-tidy is npm-only (not in nixpkgs
   # nodePackages was removed). Installed via package.json devDependencies;
   # resolved through npx which finds node_modules/.bin/purs-tidy.
+  # Uses a bash wrapper with stdin/stdout mode: purs-tidy reads from stdin
+  # and writes formatted output to stdout, which treefmt applies only when
+  # the content differs. This avoids spurious mtime changes that trigger
+  # false positives in treefmt's --fail-on-change / --ci mode.
   settings.formatter.purs-tidy = {
-    command = "${pkgs.nodejs}/bin/npx";
+    command = "${pkgs.bash}/bin/bash";
     options = [
-      "purs-tidy"
-      "format-in-place"
+      "-euc"
+      ''
+        for file in "$@"; do
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          ${pkgs.nodejs}/bin/npx purs-tidy format < "$file" > "$tmp"
+          cmp -s "$file" "$tmp"
+          status=$?
+          if [ "$status" -eq 1 ]; then
+            cp "$tmp" "$file"
+          elif [ "$status" -ne 0 ]; then
+            echo "cmp failed with status $status for $file" >&2
+            exit "$status"
+          fi
+          rm -f "$tmp"
+          trap - EXIT
+        done
+      ''
+      "--" # bash swallows the second argument when using -c
     ];
     includes = ["*.purs"];
   };
 
-  # Exclude generated/build output and vendored trees from formatting
+  # Custom Nickel formatter — the built-in treefmt-nix nickel program uses
+  # `nickel format <files>` which always rewrites files (updating mtime),
+  # triggering false positives in treefmt's --ci mode. This wrapper uses
+  # stdin/stdout: `nickel format` reads from stdin and writes to stdout,
+  # and only writes back when content actually differs.
+  settings.formatter.nickel = {
+    command = "${pkgs.bash}/bin/bash";
+    options = [
+      "-euc"
+      ''
+        for file in "$@"; do
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          ${pkgs.nickel}/bin/nickel format < "$file" > "$tmp"
+          cmp -s "$file" "$tmp"
+          status=$?
+          if [ "$status" -eq 1 ]; then
+            cp "$tmp" "$file"
+          elif [ "$status" -ne 0 ]; then
+            echo "cmp failed with status $status for $file" >&2
+            exit "$status"
+          fi
+          rm -f "$tmp"
+          trap - EXIT
+        done
+      ''
+    ];
+    includes = [
+      "*.ncl"
+      "*.nickel"
+    ];
+  };
+
+  # Exclude generated/build output and vendored trees from formatting.
+  # treefmt v2 glob patterns: "dir/*" matches direct children only;
+  # "dir/**" matches recursively. Use recursive patterns for directories
+  # whose entire subtree should be excluded.
   settings.global.excludes = [
     # Node
-    "node_modules/*"
+    "node_modules/**"
     "package-lock.json"
     # Build outputs
-    "dist/*"
-    "pure/dist/*"
-    "pure/output/*"
-    "pure/.spago/*"
-    "nickel-vm/dist/*"
-    "nickel-vm/target/*"
-    "target/*"
+    "dist/**"
+    "pure/dist/**"
+    "pure/output/**"
+    "pure/.spago/**"
+    "nickel-vm/dist/**"
+    "nickel-vm/target/**"
+    "target/**"
     # VCS internals
-    ".git/*"
-    ".jj/*"
+    ".git/**"
+    ".jj/**"
     # Nix build results
     "result"
     "result-*"
     ".#*"
     # IDE / tool caches
-    ".codegraph/*"
-    ".idea/*"
-    ".omp/*"
-    ".omp-plugin/*"
-    ".agency/*"
+    ".codegraph/**"
+    ".idea/**"
+    ".omp/**"
+    ".omp-plugin/**"
     # Agency runtime state
     ".do-results.json"
   ];
