@@ -293,6 +293,9 @@
             pkgs.actionlint
             pkgs.git
             pkgs.jujutsu
+            # treefmt backs `just fmt-check` (treefmt --check). The
+            # formatter output (nix fmt) is the same wrapper.
+            treefmtEval.${system}.config.build.wrapper
             (rustToolchainFor system)
             (wasmBindgenCliFor system)
           ];
