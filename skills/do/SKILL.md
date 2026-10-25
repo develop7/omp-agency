@@ -29,9 +29,13 @@ sensible default choices and keep moving.
    a JSON array `[{ name, initial_status }]`; mark `completed` steps and seed the todo UI.
 4. For each step, call the `workflow` tool with `{ field: "cli" }` — it returns a JSON object
    `{ step, skip, pattern, instructions, requires, pattern_config }`, or `{ "done": true }`.
-    - If `skip` is true, call the `agency_driver` tool with `{ op: "skip", step: <step>, reason: <reason> }` and continue.
-    - Otherwise: call `agency_driver` with `{ op: "start", step: <step> }`, read `nodes/<step>.md`, do the work,
-      then call `agency_driver` with `{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }`.
+   - **Scheduler skip** (`skip` is true, the step is NOT yet started): call
+     `agency_driver { op: "skip", step: <step>, reason: <reason> }` and continue.
+   - **Otherwise**: call `agency_driver { op: "start", step: <step> }`, read `nodes/<step>.md`, do the work.
+     When the step finishes, call `agency_driver` with
+     `{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }`.
+     `status: "skipped"` requires `reason` — it is the node-local skip spelling: the step is already
+     active and discovered it has nothing to do (see [Results Tracking](#results-tracking)).
 5. When the `workflow` tool reports done, call `agency_driver` with `{ op: "summary" }`.
 
 ## Arguments
@@ -65,6 +69,22 @@ state at `init`; for a different PR target set it explicitly with `agency_driver
 
 ## Results Tracking
 
+### Two skip spellings
+
+There are two legal ways to record a skipped step, and which one you use depends on **when** the skip is decided:
+
+- **Scheduler skip** — `workflow cli` reports `skip: true` for a step you have NOT yet started.
+  Record it with `agency_driver { op: "skip", step: <step>, reason: <reason> }`. This refuses with
+  `pendingStep '<step>' already active` if the step is already active — it is the wrong spelling
+  for a node-local skip.
+- **Node-local skip** — the step is already active (`start` was called) and the node discovers it
+  has nothing to do (e.g. no `## PR evidence` section in `.agency/do.md`, no check command
+  configured). Close it with `agency_driver { op: "end", status: "skipped", reason: <reason> }`.
+  The reason is **required** for a skipped end — the driver refuses a reasonless skipped completion.
+
+Rule of thumb: `skip` is for "don't start this." `end skipped` is for "started, but there's nothing to do."
+
+
 Every node is bookended by calling `agency_driver` with `{ op: "start", step: <name> }` before work and
 `{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }` after verification. The driver records step state in
 `.do-results.json`.
@@ -91,8 +111,10 @@ Drive the harness's native todo UI so the user sees a live checklist (seed via `
 - **Retries stay `in_progress`** until the step finally verifies or the workflow fails.
 - **`--from` entry points**: seed the full list (minus `--minimal` omissions) and mark steps earlier than the entry
   point `completed` immediately after seeding.
-- **Skipped steps that stay in the list** (VCS steps under `--no-vcs`, PR steps on unsupported forges) go straight to
-  `completed`, recorded with back-to-back `step-start`/`step-end skipped`.
+- **Skipped steps that stay in the list** (scheduler skips under `--no-vcs`, unsupported forges) go straight to
+  `completed`, recorded with `agency_driver { op: "skip", step, reason }`. **Node-local skips** (the step was
+  active and discovered it has nothing to do) are also `completed`, recorded with
+  `agency_driver { op: "end", status: "skipped", reason }` — always with a reason.
 - `--minimal` omissions are in neither the CLI path nor the seeded list — never record a skip for them.
 - **Failure**: leave the failing step `in_progress`, mark `done` `completed` after the failure summary is written, and
   call `agency_driver` with `{ op: "set", field: "status", value: "failed" }`.
@@ -104,9 +126,11 @@ Drive the harness's native todo UI so the user sees a live checklist (seed via `
 
 ## Rules
 
-- **Never skip steps** unless the `workflow` tool reports `skip = true`. The **evidence** node performs its own
-  `.agency/do.md` configuration detection before deciding whether to record a skip. Run steps in order from entry
-  point to **done**.
+- **Never scheduler-skip steps** unless the `workflow` tool reports `skip = true` — that is when
+  `agency_driver { op: "skip" }` is legal. **Node-local skips are always legal**: when an active step
+  discovers it has nothing to do, close it with
+  `agency_driver { op: "end", status: "skipped", reason: <reason> }` (see
+  [Two skip spellings](#two-skip-spellings)). Run steps in order from entry point to **done**.
 - **Every commit is NEW.** Never amend, rebase, or force-push.
 - **Always commit through `vcs_write`.** Never run raw `git`/`jj` mutating commands directly. The dispatcher stages
   only the files you pass (git) or splits unrelated working-copy changes into a separate revision above the feature

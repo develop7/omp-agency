@@ -19,8 +19,9 @@ description: Three-pass quality gate.
 ## Strategies
 
 Use the `vcs_read` tool with `{ op: "diff-names" }` to check if the PR contains code changes. If all
-changed files are documentation-only (`.md`, `.txt`, README, docs/) — skip this step with reason
-`"docs-only changes"`.
+changed files are documentation-only (`.md`, `.txt`, README, docs/) — this is a node-local skip: record it
+with `agency_driver { op: "end", status: "skipped", reason: "docs-only changes" }`
+(see [Two skip spellings](../SKILL.md#two-skip-spellings)).
 
 **Resolve leftover jobs first.** At step start, before spawning any work, read the `jobs` array in `.do-results.json` and resolve EVERY unfinished entry, whichever step owns it (a crash leaves these behind, and a carried or stale job of ANY step blocks the final summary): `agency_driver { op: "job-end", id, outcome: "escalated", verification: "stale — worker process died in a previous run" }` — stale, its process died — or `agency_driver { op: "job-end", id, outcome: "cancelled", verification: "stale — worker process died; dropping this work" }` to drop that work. This is the one remediation point for stale jobs of every step; police-owned leftovers then spawn replacements under fresh ids. Never spawn while any job is unfinished.
 

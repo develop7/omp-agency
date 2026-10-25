@@ -127,6 +127,39 @@ run_dd() {
   [ "$output" = "--no-vcs" ]
 }
 
+@test "step-end skipped without reason is refused and does not mutate" {
+  # Regression (#61): a skipped completion must carry a reason so the
+  # summary's skippedSteps line never reports "unspecified".
+  run_dr init
+  run_dr step-start evidence
+  cp .do-results.json before.json
+
+  run_dr step-end skipped ""
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "reason required for skipped" ]]
+
+  cmp .do-results.json before.json
+  run jq -e '.pendingStep.name == "evidence"' .do-results.json
+  [ "$status" -eq 0 ]
+}
+
+@test "step-end skipped with reason records the skipped step" {
+  # Regression (#61): the node-local skip completion — start, then end
+  # skipped with a reason — is the documented transition for a step that
+  # discovers it has nothing to do.
+  run_dr init
+  run_dr step-start evidence
+  run_dr step-end skipped "" "no PR evidence section in .agency/do.md"
+  [ "$status" -eq 0 ]
+
+  run jq -r '.steps[0].status' .do-results.json
+  [ "$output" = "skipped" ]
+  run jq -r '.steps[0].reason' .do-results.json
+  [ "$output" = "no PR evidence section in .agency/do.md" ]
+  run jq -e '.pendingStep == null' .do-results.json
+  [ "$status" -eq 0 ]
+}
+
 @test "step-end without reason omits the reason field" {
   run_dr init
   run_dr step-start research

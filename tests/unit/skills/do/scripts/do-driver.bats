@@ -276,6 +276,49 @@ run_api_driver() {
   [ "$output" = "--minimal" ]
 }
 
+@test "skip on an active step is refused — use end skipped instead" {
+  # Regression (#61): `skip` is the scheduler-level spelling (step not yet
+  # started). A node that discovers mid-step it has nothing to do must close
+  # with `end skipped <reason>`, not retry `skip`.
+  run_driver init "test"
+  run_driver start evidence
+  cp .do-results.json before.json
+
+  run_driver skip evidence "no PR evidence section"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "already active" ]]
+
+  cmp .do-results.json before.json
+}
+
+@test "end skipped with reason closes an active step (node-local skip)" {
+  # Regression (#61): the documented node-local skip completion.
+  run_driver init "test"
+  run_driver start evidence
+  run_driver end skipped "" "no PR evidence section in .agency/do.md"
+  [ "$status" -eq 0 ]
+
+  run jq -r '.steps[0].status' .do-results.json
+  [ "$output" = "skipped" ]
+  run jq -r '.steps[0].reason' .do-results.json
+  [ "$output" = "no PR evidence section in .agency/do.md" ]
+  run jq -e '.pendingStep == null' .do-results.json
+  [ "$status" -eq 0 ]
+}
+
+@test "end skipped without reason is refused" {
+  # Regression (#61): the driver refuses a reasonless skipped completion.
+  run_driver init "test"
+  run_driver start evidence
+  cp .do-results.json before.json
+
+  run_driver end skipped
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "reason required for skipped" ]]
+
+  cmp .do-results.json before.json
+}
+
 @test "set delegates to do-results set" {
   run_driver init "test"
   run_driver set forge github

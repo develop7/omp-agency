@@ -94,46 +94,60 @@ unfinishedJobBlocker operation stepName state =
             <> " — resolve with job-end first (non-completed outcomes require a verification reason)"
         )
 
+-- | A skipped completion must carry a reason: the summary renders every
+-- | skipped step as `name:reason`, and a reasonless skip would surface as
+-- | "unspecified" (#61). This guard runs before any state write, so a
+-- | refused end leaves the pendingStep intact for a corrected retry.
+skippedReasonGuard :: String -> Maybe String -> Maybe String
+skippedReasonGuard status reason =
+  if status == "skipped" && reason == Nothing then
+    Just "do-results: reason required for skipped status — record why the step did not run"
+  else Nothing
+
 runStepEnd :: WorkflowContext -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStepEnd context status verification reason = withLoadedState context \state -> case state.pendingStep of
   Nothing -> pure (failText "do-results: no pendingStep — call step-start first")
-  Just pending -> case unfinishedJobBlocker "step-end" pending.name state of
-    Just blocker -> pure (failText blocker)
-    Nothing -> do
-      completed <- Sys.nowIso
-      timing <- validInterval pending.startedAt completed
-      let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
-      case timing >>= \_ -> State.appendStep step state of
-        Left error -> pure (failText error)
-        Right appended -> do
-          let updated = terminalize pending.name status (State.finishPending appended)
-          State.writeState (Context.statePath context) updated
-          pure
-            ( Outcome.withValue (recordedStepValue updated) $
-                Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n")
-            )
+  Just pending -> case skippedReasonGuard status reason of
+    Just guard -> pure (failText guard)
+    Nothing -> case unfinishedJobBlocker "step-end" pending.name state of
+      Just blocker -> pure (failText blocker)
+      Nothing -> do
+        completed <- Sys.nowIso
+        timing <- validInterval pending.startedAt completed
+        let step = { name: pending.name, status: State.parseStepStatus status, verification, startedAt: pending.startedAt, completedAt: completed, reason }
+        case timing >>= \_ -> State.appendStep step state of
+          Left error -> pure (failText error)
+          Right appended -> do
+            let updated = terminalize pending.name status (State.finishPending appended)
+            State.writeState (Context.statePath context) updated
+            pure
+              ( Outcome.withValue (recordedStepValue updated) $
+                  Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n")
+              )
 
 runStep :: WorkflowContext -> String -> String -> String -> String -> String -> Maybe String -> Effect Outcome.OpOutcome
 runStep context name status verification startedAt completedAt reason = withLoadedState context \state ->
-  case unfinishedJobBlocker "step" name state of
-    Just blocker -> pure (failText blocker)
-    Nothing -> do
-      actualStart <- resolveNow startedAt
-      actualEnd <- resolveNow completedAt
-      timing <- validInterval actualStart actualEnd
-      case timing of
-        Left error -> pure (failText error)
-        Right _ -> do
-          let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
-          case State.appendStep step state of
-            Left error -> pure (failText error)
-            Right appended -> do
-              let updated = terminalize name status appended
-              State.writeState (Context.statePath context) updated
-              pure
-                ( Outcome.withValue (recordedStepValue updated) $
-                    Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n")
-                )
+  case skippedReasonGuard status reason of
+    Just guard -> pure (failText guard)
+    Nothing -> case unfinishedJobBlocker "step" name state of
+      Just blocker -> pure (failText blocker)
+      Nothing -> do
+        actualStart <- resolveNow startedAt
+        actualEnd <- resolveNow completedAt
+        timing <- validInterval actualStart actualEnd
+        case timing of
+          Left error -> pure (failText error)
+          Right _ -> do
+            let step = { name, status: State.parseStepStatus status, verification, startedAt: actualStart, completedAt: actualEnd, reason }
+            case State.appendStep step state of
+              Left error -> pure (failText error)
+              Right appended -> do
+                let updated = terminalize name status appended
+                State.writeState (Context.statePath context) updated
+                pure
+                  ( Outcome.withValue (recordedStepValue updated) $
+                      Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n")
+                  )
 
 -- | Append a worker-owned job under a fresh id with a driver-computed
 -- | startedAt and optional deadline (startedAt + budgetMinutes). Callers
@@ -289,7 +303,12 @@ runDriverInit context options = do
 -- | must run against the state loaded BEFORE the first half writes: a
 -- | refusal raised only inside `runStepEnd` would leave the `pendingStep`
 -- | that `runStepStart` already persisted behind a failing skip, breaking
--- | the guard-must-not-mutate invariant on the composite operation.
+-- | the guard-must-not-mutate invariant on the composite operation. The
+-- | reason requirement is enforced at parse time (`skip` demands a reason),
+-- | so the `runStepEnd` half always receives one; `runDriverSkip` is the
+-- | scheduler-level spelling (the step is NOT yet active) — a node that
+-- | discovers mid-step it has nothing to do closes with `runStepEnd`
+-- | `"skipped"` instead (#61).
 runDriverSkip :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runDriverSkip context step reason = withLoadedState context \state -> case unfinishedJobBlocker "step-end" step state of
   Just blocker -> pure (failText blocker)

@@ -17,12 +17,15 @@ description: Attach empirical evidence to the PR (opt-in).
 ## Strategies
 
 Nickel always routes a non-minimal run to this node; the node itself is the sole place that detects
-whether the project has configured PR evidence.
+whether the project has configured PR evidence. All of these skips are **node-local** — the step is
+already active — so record each with `agency_driver { op: "end", status: "skipped", reason: <reason> }`
+(see [Two skip spellings](../SKILL.md#two-skip-spellings); do not use `op: "skip"`, which is the
+scheduler-level spelling and refuses on an active step):
 
-- **If `--no-vcs`**: skip with status `skipped` and reason `"--no-vcs"` — there is no PR to attach evidence to.
-- **If `!supportsPrComment`**: skip with reason `"forge does not support PR comments"`.
-- **Otherwise**: read `.agency/do.md` and look for a `## PR evidence` section. If missing or empty, skip
-  with reason `"no PR evidence section in .agency/do.md"` — the default for projects that haven't opted in.
+- **If `--no-vcs`**: reason `"--no-vcs"` — there is no PR to attach evidence to.
+- **If `!supportsPrComment`**: reason `"forge does not support PR comments"`.
+- **Otherwise**: read `.agency/do.md` and look for a `## PR evidence` section. If missing or empty,
+  reason `"no PR evidence section in .agency/do.md"` — the default for projects that haven't opted in.
 
 **The trigger is visual *or* behavioral.** Visual: screenshots, recordings (video when motion is the
 point). **Behavioral** — proof that state survives an interaction or a restart — is easy to

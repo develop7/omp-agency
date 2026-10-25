@@ -18,7 +18,9 @@ description: Run CI and verify it covers HEAD.
 ## Strategies
 
 Read `.agency/do.md` and look for a `## CI command` section, plus any verification method documented
-there. If no command is documented, skip this step with a note. Run CI with `async: true` on the bash
+there. If no command is documented, this is a node-local skip: record it with
+`agency_driver { op: "end", status: "skipped", reason: "no CI command in .agency/do.md" }`
+(see [Two skip spellings](../SKILL.md#two-skip-spellings)). Run CI with `async: true` on the bash
 tool if the command takes more than a few seconds — never pipe to `tail`/`head`, never append `2>&1`.
 
 **Active state**: before waiting for background CI, call `agency_driver` with
