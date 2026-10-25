@@ -15,10 +15,19 @@ import {
 } from "./helpers.mjs";
 
 const tools = registerTools();
-const manifest = JSON.parse(await readFile(new URL("../../skills/do/workflow-manifest.json", import.meta.url), "utf8"));
+const manifest = JSON.parse(
+  await readFile(
+    new URL("../../skills/do/workflow-manifest.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 function rejects(schema, value) {
-  assert.equal(parseInput(schema, value).success, false, `expected schema to reject ${JSON.stringify(value)}`);
+  assert.equal(
+    parseInput(schema, value).success,
+    false,
+    `expected schema to reject ${JSON.stringify(value)}`,
+  );
 }
 
 function git(cwd, ...args) {
@@ -41,7 +50,10 @@ async function gitRepo(run) {
 test("tool schemas reject legacy raw argv contracts", () => {
   rejects(tool(tools, "vcs_read").parameters, { args: ["dirty"] });
   rejects(tool(tools, "vcs_write").parameters, { args: ["push"] });
-  rejects(tool(tools, "agency_driver").parameters, { op: "start", args: ["implement"] });
+  rejects(tool(tools, "agency_driver").parameters, {
+    op: "start",
+    args: ["implement"],
+  });
   rejects(tool(tools, "workflow").parameters, { args: ["cli"] });
   rejects(tool(tools, "forge").parameters, { op: "pr-view", args: ["42"] });
 });
@@ -51,7 +63,11 @@ test("vcs_read rejects paths on operations that do not consume them", () => {
   for (const op of ["detect", "head-revision", "base", "dirty", "log-head"]) {
     rejects(schema, { op, paths: ["tracked.txt"] });
   }
-  rejects(schema, { op: "diff-names", paths: ["tracked.txt"], args: ["--all"] });
+  rejects(schema, {
+    op: "diff-names",
+    paths: ["tracked.txt"],
+    args: ["--all"],
+  });
 });
 
 test("vcs_write rejects option-like push refs", () => {
@@ -64,13 +80,22 @@ test("push treats backend refs as operands without changing the remote", async (
     git(cwd, "remote", "add", "origin", join(cwd, "remote.git"));
     const registered = await initState(cwd, { noVcs: false });
     await invoke(registered, "vcs_write", { op: "push", ref: "base" }, cwd);
-    const remoteHead = () => execFileSync("git", ["--git-dir", join(cwd, "remote.git"), "rev-parse", "refs/heads/base"], { encoding: "utf8" });
+    const remoteHead = () =>
+      execFileSync(
+        "git",
+        ["--git-dir", join(cwd, "remote.git"), "rev-parse", "refs/heads/base"],
+        { encoding: "utf8" },
+      );
     const before = remoteHead();
     await writeFile(join(cwd, "tracked.txt"), "changed\n");
     git(cwd, "add", "tracked.txt");
     git(cwd, "commit", "--quiet", "-m", "change local history");
     const { runTool } = await import("../../pure/dist/agency-api.js");
-    const result = runTool({ tool: "vcs_write", args: ["push", "--force"], captureOutput: true })();
+    const result = runTool({
+      tool: "vcs_write",
+      args: ["push", "--force"],
+      captureOutput: true,
+    })();
     assert.notEqual(result.exit, 0);
     assert.equal(remoteHead(), before);
   });
@@ -87,28 +112,85 @@ test("agency_driver rejects invalid operation fields and generated vocabulary va
   rejects(schema, { op: "set", field: "active", value: "invented-step" });
   rejects(schema, { op: "set", field: "active", value: "implement" });
   rejects(schema, { op: "set", field: "pendingStep", value: "implement" });
-  assert.equal(schema.safeParse({ op: "start", step: manifest.steps[0] }).success, true);
-  assert.equal(schema.safeParse({ op: "set", field: "active", value: "working" }).success, true);
+  assert.equal(
+    schema.safeParse({ op: "start", step: manifest.steps[0] }).success,
+    true,
+  );
+  assert.equal(
+    schema.safeParse({ op: "set", field: "active", value: "working" }).success,
+    true,
+  );
 });
 
 test("job operation schemas reject out-of-contract operands", () => {
   const schema = tool(tools, "agency_driver").parameters;
   rejects(schema, { op: "job-start", id: "", name: "Pass 1", step: "police" });
   rejects(schema, { op: "job-start", id: "j1", name: "", step: "police" });
-  rejects(schema, { op: "job-start", id: "j1", name: "Pass 1", step: "invented-step" });
-  rejects(schema, { op: "job-start", id: "j1", name: "Pass 1", step: "police", budgetMinutes: 0 });
-  rejects(schema, { op: "job-start", id: "j1", name: "Pass 1", step: "police", budgetMinutes: 121 });
-  rejects(schema, { op: "job-start", id: "j1", name: "Pass 1", step: "police", budgetMinutes: 10.5 });
+  rejects(schema, {
+    op: "job-start",
+    id: "j1",
+    name: "Pass 1",
+    step: "invented-step",
+  });
+  rejects(schema, {
+    op: "job-start",
+    id: "j1",
+    name: "Pass 1",
+    step: "police",
+    budgetMinutes: 0,
+  });
+  rejects(schema, {
+    op: "job-start",
+    id: "j1",
+    name: "Pass 1",
+    step: "police",
+    budgetMinutes: 121,
+  });
+  rejects(schema, {
+    op: "job-start",
+    id: "j1",
+    name: "Pass 1",
+    step: "police",
+    budgetMinutes: 10.5,
+  });
   // Timestamps are driver-computed; the op never accepts them.
-  rejects(schema, { op: "job-start", id: "j1", name: "Pass 1", step: "police", startedAt: "2020-01-01T00:00:00Z" });
+  rejects(schema, {
+    op: "job-start",
+    id: "j1",
+    name: "Pass 1",
+    step: "police",
+    startedAt: "2020-01-01T00:00:00Z",
+  });
   rejects(schema, { op: "job-end", id: "", outcome: "completed" });
   rejects(schema, { op: "job-end", id: "j1", outcome: "finished" });
   rejects(schema, { op: "job-end", id: "j1", outcome: "completed", args: [] });
   // Empty verification maps to absent and would fail the driver's
   // non-completed reason rule — the schema must not advertise it.
-  rejects(schema, { op: "job-end", id: "j1", outcome: "failed", verification: "" });
-  assert.equal(schema.safeParse({ op: "job-start", id: "j1", name: "Pass 1", step: "police", budgetMinutes: 120 }).success, true);
-  assert.equal(schema.safeParse({ op: "job-end", id: "j1", outcome: "escalated", verification: "handoff notes" }).success, true);
+  rejects(schema, {
+    op: "job-end",
+    id: "j1",
+    outcome: "failed",
+    verification: "",
+  });
+  assert.equal(
+    schema.safeParse({
+      op: "job-start",
+      id: "j1",
+      name: "Pass 1",
+      step: "police",
+      budgetMinutes: 120,
+    }).success,
+    true,
+  );
+  assert.equal(
+    schema.safeParse({
+      op: "job-end",
+      id: "j1",
+      outcome: "escalated",
+      verification: "handoff notes",
+    }).success,
+    true,
+  );
 });
 
 test("the jobs ledger cannot be written through set", () => {
@@ -121,9 +203,18 @@ test("the jobs ledger cannot be written through set", () => {
 test("job-start and job-end own the persisted jobs ledger", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1 structure review", step: "police", budgetMinutes: 10,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1 structure review",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
     const started = await readState(cwd);
     assert.equal(started.jobs.length, 1);
     const job = started.jobs[0];
@@ -133,31 +224,64 @@ test("job-start and job-end own the persisted jobs ledger", async () => {
     assert.match(job.startedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
     assert.equal(
       job.deadline,
-      new Date(Date.parse(job.startedAt) + 10 * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z"),
+      new Date(Date.parse(job.startedAt) + 10 * 60_000)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, "Z"),
     );
     assert.equal(job.finishedAt, undefined);
     assert.equal(job.outcome, undefined);
 
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "job-start", id: "police-pass1", name: "Other pass", step: "police" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        {
+          op: "job-start",
+          id: "police-pass1",
+          name: "Other pass",
+          step: "police",
+        },
+        cwd,
+      ),
       /already running/,
     );
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "job-end", id: "ghost", outcome: "completed" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "job-end", id: "ghost", outcome: "completed" },
+        cwd,
+      ),
       /no unfinished job/,
     );
 
-    await invoke(registered, "agency_driver", {
-      op: "job-end", id: "police-pass1", outcome: "completed", verification: "reviewed 12 files",
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-end",
+        id: "police-pass1",
+        outcome: "completed",
+        verification: "reviewed 12 files",
+      },
+      cwd,
+    );
     const finished = await readState(cwd);
     assert.equal(finished.jobs.length, 1);
-    assert.match(finished.jobs[0].finishedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    assert.match(
+      finished.jobs[0].finishedAt,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
+    );
     assert.equal(finished.jobs[0].outcome, "completed");
     assert.equal(finished.jobs[0].verification, "reviewed 12 files");
 
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "failed" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "job-end", id: "police-pass1", outcome: "failed" },
+        cwd,
+      ),
       /no unfinished job/,
     );
   });
@@ -166,14 +290,33 @@ test("job-start and job-end own the persisted jobs ledger", async () => {
 test("unfinished jobs block step-end and summary until job-end resolves them", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
-    }, cwd);
-    await invoke(registered, "agency_driver", { op: "start", step: "police" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "start", step: "police" },
+      cwd,
+    );
 
     const beforeGuard = await snapshot(cwd);
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "end", status: "passed", verification: "ok" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "end", status: "passed", verification: "ok" },
+        cwd,
+      ),
       (error) => {
         assert.match(error.message, /unfinished job/);
         assert.match(error.message, /police-pass1/);
@@ -181,7 +324,11 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
         return true;
       },
     );
-    assert.equal(await snapshot(cwd), beforeGuard, "step-end guard must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      beforeGuard,
+      "step-end guard must not mutate state",
+    );
     let state = await readState(cwd);
     assert.equal(state.steps.length, 0);
     assert.equal(state.pendingStep.name, "police");
@@ -194,7 +341,11 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
         return true;
       },
     );
-    assert.equal(await snapshot(cwd), beforeGuard, "summary guard must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      beforeGuard,
+      "summary guard must not mutate state",
+    );
 
     // A job past its deadline is additionally reported as stalled.
     state = await readState(cwd);
@@ -210,16 +361,38 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
         return true;
       },
     );
-    assert.equal(await snapshot(cwd), beforeStalled, "stalled summary must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      beforeStalled,
+      "stalled summary must not mutate state",
+    );
 
-    await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
-    const ended = await invoke(registered, "agency_driver", { op: "end", status: "passed", verification: "ok" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "job-end", id: "police-pass1", outcome: "completed" },
+      cwd,
+    );
+    const ended = await invoke(
+      registered,
+      "agency_driver",
+      { op: "end", status: "passed", verification: "ok" },
+      cwd,
+    );
     assert.equal(ended.details.value.step.status, "passed");
 
-    const summary = await invoke(registered, "agency_driver", { op: "summary" }, cwd);
+    const summary = await invoke(
+      registered,
+      "agency_driver",
+      { op: "summary" },
+      cwd,
+    );
     assert.equal(summary.details.value.jobs[0].id, "police-pass1");
     assert.equal(summary.details.value.jobs[0].name, "Pass 1");
-    assert.equal(summary.details.value.jobs[0].deadline, "2020-01-01T00:00:00Z");
+    assert.equal(
+      summary.details.value.jobs[0].deadline,
+      "2020-01-01T00:00:00Z",
+    );
     assert.equal(summary.details.value.jobs[0].outcome, "completed");
 
     state = await readState(cwd);
@@ -231,53 +404,120 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
 test("skip refuses the whole operation while an unfinished job blocks the step", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
     const before = await snapshot(cwd);
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "skip", step: "police", reason: "handled elsewhere" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "skip", step: "police", reason: "handled elsewhere" },
+        cwd,
+      ),
       /unfinished job/,
     );
-    assert.equal(await snapshot(cwd), before, "refused skip must not mutate state");
-    assert.equal((await readState(cwd)).pendingStep, undefined, "refused skip must not leave a started step");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "refused skip must not mutate state",
+    );
+    assert.equal(
+      (await readState(cwd)).pendingStep,
+      undefined,
+      "refused skip must not leave a started step",
+    );
   });
 });
 
 test("skip on an active step is refused — end skipped is the node-local spelling", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", { op: "start", step: "evidence" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "start", step: "evidence" },
+      cwd,
+    );
     const before = await snapshot(cwd);
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "skip", step: "evidence", reason: "no PR evidence section" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "skip", step: "evidence", reason: "no PR evidence section" },
+        cwd,
+      ),
       /already active/,
     );
-    assert.equal(await snapshot(cwd), before, "refused skip must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "refused skip must not mutate state",
+    );
   });
 });
 
 test("end skipped requires a reason and records the node-local skip", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", { op: "start", step: "evidence" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "start", step: "evidence" },
+      cwd,
+    );
 
     const before = await snapshot(cwd);
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "end", status: "skipped" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "end", status: "skipped" },
+        cwd,
+      ),
       /reason required for skipped/,
     );
-    assert.equal(await snapshot(cwd), before, "refused end must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "refused end must not mutate state",
+    );
 
-    const ended = await invoke(registered, "agency_driver", {
-      op: "end", status: "skipped", reason: "no PR evidence section in .agency/do.md",
-    }, cwd);
+    const ended = await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "end",
+        status: "skipped",
+        reason: "no PR evidence section in .agency/do.md",
+      },
+      cwd,
+    );
     assert.equal(ended.details.value.step.status, "skipped");
-    assert.equal(ended.details.value.step.reason, "no PR evidence section in .agency/do.md");
+    assert.equal(
+      ended.details.value.step.reason,
+      "no PR evidence section in .agency/do.md",
+    );
     const state = await readState(cwd);
-    assert.equal(state.pendingStep, undefined, "skipped end clears the pending step");
+    assert.equal(
+      state.pendingStep,
+      undefined,
+      "skipped end clears the pending step",
+    );
     assert.equal(state.steps[0].status, "skipped");
-    assert.equal(state.steps[0].reason, "no PR evidence section in .agency/do.md");
+    assert.equal(
+      state.steps[0].reason,
+      "no PR evidence section in .agency/do.md",
+    );
   });
 });
 
@@ -286,13 +526,26 @@ test("the corrective step record rejects a reasonless skipped status", async () 
     const registered = await initState(cwd, { noVcs: true });
     const before = await snapshot(cwd);
     await assert.rejects(
-      invoke(registered, "agency_driver", {
-        op: "step", step: "evidence", status: "skipped", verification: "recorded directly",
-        startedAt: "now", completedAt: "now",
-      }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        {
+          op: "step",
+          step: "evidence",
+          status: "skipped",
+          verification: "recorded directly",
+          startedAt: "now",
+          completedAt: "now",
+        },
+        cwd,
+      ),
       /reason required for skipped/,
     );
-    assert.equal(await snapshot(cwd), before, "refused step record must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "refused step record must not mutate state",
+    );
   });
 });
 
@@ -301,28 +554,64 @@ test("the typed steps setter rejects a reasonless skipped step", async () => {
     const registered = await initState(cwd, { noVcs: true });
     const before = await snapshot(cwd);
     await assert.rejects(
-      invoke(registered, "agency_driver", {
-        op: "set", field: "steps",
-        value: [{ name: "sync", status: "skipped", verification: "", startedAt: "2024-01-01T00:00:00Z", completedAt: "2024-01-01T00:00:00Z" }],
-      }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        {
+          op: "set",
+          field: "steps",
+          value: [
+            {
+              name: "sync",
+              status: "skipped",
+              verification: "",
+              startedAt: "2024-01-01T00:00:00Z",
+              completedAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+        },
+        cwd,
+      ),
       /no reason/,
     );
-    assert.equal(await snapshot(cwd), before, "refused set steps must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "refused set steps must not mutate state",
+    );
   });
 });
 
 test("the corrective step record is blocked by unfinished jobs", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
     const before = await snapshot(cwd);
     await assert.rejects(
-      invoke(registered, "agency_driver", {
-        op: "step", step: "police", status: "passed", verification: "recorded directly",
-        startedAt: "now", completedAt: "now",
-      }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        {
+          op: "step",
+          step: "police",
+          status: "passed",
+          verification: "recorded directly",
+          startedAt: "now",
+          completedAt: "now",
+        },
+        cwd,
+      ),
       (error) => {
         assert.match(error.message, /unfinished job/);
         assert.match(error.message, /police-pass1/);
@@ -330,30 +619,61 @@ test("the corrective step record is blocked by unfinished jobs", async () => {
         return true;
       },
     );
-    assert.equal(await snapshot(cwd), before, "step record guard must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "step record guard must not mutate state",
+    );
   });
 });
 
 test("the done step blocks on unfinished jobs from any step", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "impl-1", name: "Implement work", step: "implement", budgetMinutes: 10,
-    }, cwd);
-    await invoke(registered, "agency_driver", { op: "start", step: "done" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "impl-1",
+        name: "Implement work",
+        step: "implement",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "start", step: "done" },
+      cwd,
+    );
 
     const before = await snapshot(cwd);
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "end", status: "passed", verification: "ok" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "end", status: "passed", verification: "ok" },
+        cwd,
+      ),
       (error) => {
         assert.match(error.message, /unfinished job/);
         assert.match(error.message, /impl-1/);
         return true;
       },
     );
-    assert.equal(await snapshot(cwd), before, "blocked done end must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "blocked done end must not mutate state",
+    );
     const state = await readState(cwd);
-    assert.equal(state.status, "running", "blocked done end must not terminalize the run");
+    assert.equal(
+      state.status,
+      "running",
+      "blocked done end must not terminalize the run",
+    );
     assert.equal(state.jobs[0].finishedAt, undefined);
   });
 });
@@ -361,12 +681,26 @@ test("the done step blocks on unfinished jobs from any step", async () => {
 test("set cannot claim completion while jobs are unfinished", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
 
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "set", field: "status", value: "completed" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "set", field: "status", value: "completed" },
+        cwd,
+      ),
       (error) => {
         assert.match(error.message, /unfinished job/);
         assert.match(error.message, /police-pass1/);
@@ -374,18 +708,48 @@ test("set cannot claim completion while jobs are unfinished", async () => {
       },
     );
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "set", field: "active", value: "idle" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "set", field: "active", value: "idle" },
+        cwd,
+      ),
       /unfinished job/,
     );
-    assert.equal((await readState(cwd)).status, "running", "rejected set must not mutate state");
+    assert.equal(
+      (await readState(cwd)).status,
+      "running",
+      "rejected set must not mutate state",
+    );
 
     // Honest abort stays available while jobs are open.
-    const failed = await invoke(registered, "agency_driver", { op: "set", field: "status", value: "failed" }, cwd);
-    assert.deepEqual(failed.details.value, { field: "status", value: "failed" });
+    const failed = await invoke(
+      registered,
+      "agency_driver",
+      { op: "set", field: "status", value: "failed" },
+      cwd,
+    );
+    assert.deepEqual(failed.details.value, {
+      field: "status",
+      value: "failed",
+    });
 
-    await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
-    const completed = await invoke(registered, "agency_driver", { op: "set", field: "status", value: "completed" }, cwd);
-    assert.deepEqual(completed.details.value, { field: "status", value: "completed" });
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "job-end", id: "police-pass1", outcome: "completed" },
+      cwd,
+    );
+    const completed = await invoke(
+      registered,
+      "agency_driver",
+      { op: "set", field: "status", value: "completed" },
+      cwd,
+    );
+    assert.deepEqual(completed.details.value, {
+      field: "status",
+      value: "completed",
+    });
     assert.equal((await readState(cwd)).status, "completed");
   });
 });
@@ -393,9 +757,18 @@ test("set cannot claim completion while jobs are unfinished", async () => {
 test("summary surfaces an unparsable job deadline instead of silently unstalling", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
     const state = await readState(cwd);
     state.jobs[0].deadline = "not-a-time";
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
@@ -408,16 +781,28 @@ test("summary surfaces an unparsable job deadline instead of silently unstalling
         return true;
       },
     );
-    assert.equal(await snapshot(cwd), before, "unparsable-deadline summary must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "unparsable-deadline summary must not mutate state",
+    );
   });
 });
 
 test("summary marks jobs without a deadline as unbounded", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "no-budget", name: "Unbounded work", step: "police",
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "no-budget",
+        name: "Unbounded work",
+        step: "police",
+      },
+      cwd,
+    );
     const before = await snapshot(cwd);
     await assert.rejects(
       invoke(registered, "agency_driver", { op: "summary" }, cwd),
@@ -428,16 +813,29 @@ test("summary marks jobs without a deadline as unbounded", async () => {
         return true;
       },
     );
-    assert.equal(await snapshot(cwd), before, "unbounded summary must not mutate state");
+    assert.equal(
+      await snapshot(cwd),
+      before,
+      "unbounded summary must not mutate state",
+    );
   });
 });
 
 test("summary preserves delimiter-containing job fields as data", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
     const state = await readState(cwd);
     state.jobs[0].deadline = "a|b";
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
@@ -452,8 +850,18 @@ test("summary preserves delimiter-containing job fields as data", async () => {
       },
     );
 
-    await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
-    const summary = await invoke(registered, "agency_driver", { op: "summary" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "job-end", id: "police-pass1", outcome: "completed" },
+      cwd,
+    );
+    const summary = await invoke(
+      registered,
+      "agency_driver",
+      { op: "summary" },
+      cwd,
+    );
     assert.equal(summary.details.value.jobs[0].deadline, "a|b");
   });
 });
@@ -461,31 +869,68 @@ test("summary preserves delimiter-containing job fields as data", async () => {
 test("restart init carries unfinished jobs forward; plain init discards them", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "carry-me", name: "Carried job", step: "implement", budgetMinutes: 30,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "carry-me",
+        name: "Carried job",
+        step: "implement",
+        budgetMinutes: 30,
+      },
+      cwd,
+    );
     const before = (await readState(cwd)).jobs[0];
 
-    const restarted = await invoke(registered, "agency_driver", { op: "init", restart: true, task: "restarted task" }, cwd);
+    const restarted = await invoke(
+      registered,
+      "agency_driver",
+      { op: "init", restart: true, task: "restarted task" },
+      cwd,
+    );
     assert.deepEqual(restarted.details.value.jobs, [before]);
     assert.deepEqual((await readState(cwd)).jobs, [before]);
 
     // Finished jobs stay behind with the discarded run.
-    await invoke(registered, "agency_driver", { op: "job-end", id: "carry-me", outcome: "completed" }, cwd);
-    await invoke(registered, "agency_driver", { op: "init", restart: true, task: "again" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "job-end", id: "carry-me", outcome: "completed" },
+      cwd,
+    );
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "init", restart: true, task: "again" },
+      cwd,
+    );
     assert.equal((await readState(cwd)).jobs, undefined);
 
     // A non-restarting init on a terminal run discards unfinished jobs too.
     // The driver refuses to terminalize over an open job, so the fixture
     // writes the terminal run the ops can no longer produce.
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "dropped", name: "Dropped job", step: "implement",
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "dropped",
+        name: "Dropped job",
+        step: "implement",
+      },
+      cwd,
+    );
     const terminal = await readState(cwd);
     terminal.status = "completed";
     terminal.active = "idle";
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(terminal));
-    await invoke(registered, "agency_driver", { op: "init", task: "fresh run" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "init", task: "fresh run" },
+      cwd,
+    );
     assert.equal((await readState(cwd)).jobs, undefined);
   });
 });
@@ -493,17 +938,43 @@ test("restart init carries unfinished jobs forward; plain init discards them", a
 test("job-end requires a recorded reason for non-completed outcomes", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "cancelled" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "job-end", id: "police-pass1", outcome: "cancelled" },
+        cwd,
+      ),
       /recorded reason/,
     );
-    assert.equal((await readState(cwd)).jobs[0].outcome, undefined, "rejected end must not resolve the job");
-    await invoke(registered, "agency_driver", {
-      op: "job-end", id: "police-pass1", outcome: "cancelled", verification: "worker stalled and was killed",
-    }, cwd);
+    assert.equal(
+      (await readState(cwd)).jobs[0].outcome,
+      undefined,
+      "rejected end must not resolve the job",
+    );
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-end",
+        id: "police-pass1",
+        outcome: "cancelled",
+        verification: "worker stalled and was killed",
+      },
+      cwd,
+    );
     const ended = await readState(cwd);
     assert.equal(ended.jobs[0].outcome, "cancelled");
     assert.equal(ended.jobs[0].verification, "worker stalled and was killed");
@@ -513,24 +984,49 @@ test("job-end requires a recorded reason for non-completed outcomes", async () =
 test("job-end clamps a finish that precedes the job start", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", {
-      op: "job-start", id: "police-pass1", name: "Pass 1", step: "police", budgetMinutes: 10,
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "police-pass1",
+        name: "Pass 1",
+        step: "police",
+        budgetMinutes: 10,
+      },
+      cwd,
+    );
     // Clock rollback equivalent: the persisted start is in the future, so the
     // driver-computed finish would land before it.
     const state = await readState(cwd);
     state.jobs[0].startedAt = "2030-01-01T00:00:00Z";
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
 
-    const ended = await invoke(registered, "agency_driver", { op: "job-end", id: "police-pass1", outcome: "completed" }, cwd);
+    const ended = await invoke(
+      registered,
+      "agency_driver",
+      { op: "job-end", id: "police-pass1", outcome: "completed" },
+      cwd,
+    );
     assert.equal(ended.details.value.clamped, true);
     assert.equal(ended.details.value.job.finishedAt, "2030-01-01T00:00:00Z");
-    assert.ok(ended.details.value.finishAttemptedAt < ended.details.value.job.startedAt);
+    assert.ok(
+      ended.details.value.finishAttemptedAt < ended.details.value.job.startedAt,
+    );
     const after = await readState(cwd);
-    assert.equal(after.jobs[0].finishedAt, "2030-01-01T00:00:00Z", "the finish clamps up to the start");
+    assert.equal(
+      after.jobs[0].finishedAt,
+      "2030-01-01T00:00:00Z",
+      "the finish clamps up to the start",
+    );
 
     // The clamped record stays loadable: later driver ops read the state.
-    const summary = await invoke(registered, "agency_driver", { op: "summary" }, cwd);
+    const summary = await invoke(
+      registered,
+      "agency_driver",
+      { op: "summary" },
+      cwd,
+    );
     assert.equal(summary.details.value.jobs[0].outcome, "completed");
   });
 });
@@ -551,14 +1047,30 @@ test("the jobs ledger is bounded at 32 entries end to end", async () => {
 
     // Finished history yields: the oldest finished entry is pruned so the
     // append succeeds and the ledger stays at the bound.
-    const started = await invoke(registered, "agency_driver", {
-      op: "job-start", id: "one-more", name: "Overflow", step: "police",
-    }, cwd);
+    const started = await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "job-start",
+        id: "one-more",
+        name: "Overflow",
+        step: "police",
+      },
+      cwd,
+    );
     assert.equal(started.details.value.id, "one-more");
     const pruned = await readState(cwd);
     assert.equal(pruned.jobs.length, 32, "the ledger stays at the bound");
-    assert.equal(pruned.jobs[0].id, "job-1", "the oldest finished entry is pruned");
-    assert.equal(pruned.jobs.some((job) => job.id === "job-0"), false, "the pruned entry is gone");
+    assert.equal(
+      pruned.jobs[0].id,
+      "job-1",
+      "the oldest finished entry is pruned",
+    );
+    assert.equal(
+      pruned.jobs.some((job) => job.id === "job-0"),
+      false,
+      "the pruned entry is gone",
+    );
     assert.equal(pruned.jobs.at(-1).id, "one-more", "the new job appends last");
 
     // Live work is never pruned: a full ledger of unfinished jobs refuses.
@@ -570,14 +1082,23 @@ test("the jobs ledger is bounded at 32 entries end to end", async () => {
     }));
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
     await assert.rejects(
-      invoke(registered, "agency_driver", { op: "job-start", id: "one-more", name: "Overflow", step: "police" }, cwd),
+      invoke(
+        registered,
+        "agency_driver",
+        { op: "job-start", id: "one-more", name: "Overflow", step: "police" },
+        cwd,
+      ),
       /job ledger limit/,
     );
 
     // The parse-side bound for oversized files is unchanged.
     state.jobs.push({
-      id: "job-32", name: "Job 32", step: "police",
-      startedAt: "2026-10-16T12:00:00Z", finishedAt: "2026-10-16T12:01:00Z", outcome: "completed",
+      id: "job-32",
+      name: "Job 32",
+      step: "police",
+      startedAt: "2026-10-16T12:00:00Z",
+      finishedAt: "2026-10-16T12:01:00Z",
+      outcome: "completed",
     });
     await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
     await assert.rejects(
@@ -612,21 +1133,27 @@ test("workflow cli + from rejection names the sibling cli_seed arm", () => {
   assert.match(mixed.error.issues[0].message, /junk/);
   // Both valid forms keep parsing unchanged.
   assert.equal(parseInput(schema, { field: "cli" }).success, true);
-  assert.equal(parseInput(schema, { field: "cli_seed", from: "default" }).success, true);
+  assert.equal(
+    parseInput(schema, { field: "cli_seed", from: "default" }).success,
+    true,
+  );
 });
 
 test("workflow wire schema stays closed like the runtime contract", () => {
   // The runtime refinement enumerates unrecognized keys; the model-facing
   // schema must still declare the arms closed, as the deleted `.strict()` did.
   const workflow = tool(tools, "workflow").parameters.toJsonSchema();
-  for (const arm of workflow.anyOf) assert.equal(arm.additionalProperties, false);
+  for (const arm of workflow.anyOf)
+    assert.equal(arm.additionalProperties, false);
 });
 
 test("jobs wire schema stays impossible like the runtime contract", () => {
   // The runtime value schema always rejects; the model-facing schema must
   // declare the same impossibility, as the deleted z.never() emitted.
   const driver = tool(tools, "agency_driver").parameters.toJsonSchema();
-  const jobsArm = driver.anyOf.find(member => member.properties?.field?.const === "jobs");
+  const jobsArm = driver.anyOf.find(
+    (member) => member.properties?.field?.const === "jobs",
+  );
   assert.deepEqual(jobsArm.properties.value, { not: {} });
 });
 
@@ -640,7 +1167,10 @@ test("forge rejects injected selectors, arbitrary argv, and conflicting bodies",
   rejects(schema, { op: "pr-comment", body: "x", bodyFile: "x.md" });
   rejects(schema, { op: "pr-create", title: "title", args: ["--repo=evil"] });
   assert.equal(schema.safeParse({ op: "pr-view", pr: "42" }).success, true);
-  assert.equal(schema.safeParse({ op: "supports", operation: "pull-request" }).success, true);
+  assert.equal(
+    schema.safeParse({ op: "supports", operation: "pull-request" }).success,
+    true,
+  );
 });
 
 test("forge keeps provider-only options in a strict GitHub extension", () => {
@@ -648,20 +1178,40 @@ test("forge keeps provider-only options in a strict GitHub extension", () => {
   rejects(schema, { op: "pr-create", fillFirst: true });
   rejects(schema, { op: "pr-view", jq: ".number" });
   rejects(schema, { op: "pr-comment", github: { arbitrary: true } });
-  assert.equal(schema.safeParse({ op: "pr-create", github: { fillFirst: true } }).success, true);
-  assert.equal(schema.safeParse({ op: "pr-view", json: ["number"], github: { jq: ".number" } }).success, true);
+  assert.equal(
+    schema.safeParse({ op: "pr-create", github: { fillFirst: true } }).success,
+    true,
+  );
+  assert.equal(
+    schema.safeParse({
+      op: "pr-view",
+      json: ["number"],
+      github: { jq: ".number" },
+    }).success,
+    true,
+  );
 });
 
 test("real PureScript lifecycle retains a failed step's reason", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", { op: "start", step: "implement" }, cwd);
-    await invoke(registered, "agency_driver", {
-      op: "end",
-      status: "failed",
-      verification: "node --test",
-      reason: "the contract assertion failed",
-    }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "start", step: "implement" },
+      cwd,
+    );
+    await invoke(
+      registered,
+      "agency_driver",
+      {
+        op: "end",
+        status: "failed",
+        verification: "node --test",
+        reason: "the contract assertion failed",
+      },
+      cwd,
+    );
     const state = await readState(cwd);
     const step = state.steps.find((item) => item.name === "implement");
     assert.equal(step.status, "failed");
@@ -675,14 +1225,23 @@ test("real no-VCS sync succeeds only through the explicit noVcs contract", async
     const registered = await initState(cwd, { noVcs: true });
     await invoke(registered, "agency_driver", { op: "sync", noVcs: true }, cwd);
     assert.equal((await readState(cwd)).noVcs, true);
-    rejects(tool(registered, "agency_driver").parameters, { op: "sync", stack: true });
-    rejects(tool(registered, "agency_driver").parameters, { op: "sync", noVcs: true, stack: true });
+    rejects(tool(registered, "agency_driver").parameters, {
+      op: "sync",
+      stack: true,
+    });
+    rejects(tool(registered, "agency_driver").parameters, {
+      op: "sync",
+      noVcs: true,
+      stack: true,
+    });
   });
 });
 test("registered dirty reports Git and jj working-copy status tokens", async () => {
   await gitRepo(async (cwd) => {
     const registered = registerTools();
-    const result = async () => (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details.value;
+    const result = async () =>
+      (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details
+        .value;
     assert.equal(await result(), "clean");
 
     await writeFile(join(cwd, "tracked.txt"), "staged change\n");
@@ -697,7 +1256,9 @@ test("registered dirty reports Git and jj working-copy status tokens", async () 
     execFileSync("jj", ["git", "init"], { cwd, stdio: "ignore" });
     process.env.VCS_OVERRIDE = "jj";
     const registered = registerTools();
-    const result = async () => (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details.value;
+    const result = async () =>
+      (await invoke(registered, "vcs_read", { op: "dirty" }, cwd)).details
+        .value;
     assert.equal(await result(), "clean");
     await writeFile(join(cwd, "jj-change.txt"), "changed\n");
     assert.equal(await result(), "dirty");
@@ -737,7 +1298,12 @@ test("registered working-copy-status reports clean and Git staged, untracked, an
     await writeFile(join(cwd, "untracked.txt"), "new\n");
     await unlink(join(cwd, "deleted.txt"));
 
-    const dirty = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
+    const dirty = await invoke(
+      registered,
+      "vcs_read",
+      { op: "working-copy-status" },
+      cwd,
+    );
     const status = dirty.content.map((part) => part.text).join("\n");
     assert.match(status, /staged\.txt/);
     assert.match(status, /untracked\.txt/);
@@ -752,8 +1318,16 @@ test("registered working-copy-status reports jj working-copy changes without a b
     process.env.VCS_OVERRIDE = "jj";
     const registered = registerTools();
     await writeFile(join(cwd, "jj-change.txt"), "changed\n");
-    const dirty = await invoke(registered, "vcs_read", { op: "working-copy-status" }, cwd);
-    assert.match(dirty.content.map((part) => part.text).join("\n"), /jj-change\.txt/);
+    const dirty = await invoke(
+      registered,
+      "vcs_read",
+      { op: "working-copy-status" },
+      cwd,
+    );
+    assert.match(
+      dirty.content.map((part) => part.text).join("\n"),
+      /jj-change\.txt/,
+    );
   });
 });
 
@@ -776,8 +1350,18 @@ test("registered working-copy-status distinguishes inspection failure from no VC
 test("typed set persists boolean and enum values through the real API", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
-    await invoke(registered, "agency_driver", { op: "set", field: "minimal", value: true }, cwd);
-    await invoke(registered, "agency_driver", { op: "set", field: "active", value: "working" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "set", field: "minimal", value: true },
+      cwd,
+    );
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "set", field: "active", value: "working" },
+      cwd,
+    );
     const state = await readState(cwd);
     assert.equal(state.minimal, true);
     assert.equal(state.active, "working");
@@ -788,16 +1372,37 @@ test("vcs_read filters file results without mutating the real git fixture", asyn
   await gitRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
     git(cwd, "checkout", "-b", "feature");
-    await invoke(registered, "agency_driver", { op: "set", field: "base", value: "base" }, cwd);
+    await invoke(
+      registered,
+      "agency_driver",
+      { op: "set", field: "base", value: "base" },
+      cwd,
+    );
     await writeFile(join(cwd, "one-new.txt"), "one\n");
     await writeFile(join(cwd, "two-new.txt"), "two\n");
     git(cwd, "add", "one-new.txt", "two-new.txt");
     git(cwd, "commit", "--quiet", "-m", "add files");
-    const before = execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8" });
-    const result = await invoke(registered, "vcs_read", { op: "new-files" }, cwd);
+    const before = execFileSync("git", ["status", "--porcelain"], {
+      cwd,
+      encoding: "utf8",
+    });
+    const result = await invoke(
+      registered,
+      "vcs_read",
+      { op: "new-files" },
+      cwd,
+    );
     assert.deepEqual(result.details.value, ["one-new.txt", "two-new.txt"]);
-    assert.equal(execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8" }), before);
-    const filtered = await invoke(registered, "vcs_read", { op: "new-files", paths: ["one-new.txt"] }, cwd);
+    assert.equal(
+      execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8" }),
+      before,
+    );
+    const filtered = await invoke(
+      registered,
+      "vcs_read",
+      { op: "new-files", paths: ["one-new.txt"] },
+      cwd,
+    );
     assert.deepEqual(filtered.details.value, ["one-new.txt"]);
   });
 });

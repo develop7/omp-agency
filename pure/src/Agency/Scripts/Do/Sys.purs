@@ -27,6 +27,7 @@ module Agency.Scripts.Do.Sys
   , isCanonicalIso
   , uniqueTempPath
   ) where
+
 import Prelude
 
 import Data.Array as Array
@@ -70,9 +71,10 @@ exec command args = do
     { encoding: "utf8"
     , maxBuffer: 64.0 * 1024.0 * 1024.0
     }
-  let stdout = Child.unsafeSOBToString result.stdout
-      stderr = Child.unsafeSOBToString result.stderr
-      code = fromMaybe 1 (toMaybe result.status)
+  let
+    stdout = Child.unsafeSOBToString result.stdout
+    stderr = Child.unsafeSOBToString result.stderr
+    code = fromMaybe 1 (toMaybe result.status)
   case toMaybe result.error of
     Nothing -> pure { code, stdout, stderr }
     Just error -> pure
@@ -90,9 +92,10 @@ execInput command args input = do
     , encoding: "utf8"
     , maxBuffer: 64.0 * 1024.0 * 1024.0
     }
-  let stdout = Child.unsafeSOBToString result.stdout
-      stderr = Child.unsafeSOBToString result.stderr
-      code = fromMaybe 1 (toMaybe result.status)
+  let
+    stdout = Child.unsafeSOBToString result.stdout
+    stderr = Child.unsafeSOBToString result.stderr
+    code = fromMaybe 1 (toMaybe result.status)
   case toMaybe result.error of
     Nothing -> pure { code, stdout, stderr }
     Just error -> pure
@@ -157,6 +160,7 @@ getEnv key = fromMaybe "" <$> Process.lookupEnv key
 
 argv :: Effect (Array String)
 argv = Array.drop 2 <$> Process.argv
+
 exit :: Int -> Effect Unit
 exit code = Process.exit' code
 
@@ -191,7 +195,9 @@ isoToEpoch value =
     pure case JSDate.toInstant parsed of
       Nothing -> Left ("invalid timestamp '" <> value <> "'")
       Just instant ->
-        let Milliseconds milliseconds = Instant.unInstant instant
-        in Right (floor (milliseconds / 1000.0))
+        let
+          Milliseconds milliseconds = Instant.unInstant instant
+        in
+          Right (floor (milliseconds / 1000.0))
 
 foreign import isCanonicalIso :: String -> Boolean

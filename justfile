@@ -61,7 +61,15 @@ lint-skills:
 lint-workflows:
     {{ nix_shell }} bash -c 'cd "{{ repo }}" && actionlint'
 
-# Generate vocabulary consumers from the sole workflow manifest.
+# Format all source files via treefmt (nix fmt). Installs Node deps first so
+# the purs-tidy formatter (npm-only) is available through npx.
+fmt: node-deps
+    {{ nix_shell }} nix fmt
+
+# CI gate: fail if any file would be reformatted (used by nix flake check).
+fmt-check:
+    {{ nix_shell }} nix flake check --no-build
+
 workflow-vocabulary:
     {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs
 
@@ -74,7 +82,7 @@ build: workflow-vocabulary
       cp -fr "$out/dist/." pure/dist/
 
 # Full CI: bats + typed tool boundary + PureScript and VM unit tests + all quality gates.
-ci: test test-pure test-vm lint lint-workflows lint-skills runtime-check
+ci: test test-pure test-vm lint lint-workflows lint-skills fmt-check runtime-check
 
 # Stage the minimal runtime package and verify it end-to-end: manifest paths,
 # staged imports, catalog consistency (when --catalog is passed), and the

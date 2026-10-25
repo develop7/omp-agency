@@ -20,7 +20,15 @@
  *       distribution commit exists so sha is the real dist commit.
  */
 
-import { readFile, writeFile, mkdir, stat, rm, cp, readdir } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  stat,
+  rm,
+  cp,
+  readdir,
+} from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -46,7 +54,12 @@ const RUNTIME_DIRS = ["skills", "agents"];
 // ── Argv ─────────────────────────────────────────────────────────────────────
 
 function parseArgv(argv) {
-  const parsed = { out: undefined, catalog: null, verify: false, noStage: false };
+  const parsed = {
+    out: undefined,
+    catalog: null,
+    verify: false,
+    noStage: false,
+  };
   const rest = [...argv];
   while (rest.length > 0) {
     const flag = rest.shift();
@@ -60,10 +73,16 @@ function parseArgv(argv) {
       const ref = rest.shift();
       const sha = rest.shift();
       const version = rest.shift();
-      if (repo === undefined || ref === undefined || sha === undefined || version === undefined) {
+      if (
+        repo === undefined ||
+        ref === undefined ||
+        sha === undefined ||
+        version === undefined
+      ) {
         fail("--catalog requires <repo> <ref> <sha> <version>");
       }
-      if (!/^[A-Za-z0-9._/-]+\/[A-Za-z0-9._-]+$/.test(repo)) fail(`invalid catalog repo: ${repo}`);
+      if (!/^[A-Za-z0-9._/-]+\/[A-Za-z0-9._-]+$/.test(repo))
+        fail(`invalid catalog repo: ${repo}`);
       if (!/^[A-Za-z0-9._/-]+$/.test(ref)) fail(`invalid catalog ref: ${ref}`);
       if (!/^[0-9a-f]{4,64}$/.test(sha)) fail(`invalid catalog sha: ${sha}`);
       if (!/^[A-Za-z0-9._+-]+$/.test(version) || version.includes("..")) {
@@ -111,32 +130,51 @@ async function stage(repoRoot, outDir) {
   await stageManifest(repoRoot, outDir);
   for (const file of RUNTIME_FILES) {
     const source = join(repoRoot, file);
-    if (!(await exists(source))) fail(`missing runtime file in the build tree: ${file}`);
+    if (!(await exists(source)))
+      fail(`missing runtime file in the build tree: ${file}`);
     const target = join(outDir, file);
     await mkdir(dirname(target), { recursive: true });
     await cp(source, target);
   }
   // Marketplace installs may not install npm dependencies. Ship the renderer's
   // focused wrapping library in its runtime module, not as a node_modules tree.
-  execFileSync("esbuild", [
-    join(repoRoot, "src/tool-result-renderer.ts"), "--bundle", "--format=esm", "--platform=node",
-    `--outfile=${join(outDir, "src/tool-result-renderer.ts")}`,
-  ], { stdio: "inherit" });
-  const lock = JSON.parse(await readFile(join(repoRoot, "package-lock.json"), "utf8"));
+  execFileSync(
+    "esbuild",
+    [
+      join(repoRoot, "src/tool-result-renderer.ts"),
+      "--bundle",
+      "--format=esm",
+      "--platform=node",
+      `--outfile=${join(outDir, "src/tool-result-renderer.ts")}`,
+    ],
+    { stdio: "inherit" },
+  );
+  const lock = JSON.parse(
+    await readFile(join(repoRoot, "package-lock.json"), "utf8"),
+  );
   const notices = [];
   for (const [path, pkg] of Object.entries(lock.packages)) {
     if (!path || pkg.dev) continue;
     const directory = join(repoRoot, path);
-    const licenses = (await readdir(directory)).filter(name => /^licen[cs]e(?:[.-]|$)/i.test(name));
-    if (licenses.length === 0) fail(`missing bundled dependency license: ${path}`);
+    const licenses = (await readdir(directory)).filter((name) =>
+      /^licen[cs]e(?:[.-]|$)/i.test(name),
+    );
+    if (licenses.length === 0)
+      fail(`missing bundled dependency license: ${path}`);
     for (const license of licenses) {
-      notices.push(`${path} ${pkg.version}\n\n${await readFile(join(directory, license), "utf8")}`);
+      notices.push(
+        `${path} ${pkg.version}\n\n${await readFile(join(directory, license), "utf8")}`,
+      );
     }
   }
-  await writeFile(join(outDir, "THIRD-PARTY-LICENSES.txt"), notices.join("\n\n"));
+  await writeFile(
+    join(outDir, "THIRD-PARTY-LICENSES.txt"),
+    notices.join("\n\n"),
+  );
   for (const dir of RUNTIME_DIRS) {
     const source = join(repoRoot, dir);
-    if (!(await exists(source))) fail(`missing runtime directory in the build tree: ${dir}`);
+    if (!(await exists(source)))
+      fail(`missing runtime directory in the build tree: ${dir}`);
     await cp(source, join(outDir, dir), { recursive: true });
   }
 }
@@ -157,7 +195,8 @@ function catalogObject({ repo, ref, sha, version }, repoName) {
     name,
     owner: { name: owner },
     metadata: {
-      description: "Near-autonomous workflow for coding agents — talk, do, and quality gates",
+      description:
+        "Near-autonomous workflow for coding agents — talk, do, and quality gates",
       version,
     },
     plugins: [
@@ -227,18 +266,25 @@ async function generateCatalog(outDir, catalog, repoName) {
   await writeFile(join(marketplaceDir, "marketplace.json"), catalogJson);
   const { owner, name } = repoParts(repoName);
   const pagesCatalogUrl = `https://${owner}.github.io/${name}/marketplace.json`;
-  await writeFile(join(marketplaceDir, "index.html"), indexHtml(catalog, repoName, pagesCatalogUrl));
+  await writeFile(
+    join(marketplaceDir, "index.html"),
+    indexHtml(catalog, repoName, pagesCatalogUrl),
+  );
 }
 
 // ── Verification ─────────────────────────────────────────────────────────────
 
-const IMPORT_RE = /(?:^|[\s(])(?:import\s+[^'"]*?from\s+|import\s*\(\s*|require\s*\(\s*|export\s+[^'"]*?from\s+)['"](\.[^'"]+)['"]/g;
+const IMPORT_RE =
+  /(?:^|[\s(])(?:import\s+[^'"]*?from\s+|import\s*\(\s*|require\s*\(\s*|export\s+[^'"]*?from\s+)['"](\.[^'"]+)['"]/g;
 
 function collectFiles(files, dir, prefix = "") {
   return (async () => {
-    const entries = await (await import("node:fs/promises")).readdir(dir, { withFileTypes: true });
+    const entries = await (
+      await import("node:fs/promises")
+    ).readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
-      const relativePath = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      const relativePath =
+        prefix === "" ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
         await collectFiles(files, join(dir, entry.name), relativePath);
       } else {
@@ -252,7 +298,9 @@ function collectFiles(files, dir, prefix = "") {
 async function verifyImports(outDir) {
   const files = [];
   await collectFiles(files, outDir);
-  const jsFiles = files.filter((file) => /\.(m?js|cjs|ts)$/.test(file) && !file.endsWith(".d.ts"));
+  const jsFiles = files.filter(
+    (file) => /\.(m?js|cjs|ts)$/.test(file) && !file.endsWith(".d.ts"),
+  );
   for (const file of jsFiles) {
     const content = await readFile(join(outDir, file), "utf8");
     for (const match of content.matchAll(IMPORT_RE)) {
@@ -260,17 +308,25 @@ async function verifyImports(outDir) {
       if (!specifier.startsWith(".")) continue;
       const base = resolve(dirname(join(outDir, file)), specifier);
       if (!base.startsWith(resolve(outDir) + sep)) {
-        fail(`staged file ${file} imports ${specifier} outside the runtime package`);
+        fail(
+          `staged file ${file} imports ${specifier} outside the runtime package`,
+        );
       }
       if (await exists(base)) continue;
       if (await exists(`${base}.js`)) continue;
       if (await exists(`${base}.mjs`)) continue;
       if (await exists(`${base}.cjs`)) continue;
       // TS sources keep Node-style ".js" specifiers pointing at ".ts" files.
-      if (/\.(m|c)?js$/.test(base) && (await exists(base.replace(/\.js$/, ".ts")))) continue;
+      if (
+        /\.(m|c)?js$/.test(base) &&
+        (await exists(base.replace(/\.js$/, ".ts")))
+      )
+        continue;
       if (await exists(join(base, "index.js"))) continue;
       if (await exists(join(base, "index.mjs"))) continue;
-      fail(`staged file ${file} imports missing ${specifier} (resolved ${relative(outDir, base)})`);
+      fail(
+        `staged file ${file} imports missing ${specifier} (resolved ${relative(outDir, base)})`,
+      );
     }
   }
   return jsFiles.length;
@@ -278,7 +334,9 @@ async function verifyImports(outDir) {
 
 /** Verify the manifest's declared extension entry points exist. */
 async function verifyManifest(outDir) {
-  const manifest = JSON.parse(await readFile(join(outDir, "package.json"), "utf8"));
+  const manifest = JSON.parse(
+    await readFile(join(outDir, "package.json"), "utf8"),
+  );
   const extensions = manifest.omp?.extensions;
   if (!Array.isArray(extensions) || extensions.length === 0) {
     fail("staged package.json declares no omp.extensions");
@@ -308,14 +366,23 @@ async function verifyNickel(outDir) {
   };
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
   try {
-    const runtimeUrl = pathToFileURL(join(outDir, "nickel-vm/scripts/workflow-runtime.mjs")).href;
+    const runtimeUrl = pathToFileURL(
+      join(outDir, "nickel-vm/scripts/workflow-runtime.mjs"),
+    ).href;
     const runtime = await import(runtimeUrl);
-    const result = await runtime.evaluateWorkflow({ operation: "cli", cwd: outDir });
+    const result = await runtime.evaluateWorkflow({
+      operation: "cli",
+      cwd: outDir,
+    });
     if (result.exit !== 0) {
-      fail(`staged Nickel runtime evaluation failed (exit ${result.exit}): ${(result.stderr || result.stdout).slice(0, 300)}`);
+      fail(
+        `staged Nickel runtime evaluation failed (exit ${result.exit}): ${(result.stderr || result.stdout).slice(0, 300)}`,
+      );
     }
     if (result.value?.step !== "research" || result.value.skip !== false) {
-      fail(`staged Nickel runtime produced an unexpected decision: ${JSON.stringify(result.value)}`);
+      fail(
+        `staged Nickel runtime produced an unexpected decision: ${JSON.stringify(result.value)}`,
+      );
     }
   } finally {
     await rm(statePath, { force: true });
@@ -324,27 +391,48 @@ async function verifyNickel(outDir) {
 
 /** Verify the generated catalog is internally consistent with the staged tree. */
 async function verifyCatalog(outDir, catalog) {
-  const staged = JSON.parse(await readFile(join(outDir, ".omp-plugin", "marketplace.json"), "utf8"));
+  const staged = JSON.parse(
+    await readFile(join(outDir, ".omp-plugin", "marketplace.json"), "utf8"),
+  );
   const entry = staged.plugins[0];
   const problems = [];
-  if (entry.source?.source !== "github") problems.push("source is not typed github");
-  if (entry.source?.repo !== catalog.repo) problems.push(`source.repo != ${catalog.repo}`);
-  if (entry.source?.ref !== catalog.ref) problems.push(`source.ref !== ${catalog.ref}`);
-  if (entry.source?.sha !== catalog.sha) problems.push(`source.sha !== ${catalog.sha}`);
-  if (typeof entry.version !== "string" || entry.version.length === 0) problems.push("entry version missing");
-  if (entry.version !== catalog.version) problems.push("entry version mismatch");
-  if (staged.plugins[0].source && typeof staged.plugins[0].source === "string") problems.push("relative source in distribution catalog");
+  if (entry.source?.source !== "github")
+    problems.push("source is not typed github");
+  if (entry.source?.repo !== catalog.repo)
+    problems.push(`source.repo != ${catalog.repo}`);
+  if (entry.source?.ref !== catalog.ref)
+    problems.push(`source.ref !== ${catalog.ref}`);
+  if (entry.source?.sha !== catalog.sha)
+    problems.push(`source.sha !== ${catalog.sha}`);
+  if (typeof entry.version !== "string" || entry.version.length === 0)
+    problems.push("entry version missing");
+  if (entry.version !== catalog.version)
+    problems.push("entry version mismatch");
+  if (staged.plugins[0].source && typeof staged.plugins[0].source === "string")
+    problems.push("relative source in distribution catalog");
   // The Pages copy must be byte-identical to the distribution catalog, not
   // merely a same-shaped re-parse — a stale or truncated copy fails here.
-  const pagesJson = await readFile(join(outDir, "marketplace", "marketplace.json"), "utf8");
-  const stagedJson = await readFile(join(outDir, ".omp-plugin", "marketplace.json"), "utf8");
-  if (pagesJson !== stagedJson) problems.push("pages catalog differs from distribution catalog");
-  const html = await readFile(join(outDir, "marketplace", "index.html"), "utf8");
-  if (!html.includes('href="./marketplace.json"')) problems.push("index.html missing ./marketplace.json link");
+  const pagesJson = await readFile(
+    join(outDir, "marketplace", "marketplace.json"),
+    "utf8",
+  );
+  const stagedJson = await readFile(
+    join(outDir, ".omp-plugin", "marketplace.json"),
+    "utf8",
+  );
+  if (pagesJson !== stagedJson)
+    problems.push("pages catalog differs from distribution catalog");
+  const html = await readFile(
+    join(outDir, "marketplace", "index.html"),
+    "utf8",
+  );
+  if (!html.includes('href="./marketplace.json"'))
+    problems.push("index.html missing ./marketplace.json link");
   if (!html.includes("omp plugin marketplace add https://")) {
     problems.push("index.html add command must use the Pages catalog URL");
   }
-  if (problems.length > 0) fail(`catalog inconsistency: ${problems.join("; ")}`);
+  if (problems.length > 0)
+    fail(`catalog inconsistency: ${problems.join("; ")}`);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -359,7 +447,8 @@ async function main() {
     fail(`--no-stage requires an existing staged tree at ${outDir}`);
   }
   const repoName = await remoteRepo(repoRoot);
-  if (!repoName) fail(`cannot determine GitHub repo identity from ${repoRoot}/.git/config`);
+  if (!repoName)
+    fail(`cannot determine GitHub repo identity from ${repoRoot}/.git/config`);
   if (argv.catalog) {
     await generateCatalog(outDir, argv.catalog, repoName);
   }
@@ -375,7 +464,9 @@ async function main() {
         `${argv.catalog ? ", catalog + pages site verified" : ""}\n`,
     );
   } else {
-    process.stdout.write(`package-runtime: staged ${repoName} runtime at ${outDir}\n`);
+    process.stdout.write(
+      `package-runtime: staged ${repoName} runtime at ${outDir}\n`,
+    );
   }
 }
 
@@ -397,6 +488,8 @@ async function remoteRepo(repoRoot) {
 }
 
 main().catch((error) => {
-  process.stderr.write(`package-runtime: ${error instanceof Error ? error.stack : error}\n`);
+  process.stderr.write(
+    `package-runtime: ${error instanceof Error ? error.stack : error}\n`,
+  );
   process.exit(1);
 });

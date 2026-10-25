@@ -35,53 +35,59 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     lands, only the forge tool's table + dispatch arms change.
   "%
     = fun raw =>
-    raw
-      | {
-        steps | Array { name | String, status | std.enum.TagOrString, .. },
-        forge | std.enum.TagOrString,
-        noVcs | Bool,
-        base
-          | doc m%"
+      raw
+        | {
+          steps | Array { name | String, status | std.enum.TagOrString, .. },
+          forge | std.enum.TagOrString,
+          noVcs | Bool,
+          base
+            | doc m%"
           The resolved branch to branch from, diff against, and target the PR
           at (enables stacked PRs via --base / --stack). Written by sync;
           carried forward from the prior run by init for entry points that
           skip sync. Read by vcs_read. Empty until sync runs or init inherits
           a resolved base.
           "%
-          | String
-          | default = "",
-        minimal | Bool,
-        review | Bool | default = false,
-        from
-          | doc m%"
+            | String
+            | default
+            = "",
+          minimal | Bool,
+          review | Bool | default = false,
+          from
+            | doc m%"
           Entry point ID (e.g. "followup", "polish") set by agency_driver
           init --from. Read by compute_next when steps is empty to start at
           the entry point instead of always defaulting to "sync". Empty or
           "default" → "sync".
           "%
-          | String
-          | default = "",
-        task | String | default = "",
-        active | String | default = "idle",
-        status | std.enum.TagOrString | default = 'idle,
-        supportsPrCreate
-          | doc "Whether the forge supports creating PRs."
-          | Bool
-          | default = false,
-        supportsPrComment
-          | doc "Whether the forge supports commenting on PRs."
-          | Bool
-          | default = false,
-        supportsIssueView
-          | doc "Whether the forge supports viewing issues."
-          | Bool
-          | default = false,
-        supportsPrChecks
-          | doc "Whether the forge supports reading PR checks."
-          | Bool
-          | default = false,
-        ..
-      },
+            | String
+            | default
+            = "",
+          task | String | default = "",
+          active | String | default = "idle",
+          status | std.enum.TagOrString | default = 'idle,
+          supportsPrCreate
+            | doc "Whether the forge supports creating PRs."
+            | Bool
+            | default
+            = false,
+          supportsPrComment
+            | doc "Whether the forge supports commenting on PRs."
+            | Bool
+            | default
+            = false,
+          supportsIssueView
+            | doc "Whether the forge supports viewing issues."
+            | Bool
+            | default
+            = false,
+          supportsPrChecks
+            | doc "Whether the forge supports reading PR checks."
+            | Bool
+            | default
+            = false,
+          ..
+        },
 
   normalize_state
     | not_exported
@@ -114,196 +120,196 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     - `instructions`: path to node file
   "%
     = {
-    sync = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next = "research",
-      skip_when | not_exported = fun state => false,
-      requires = [],
-      instructions = "nodes/sync.md",
-    },
-
-    research = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next | not_exported = fun state =>
-        if state.review then "plan-approval" else "branch",
-      skip_when | not_exported = fun state => false,
-      requires = [],
-      instructions = "nodes/research.md",
-    },
-
-    plan-approval = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next = "branch",
-      skip_when | not_exported = fun state => !state.review,
-      requires = ["research.plan"],
-      instructions = "nodes/plan-approval.md",
-    },
-
-    branch = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next = "implement",
-      skip_when | not_exported = fun state => state.noVcs,
-      requires = ["sync.base"],
-      instructions = "nodes/branch.md",
-    },
-
-    implement = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next = "check",
-      skip_when | not_exported = fun state => false,
-      requires = ["research.plan"],
-      instructions = "nodes/implement.md",
-    },
-
-    check = {
-      pattern = 'check-loop,
-      pattern_config = {
-        max_attempts = 3,
-        flaky_classification = false,
-        flaky_budget = 0,
-        loop_artifacts = 'none,
-        coverage_check = false,
-        rerun_on_new_commit = false,
+      sync = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next = "research",
+        skip_when | not_exported = fun state => false,
+        requires = [],
+        instructions = "nodes/sync.md",
       },
-      next | not_exported = fun state =>
-        if state.minimal then "fmt" else "docs",
-      skip_when | not_exported = fun state => false,
-      requires = [],
-      instructions = "nodes/check.md",
-    },
 
-    docs = {
-      pattern = 'check-loop,
-      pattern_config = {
-        max_attempts = 3,
-        flaky_classification = false,
-        flaky_budget = 0,
-        loop_artifacts = 'none,
-        coverage_check = false,
-        rerun_on_new_commit = false,
+      research = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next | not_exported = fun state =>
+          if state.review then "plan-approval" else "branch",
+        skip_when | not_exported = fun state => false,
+        requires = [],
+        instructions = "nodes/research.md",
       },
-      next = "fmt",
-      skip_when | not_exported = fun state => state.minimal,
-      requires = [],
-      instructions = "nodes/docs.md",
-    },
 
-    fmt = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next | not_exported = fun state =>
-        if state.noVcs then "hickey-lowy" else "commit",
-      skip_when | not_exported = fun state => false,
-      requires = [],
-      instructions = "nodes/fmt.md",
-    },
-
-    commit = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next = "hickey-lowy",
-      skip_when | not_exported = fun state => state.noVcs,
-      requires = [],
-      instructions = "nodes/commit.md",
-    },
-
-    hickey-lowy = {
-      pattern = 'fanout-fix,
-      pattern_config = {
-        cross_validate = true,
+      plan-approval = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next = "branch",
+        skip_when | not_exported = fun state => !state.review,
+        requires = ["research.plan"],
+        instructions = "nodes/plan-approval.md",
       },
-      next = "police",
-      skip_when | not_exported = fun state => state.minimal,
-      requires = ["diff", "research.context"],
-      instructions = "nodes/hickey-lowy.md",
-    },
 
-    police = {
-      pattern = 'check-loop,
-      pattern_config = {
-        max_attempts = 3,
-        flaky_classification = false,
-        flaky_budget = 0,
-        loop_artifacts = 'commit-per-fix,
-        coverage_check = false,
-        rerun_on_new_commit = false,
-        # Worker liveness budgets; surfaced verbatim through cli
-        # and consumed by nodes/police.md + the code-police skill.
-        worker_budget_minutes = 10,
-        worker_retries = 1,
-        police_budget_minutes = 30,
+      branch = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next = "implement",
+        skip_when | not_exported = fun state => state.noVcs,
+        requires = ["sync.base"],
+        instructions = "nodes/branch.md",
       },
-      next = "test",
-      skip_when | not_exported = fun state => state.minimal,
-      requires = ["diff"],
-      instructions = "nodes/police.md",
-    },
 
-    test = {
-      pattern = 'check-loop,
-      pattern_config = {
-        max_attempts = 4,
-        flaky_classification = false,
-        flaky_budget = 0,
-        loop_artifacts = 'commit-per-fix,
-        coverage_check = true,
-        rerun_on_new_commit = false,
+      implement = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next = "check",
+        skip_when | not_exported = fun state => false,
+        requires = ["research.plan"],
+        instructions = "nodes/implement.md",
       },
-      next = "create-pr",
-      skip_when | not_exported = fun state => false,
-      requires = [],
-      instructions = "nodes/test.md",
-    },
 
-    create-pr = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next = "ci",
-      skip_when | not_exported = fun state =>
-        state.noVcs || !state.supportsPrCreate,
-      requires = [],
-      instructions = "nodes/create-pr.md",
-    },
-
-    ci = {
-      pattern = 'check-loop,
-      pattern_config = {
-        max_attempts = 5,
-        flaky_classification = true,
-        flaky_budget = 3,
-        loop_artifacts = 'commit-per-fix,
-        coverage_check = false,
-        rerun_on_new_commit = true,
+      check = {
+        pattern = 'check-loop,
+        pattern_config = {
+          max_attempts = 3,
+          flaky_classification = false,
+          flaky_budget = 0,
+          loop_artifacts = 'none,
+          coverage_check = false,
+          rerun_on_new_commit = false,
+        },
+        next | not_exported = fun state =>
+          if state.minimal then "fmt" else "docs",
+        skip_when | not_exported = fun state => false,
+        requires = [],
+        instructions = "nodes/check.md",
       },
-      next = "evidence",
-      skip_when | not_exported = fun state => false,
-      requires = [],
-      instructions = "nodes/ci.md",
-    },
 
-    evidence = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next = "done",
-      skip_when | not_exported = fun state => false,
-      requires = [],
-      instructions = "nodes/evidence.md",
-    },
+      docs = {
+        pattern = 'check-loop,
+        pattern_config = {
+          max_attempts = 3,
+          flaky_classification = false,
+          flaky_budget = 0,
+          loop_artifacts = 'none,
+          coverage_check = false,
+          rerun_on_new_commit = false,
+        },
+        next = "fmt",
+        skip_when | not_exported = fun state => state.minimal,
+        requires = [],
+        instructions = "nodes/docs.md",
+      },
 
-    done = {
-      pattern = 'one-shot,
-      pattern_config = {},
-      next = "",
-      skip_when | not_exported = fun state => false,
-      requires = [],
-      instructions = "nodes/done.md",
+      fmt = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next | not_exported = fun state =>
+          if state.noVcs then "hickey-lowy" else "commit",
+        skip_when | not_exported = fun state => false,
+        requires = [],
+        instructions = "nodes/fmt.md",
+      },
+
+      commit = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next = "hickey-lowy",
+        skip_when | not_exported = fun state => state.noVcs,
+        requires = [],
+        instructions = "nodes/commit.md",
+      },
+
+      hickey-lowy = {
+        pattern = 'fanout-fix,
+        pattern_config = {
+          cross_validate = true,
+        },
+        next = "police",
+        skip_when | not_exported = fun state => state.minimal,
+        requires = ["diff", "research.context"],
+        instructions = "nodes/hickey-lowy.md",
+      },
+
+      police = {
+        pattern = 'check-loop,
+        pattern_config = {
+          max_attempts = 3,
+          flaky_classification = false,
+          flaky_budget = 0,
+          loop_artifacts = 'commit-per-fix,
+          coverage_check = false,
+          rerun_on_new_commit = false,
+          # Worker liveness budgets; surfaced verbatim through cli
+          # and consumed by nodes/police.md + the code-police skill.
+          worker_budget_minutes = 10,
+          worker_retries = 1,
+          police_budget_minutes = 30,
+        },
+        next = "test",
+        skip_when | not_exported = fun state => state.minimal,
+        requires = ["diff"],
+        instructions = "nodes/police.md",
+      },
+
+      test = {
+        pattern = 'check-loop,
+        pattern_config = {
+          max_attempts = 4,
+          flaky_classification = false,
+          flaky_budget = 0,
+          loop_artifacts = 'commit-per-fix,
+          coverage_check = true,
+          rerun_on_new_commit = false,
+        },
+        next = "create-pr",
+        skip_when | not_exported = fun state => false,
+        requires = [],
+        instructions = "nodes/test.md",
+      },
+
+      create-pr = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next = "ci",
+        skip_when | not_exported = fun state =>
+          state.noVcs || !state.supportsPrCreate,
+        requires = [],
+        instructions = "nodes/create-pr.md",
+      },
+
+      ci = {
+        pattern = 'check-loop,
+        pattern_config = {
+          max_attempts = 5,
+          flaky_classification = true,
+          flaky_budget = 3,
+          loop_artifacts = 'commit-per-fix,
+          coverage_check = false,
+          rerun_on_new_commit = true,
+        },
+        next = "evidence",
+        skip_when | not_exported = fun state => false,
+        requires = [],
+        instructions = "nodes/ci.md",
+      },
+
+      evidence = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next = "done",
+        skip_when | not_exported = fun state => false,
+        requires = [],
+        instructions = "nodes/evidence.md",
+      },
+
+      done = {
+        pattern = 'one-shot,
+        pattern_config = {},
+        next = "",
+        skip_when | not_exported = fun state => false,
+        requires = [],
+        instructions = "nodes/done.md",
+      },
     },
-  },
 
   # ── Minimal skips (omitted from todo list entirely) ────────────────────────
 
@@ -320,10 +326,10 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     | not_exported
     | doc "Last element of the array, or `fallback` when the array is empty."
     = fun arr fallback =>
-    if std.array.length arr == 0 then
-      fallback
-    else
-      std.array.last arr,
+      if std.array.length arr == 0 then
+        fallback
+      else
+        std.array.last arr,
 
   should_skip
     | not_exported
@@ -382,35 +388,35 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     | not_exported
     | doc "Whether --minimal omits a step from both CLI routing and todo seeding."
     = fun step_name state =>
-    state.minimal && std.array.any (fun skipped => skipped == step_name) MinimalSkips,
+      state.minimal && std.array.any (fun skipped => skipped == step_name) MinimalSkips,
 
   next_runnable
     | not_exported
     | doc "Follow graph edges until reaching a step present in a minimal run."
     = fun step_name state =>
-    if step_name == "" then
-      ""
-    else if is_minimal_omission step_name state then
-      next_runnable (get_next step_name state) state
-    else
-      step_name,
+      if step_name == "" then
+        ""
+      else if is_minimal_omission step_name state then
+        next_runnable (get_next step_name state) state
+      else
+        step_name,
 
   compute_next
     | not_exported
     | doc "Terminal workflow status wins; otherwise resume unfinished steps."
     = fun state =>
-    if state.status == 'failed || state.status == 'completed then
-      ""
-    else
-      let last_step = get_last state.steps { name = "", status = 'pending } in
-      if last_step.name == "" then
-        next_runnable (resolve_entry state.from) state
-      else if last_step.status == 'failed then
-        "done"
-      else if last_step.status == 'passed || last_step.status == 'skipped then
-        next_runnable (get_next last_step.name state) state
+      if state.status == 'failed || state.status == 'completed then
+        ""
       else
-        last_step.name,
+        let last_step = get_last state.steps { name = "", status = 'pending } in
+        if last_step.name == "" then
+          next_runnable (resolve_entry state.from) state
+        else if last_step.status == 'failed then
+          "done"
+        else if last_step.status == 'passed || last_step.status == 'skipped then
+          next_runnable (get_next last_step.name state) state
+        else
+          last_step.name,
 
   resolve_entry
     | not_exported
@@ -450,32 +456,32 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
       (--review was not passed); otherwise they're included as normal steps.
   "%
     = fun from state =>
-    let start = resolve_entry from in
-    (
-      std.array.fold_left
-        (fun acc step_name =>
-          let is_start = step_name == start in
-          let is_minimal = is_minimal_omission step_name state in
-          let is_review = std.array.any (fun s => s == step_name) ReviewSkips in
-          let now_reached = acc.reached || is_start in
-          if is_minimal || (is_review && !state.review) then
-            { list = acc.list, reached = now_reached }
-          else
-            {
-              list =
-                acc.list
-                @ [
-                  {
-                    name = step_name,
-                    initial_status = if !acc.reached && !is_start then 'completed else 'pending,
-                  }
-                ],
-              reached = now_reached,
-            }
-        )
-        { list = [], reached = false }
-        Vocabulary.steps
-    ).list,
+      let start = resolve_entry from in
+      (
+        std.array.fold_left
+          (fun acc step_name =>
+            let is_start = step_name == start in
+            let is_minimal = is_minimal_omission step_name state in
+            let is_review = std.array.any (fun s => s == step_name) ReviewSkips in
+            let now_reached = acc.reached || is_start in
+            if is_minimal || (is_review && !state.review) then
+              { list = acc.list, reached = now_reached }
+            else
+              {
+                list =
+                  acc.list
+                  @ [
+                    {
+                      name = step_name,
+                      initial_status = if !acc.reached && !is_start then 'completed else 'pending,
+                    }
+                  ],
+                reached = now_reached,
+              }
+          )
+          { list = [], reached = false }
+          Vocabulary.steps
+      ).list,
 
   # ── CLI output ─────────────────────────────────────────────────────────────
 
@@ -566,18 +572,19 @@ let Vocabulary = import "%inmem_src%:workflow-manifest.json" in
     - Capability flags stay concrete: `| default` would conflict with the
       contract's `| default = false`, so a delta overrides them with `| force`.
   "%
-    = normalize_state {
-      active = "working",
-      status = 'running,
-      steps = [],
-      noVcs | default = false,
-      minimal | default = false,
-      review | default = false,
-      forge | default = 'github,
-      supportsPrCreate = true,
-      supportsPrComment = true,
-      supportsIssueView = true,
-      supportsPrChecks = true,
-      task = "test",
-    },
+    =
+      normalize_state {
+        active = "working",
+        status = 'running,
+        steps = [],
+        noVcs | default = false,
+        minimal | default = false,
+        review | default = false,
+        forge | default = 'github,
+        supportsPrCreate = true,
+        supportsPrComment = true,
+        supportsIssueView = true,
+        supportsPrChecks = true,
+        task = "test",
+      },
 }

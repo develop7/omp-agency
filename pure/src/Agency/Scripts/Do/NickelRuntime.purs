@@ -24,18 +24,19 @@ import Effect (Effect)
 run :: WorkflowContext -> Maybe String -> Effect Outcome.OpOutcome
 run context seed = do
   bundle <- Sys.bundleDir
-  let bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
-      requestFields = case seed of
-        Nothing ->
-          [ Tuple "operation" (fromString "cli")
-          , Tuple "cwd" (fromString context.stateDir)
-          ]
-        Just from ->
-          [ Tuple "operation" (fromString "cli_seed")
-          , Tuple "seed" (fromString from)
-          , Tuple "cwd" (fromString context.stateDir)
-          ]
-      request = Json.stringify (fromObject (Obj.fromFoldable requestFields))
+  let
+    bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
+    requestFields = case seed of
+      Nothing ->
+        [ Tuple "operation" (fromString "cli")
+        , Tuple "cwd" (fromString context.stateDir)
+        ]
+      Just from ->
+        [ Tuple "operation" (fromString "cli_seed")
+        , Tuple "seed" (fromString from)
+        , Tuple "cwd" (fromString context.stateDir)
+        ]
+    request = Json.stringify (fromObject (Obj.fromFoldable requestFields))
   result <- Sys.execInput "node" [ bridge ] request
   pure (bridgeOutcome result)
 

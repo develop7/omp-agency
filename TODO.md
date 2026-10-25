@@ -15,21 +15,21 @@ Agency’s current control plane remains the `/do` skill plus the `agency_driver
 
 ## Decision matrix
 
-| # | OMP surface | API feasibility | Agency disposition |
-|---|---|---|---|
-| 1 | `registerTool` | Feasible | **Done**: typed adapters over the existing PureScript workflow core; no second workflow engine |
-| 2 | `registerCommand` | Feasible | **Deferred**: OMP has no command-to-skill delegation primitive, and `/do` already owns the UX |
-| 3 | `before_agent_start` | Feasible | **Planned**: one bounded, model-visible workflow-state message per agent run |
-| 4 | `turn_end` / `agent_end` / `session_stop` | Feasible | **Done then removed**: the `session_stop` stop-guard shipped and was later dropped — OMP no longer needs a nudge and stale state caused false continuations. Hidden CI/test orchestration in lifecycle hooks stays rejected |
-| 5 | `mcp_notification` + `sendMessage` | Feasible | **Deferred** until a concrete producer, method, schema, and delivery policy exist |
-| 6 | `tool_call` + `context` | Feasible | **Merged/conditional**: validate workflow tools at their source; add a global guard only for a real cross-tool invariant; context belongs to #3 |
-| 7 | `input` | Interactive-only | **Rejected** as an intent classifier; reserve for explicit, deterministic syntax only |
-| 8 | `getActiveTools` / `getAllTools` / `setActiveTools` | Feasible | **Deferred** until measurement shows a tool-selection problem |
-| 9 | custom messages and renderers | Feasible in TUI | **Conditional**: begin with tool `renderCall` / `renderResult`; add a message renderer only for out-of-tool events |
-| 10 | `pi.events` | Feasible within one extension runtime | **Rejected now**: direct calls are simpler with one agency extension; it is not a cross-session bus |
-| 11 | `ctx.models` + `pi.setModel` | Static routing already works; dynamic child routing is constrained but feasible | **Static goal done; dynamic policy deferred** |
-| 12 | `ctx.memory` | Search/save/status only | **Rejected** for cross-PR agency memory; conflicts with the documented product design and lacks deletion/eviction |
-| 13 | MCP notification bridge | Feasible for server-initiated notifications | **Merged into #5**; not a bridge for ordinary MCP tool results |
+| #   | OMP surface                                         | API feasibility                                                                 | Agency disposition                                                                                                                                                                                                          |
+| --- | --------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `registerTool`                                      | Feasible                                                                        | **Done**: typed adapters over the existing PureScript workflow core; no second workflow engine                                                                                                                              |
+| 2   | `registerCommand`                                   | Feasible                                                                        | **Deferred**: OMP has no command-to-skill delegation primitive, and `/do` already owns the UX                                                                                                                               |
+| 3   | `before_agent_start`                                | Feasible                                                                        | **Planned**: one bounded, model-visible workflow-state message per agent run                                                                                                                                                |
+| 4   | `turn_end` / `agent_end` / `session_stop`           | Feasible                                                                        | **Done then removed**: the `session_stop` stop-guard shipped and was later dropped — OMP no longer needs a nudge and stale state caused false continuations. Hidden CI/test orchestration in lifecycle hooks stays rejected |
+| 5   | `mcp_notification` + `sendMessage`                  | Feasible                                                                        | **Deferred** until a concrete producer, method, schema, and delivery policy exist                                                                                                                                           |
+| 6   | `tool_call` + `context`                             | Feasible                                                                        | **Merged/conditional**: validate workflow tools at their source; add a global guard only for a real cross-tool invariant; context belongs to #3                                                                             |
+| 7   | `input`                                             | Interactive-only                                                                | **Rejected** as an intent classifier; reserve for explicit, deterministic syntax only                                                                                                                                       |
+| 8   | `getActiveTools` / `getAllTools` / `setActiveTools` | Feasible                                                                        | **Deferred** until measurement shows a tool-selection problem                                                                                                                                                               |
+| 9   | custom messages and renderers                       | Feasible in TUI                                                                 | **Conditional**: begin with tool `renderCall` / `renderResult`; add a message renderer only for out-of-tool events                                                                                                          |
+| 10  | `pi.events`                                         | Feasible within one extension runtime                                           | **Rejected now**: direct calls are simpler with one agency extension; it is not a cross-session bus                                                                                                                         |
+| 11  | `ctx.models` + `pi.setModel`                        | Static routing already works; dynamic child routing is constrained but feasible | **Static goal done; dynamic policy deferred**                                                                                                                                                                               |
+| 12  | `ctx.memory`                                        | Search/save/status only                                                         | **Rejected** for cross-PR agency memory; conflicts with the documented product design and lacks deletion/eviction                                                                                                           |
+| 13  | MCP notification bridge                             | Feasible for server-initiated notifications                                     | **Merged into #5**; not a bridge for ordinary MCP tool results                                                                                                                                                              |
 
 ---
 
@@ -452,23 +452,23 @@ When a real producer exists, implement its exact `{server, method, params}` adap
 ## Recommended implementation order
 
 1. **Preserve the PureScript core authority**: `Agency.Scripts.Do.Api` and its
-  parsers/runners own workflow semantics; `src/agency-tools.ts` remains a thin
-  model-facing adapter.
+   parsers/runners own workflow semantics; `src/agency-tools.ts` remains a thin
+   model-facing adapter.
 2. **Keep schemas and guidance aligned**: operation-specific tool schemas and
-  node examples must be updated together when the PureScript API changes.
+   node examples must be updated together when the PureScript API changes.
 3. **Per-run context (#3)**: inject one bounded workflow-state message from the
-  existing state boundary; do not duplicate state in TypeScript.
+   existing state boundary; do not duplicate state in TypeScript.
 4. **Exact guards (#6), only if needed**: validate workflow transitions at the
-  tool boundary; add a global hook only for a real cross-tool invariant.
+   tool boundary; add a global hook only for a real cross-tool invariant.
 5. **Rendering (#9), only after typed events exist**: tool renderers first;
-  custom message renderer only for events outside tools.
+   custom message renderer only for events outside tools.
 6. **Optional command UX (#2)**: only after command and skill can call the same
-  workflow service without replaying `/do` text.
+   workflow service without replaying `/do` text.
 7. **Source-triggered work**: implement #5/#13 only when an MCP producer
-  contract exists; implement #8 only after tool traces justify it; experiment
-  with dynamic #11 only after a model policy and success metric exist.
+   contract exists; implement #8 only after tool traces justify it; experiment
+   with dynamic #11 only after a model policy and success metric exist.
 8. **Do not schedule**: semantic input routing (#7), a generic EventBus layer
-  (#10), or cross-PR memory (#12).
+   (#10), or cross-PR memory (#12).
 
 ## Review-driven boundary decisions
 

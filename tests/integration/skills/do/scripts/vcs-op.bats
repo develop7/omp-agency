@@ -58,7 +58,7 @@ teardown() {
 
 @test "dirty reports dirty for uncommitted Git changes" {
   mk_initial_commit
-  echo "changed" > file.txt
+  echo "changed" >file.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op dirty
   [ "$status" -eq 0 ]
@@ -78,27 +78,27 @@ teardown() {
   cd "$no_vcs_dir"
   run env VCS_OVERRIDE=git node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op dirty
   [ "$status" -ne 0 ]
-  [[ "$output" == *"fatal"* || "$output" == *"not a git repository"* ]]
+  [[ $output == *"fatal"* || $output == *"not a git repository"* ]]
 }
 
 @test "working-copy-status reports Git staged, untracked, and deleted files without a base" {
   mk_initial_commit
-  echo "deleted" > deleted.txt
+  echo "deleted" >deleted.txt
   git add deleted.txt
   git commit -q -m "add deletion fixture"
-  echo "staged" > staged.txt
+  echo "staged" >staged.txt
   git add staged.txt
-  echo "untracked" > untracked.txt
+  echo "untracked" >untracked.txt
   mkdir nested
-  echo "nested" > nested/untracked.txt
+  echo "nested" >nested/untracked.txt
   rm deleted.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op working-copy-status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"staged.txt"* ]]
-  [[ "$output" == *"untracked.txt"* ]]
-  [[ "$output" == *"nested/untracked.txt"* ]]
-  [[ "$output" == *"deleted.txt"* ]]
+  [[ $output == *"staged.txt"* ]]
+  [[ $output == *"untracked.txt"* ]]
+  [[ $output == *"nested/untracked.txt"* ]]
+  [[ $output == *"deleted.txt"* ]]
 }
 
 @test "jj: working-copy-status detects dirty files in @ without a base" {
@@ -107,10 +107,10 @@ teardown() {
   run env VCS_OVERRIDE=jj node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op working-copy-status
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  echo "changed" > jj-change.txt
+  echo "changed" >jj-change.txt
   run env VCS_OVERRIDE=jj node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op working-copy-status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"jj-change.txt"* ]]
+  [[ $output == *"jj-change.txt"* ]]
 }
 
 @test "fast-forward-if-safe propagates a rev-list probe failure" {
@@ -120,7 +120,7 @@ teardown() {
   git push -q -u origin feature
   real_git="$(command -v git)"
   mkdir -p "$TEST_DIR/bin"
-  cat > "$TEST_DIR/bin/git" <<'SH'
+  cat >"$TEST_DIR/bin/git" <<'SH'
 #!/bin/sh
 if [ "$1" = "rev-list" ]; then
   echo "forced rev-list failure" >&2
@@ -132,7 +132,7 @@ SH
 
   run env REAL_GIT="$real_git" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fast-forward-if-safe
   [ "$status" -eq 72 ]
-  [[ "$output" == *"forced rev-list failure"* ]]
+  [[ $output == *"forced rev-list failure"* ]]
 }
 
 @test "fast-forward-if-safe rejects nonnumeric rev-list counts" {
@@ -142,7 +142,7 @@ SH
   git push -q -u origin feature
   real_git="$(command -v git)"
   mkdir -p "$TEST_DIR/bin"
-  cat > "$TEST_DIR/bin/git" <<'SH'
+  cat >"$TEST_DIR/bin/git" <<'SH'
 #!/bin/sh
 if [ "$1" = "rev-list" ]; then
   echo "not-a-count"
@@ -154,8 +154,8 @@ SH
 
   run env REAL_GIT="$real_git" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fast-forward-if-safe
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unable to parse git rev-list counts"* ]]
-  [[ "$output" == *"not-a-count"* ]]
+  [[ $output == *"unable to parse git rev-list counts"* ]]
+  [[ $output == *"not-a-count"* ]]
 }
 
 @test "fast-forward-if-safe propagates an unknown upstream probe failure" {
@@ -165,7 +165,7 @@ SH
   git push -q -u origin feature
   real_git="$(command -v git)"
   mkdir -p "$TEST_DIR/bin"
-  cat > "$TEST_DIR/bin/git" <<'SH'
+  cat >"$TEST_DIR/bin/git" <<'SH'
 #!/bin/sh
 if [ "$1" = "rev-parse" ] && [ "$2" = "--abbrev-ref" ] && [ "$3" = "@{u}" ]; then
   echo "forced upstream failure" >&2
@@ -177,7 +177,7 @@ SH
 
   run env REAL_GIT="$real_git" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fast-forward-if-safe
   [ "$status" -eq 73 ]
-  [[ "$output" == *"forced upstream failure"* ]]
+  [[ $output == *"forced upstream failure"* ]]
 }
 
 # ─── head-revision ────────────────────────────────────────────────────
@@ -234,7 +234,7 @@ SH
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha
   [ "$status" -eq 1 ]
-  [[ "$output" != *0000* ]]
+  [[ $output != *0000* ]]
 }
 
 @test "jj: head-commit-sha emits exactly a 40-hex SHA plus one newline on both paths" {
@@ -242,14 +242,14 @@ SH
   jj git init 2>/dev/null || skip "jj git init failed"
   jj commit -m "initial" >/dev/null 2>&1
 
-  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$TEST_DIR/fallback.out" 2>/dev/null
-  jj log --revision @- --no-graph --template 'commit_id ++ "\n"' > "$TEST_DIR/expected.fallback"
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha >"$TEST_DIR/fallback.out" 2>/dev/null
+  jj log --revision @- --no-graph --template 'commit_id ++ "\n"' >"$TEST_DIR/expected.fallback"
   cmp "$TEST_DIR/expected.fallback" "$TEST_DIR/fallback.out"
 
   jj bookmark create main >/dev/null 2>&1
   jj new >/dev/null 2>&1
-  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$TEST_DIR/bookmark.out" 2>/dev/null
-  jj log --revision main --no-graph --template 'commit_id ++ "\n"' > "$TEST_DIR/expected.bookmark"
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha >"$TEST_DIR/bookmark.out" 2>/dev/null
+  jj log --revision main --no-graph --template 'commit_id ++ "\n"' >"$TEST_DIR/expected.bookmark"
   cmp "$TEST_DIR/expected.bookmark" "$TEST_DIR/bookmark.out"
 }
 
@@ -263,10 +263,10 @@ SH
   mk_initial_commit
 
   git_out="$TEST_DIR/git.out"
-  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha > "$git_out" 2>/dev/null
-  git rev-parse HEAD > "$TEST_DIR/expected.git"
+  node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-commit-sha >"$git_out" 2>/dev/null
+  git rev-parse HEAD >"$TEST_DIR/expected.git"
   cmp "$TEST_DIR/expected.git" "$git_out"
-  [ "$(wc -c < "$git_out")" -eq 41 ]
+  [ "$(wc -c <"$git_out")" -eq 41 ]
 }
 
 @test "jj: branch reads surface the underlying jj stderr on probe failure" {
@@ -276,7 +276,7 @@ SH
 
   run --separate-stderr node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op current-branch
   [ "$status" -ne 0 ]
-  [[ "$stderr" == *"The repository appears broken"* ]]
+  [[ $stderr == *"The repository appears broken"* ]]
 }
 
 @test "jj: head-revision reports the base bookmark when it sits on the parent" {
@@ -366,7 +366,7 @@ SH
   jj git init 2>/dev/null || skip "jj git init failed"
   real_jj="$(command -v jj)"
   mkdir -p "$TEST_DIR/bin"
-  cat > "$TEST_DIR/bin/jj" <<'SH'
+  cat >"$TEST_DIR/bin/jj" <<'SH'
 #!/bin/sh
 if [ "$1" = "log" ] && [ "$2" = "--revision" ]; then
   echo "forced jj revision failure" >&2
@@ -378,14 +378,14 @@ SH
 
   run env REAL_JJ="$real_jj" PATH="$TEST_DIR/bin:$PATH" VCS_OVERRIDE=jj node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op default-branch
   [ "$status" -ne 0 ]
-  [[ "$output" == *"forced jj revision failure"* ]]
+  [[ $output == *"forced jj revision failure"* ]]
 }
 
 @test "default-branch propagates fatal git ref probe errors" {
   mk_initial_commit
   real_git="$(command -v git)"
   mkdir -p "$TEST_DIR/bin"
-  cat > "$TEST_DIR/bin/git" <<'SH'
+  cat >"$TEST_DIR/bin/git" <<'SH'
 #!/bin/sh
 if [ "$1" = "show-ref" ]; then
   echo "forced show-ref failure" >&2
@@ -397,15 +397,15 @@ SH
 
   run env REAL_GIT="$real_git" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op default-branch
   [ "$status" -ne 0 ]
-  [[ "$output" == *"forced show-ref failure"* ]]
+  [[ $output == *"forced show-ref failure"* ]]
 }
 
 @test "branch propagates fatal git ref probe errors" {
   mk_initial_commit
-  echo '{"base":"master"}' > .do-results.json
+  echo '{"base":"master"}' >.do-results.json
   real_git="$(command -v git)"
   mkdir -p "$TEST_DIR/bin"
-  cat > "$TEST_DIR/bin/git" <<'SH'
+  cat >"$TEST_DIR/bin/git" <<'SH'
 #!/bin/sh
 if [ "$1" = "show-ref" ]; then
   echo "forced show-ref failure" >&2
@@ -417,7 +417,7 @@ SH
 
   run env REAL_GIT="$real_git" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature
   [ "$status" -ne 0 ]
-  [[ "$output" == *"forced show-ref failure"* ]]
+  [[ $output == *"forced show-ref failure"* ]]
 }
 
 # ─── branch ───────────────────────────────────────────────────────────
@@ -427,7 +427,7 @@ SH
   mk_remote_fixture
 
   # base is read from .do-results.json (set by sync); branch takes only <name>.
-  echo '{"base":"master"}' > .do-results.json
+  echo '{"base":"master"}' >.do-results.json
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feat-test
   [ "$status" -eq 0 ]
 
@@ -438,7 +438,7 @@ SH
 
 @test "branch can start from a verified local base without a remote-tracking ref" {
   mk_initial_commit
-  echo '{"base":"master"}' > .do-results.json
+  echo '{"base":"master"}' >.do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch local-base-feature
   [ "$status" -eq 0 ]
@@ -450,13 +450,13 @@ SH
 
 @test "commit stages and commits the given files" {
   mk_initial_commit
-  echo "world" > file2.txt
+  echo "world" >file2.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add file2" file2.txt
   [ "$status" -eq 0 ]
 
   run git log -1 --oneline
-  [[ "$output" == *"feat: add file2"* ]]
+  [[ $output == *"feat: add file2"* ]]
 
   # file2.txt should be committed
   git cat-file -e HEAD:file2.txt
@@ -464,39 +464,39 @@ SH
 
 @test "commit errors when no files are given" {
   mk_initial_commit
-  echo "world" > file2.txt
+  echo "world" >file2.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add file2"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"at least one file required"* ]]
+  [[ $output == *"at least one file required"* ]]
 }
 
 @test "commit rejects an invalid file list without changing workflow state" {
   mk_initial_commit
-  echo '{"base":"base","workflow":"sentinel"}' > .do-results.json
+  echo '{"base":"base","workflow":"sentinel"}' >.do-results.json
   state_before="$(cat .do-results.json)"
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: invalid file" nonexistent.txt
   [ "$status" -eq 1 ]
-  [[ "$output" == *"not dirty"* ]]
-  [[ "$output" == *"nonexistent.txt"* ]]
+  [[ $output == *"not dirty"* ]]
+  [[ $output == *"nonexistent.txt"* ]]
   [ "$(cat .do-results.json)" = "$state_before" ]
 }
 
 @test "commit errors when a given file is not dirty" {
   mk_initial_commit
-  echo "world" > file2.txt
+  echo "world" >file2.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add file2" file2.txt nonexistent.txt
   [ "$status" -eq 1 ]
-  [[ "$output" == *"not dirty"* ]]
-  [[ "$output" == *"nonexistent.txt"* ]]
+  [[ $output == *"not dirty"* ]]
+  [[ $output == *"nonexistent.txt"* ]]
 }
 
 @test "commit stages only listed files, leaving others dirty" {
   mk_initial_commit
-  echo "related" > feature.txt
-  echo "unrelated" > notes.md
+  echo "related" >feature.txt
+  echo "unrelated" >notes.md
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt
   [ "$status" -eq 0 ]
@@ -511,8 +511,8 @@ SH
 
 @test "commit leaves pre-staged unrelated files out of the commit" {
   mk_initial_commit
-  echo "feature" > feature.txt
-  echo "already staged" > staged.md
+  echo "feature" >feature.txt
+  echo "already staged" >staged.md
   git add staged.md
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: isolated index" feature.txt
@@ -528,13 +528,13 @@ SH
   mk_remote_fixture
   git checkout -q -b feature
   git push -q -u origin feature 2>/dev/null
-  echo "fix" > fix.txt
+  echo "fix" >fix.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fix-commit "fix: something" fix.txt
   [ "$status" -eq 0 ]
 
   run git log -1 --oneline
-  [[ "$output" == *"fix: something"* ]]
+  [[ $output == *"fix: something"* ]]
   git cat-file -e HEAD:fix.txt
   run git --git-dir="$TEST_DIR/remote.git" log -1 --format=%s feature
   [ "$output" = "fix: something" ]
@@ -547,7 +547,7 @@ SH
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-head
   [ "$status" -eq 0 ]
-  [[ "$output" == *"initial"* ]]
+  [[ $output == *"initial"* ]]
 }
 
 @test "jj: log-head shows the parent commit one-liner" {
@@ -570,16 +570,16 @@ SH
   mk_remote_fixture
 
   git checkout -q -b feature
-  echo "world" > file2.txt
+  echo "world" >file2.txt
   git add file2.txt
   git commit -q -m "add file2"
 
   # base (master) is read from .do-results.json, not a positional arg.
-  echo '{"base":"master"}' > .do-results.json
+  echo '{"base":"master"}' >.do-results.json
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-range
   [ "$status" -eq 0 ]
-  [[ "$output" == *"add file2"* ]]
-  [[ "$output" != *"initial"* ]]
+  [[ $output == *"add file2"* ]]
+  [[ $output != *"initial"* ]]
 }
 
 # ─── diff-names ───────────────────────────────────────────────────────
@@ -589,28 +589,26 @@ SH
   mk_remote_fixture
 
   git checkout -q -b feature
-  echo "world" > file2.txt
+  echo "world" >file2.txt
   git add file2.txt
   git commit -q -m "add file2"
 
-  echo '{"base":"master"}' > .do-results.json
+  echo '{"base":"master"}' >.do-results.json
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-names
   [ "$status" -eq 0 ]
-  [[ "$output" == *"file2.txt"* ]]
+  [[ $output == *"file2.txt"* ]]
 }
 
 # ─── base / get_base_branch ───────────────────────────────────────────
 
 @test "base op prints the resolved base from .do-results.json" {
   mk_initial_commit
-  echo '{"base":"feat-x"}' > .do-results.json
+  echo '{"base":"feat-x"}' >.do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op base
   [ "$status" -eq 0 ]
   [ "$output" = "feat-x" ]
 }
-
-
 
 # ─── current-branch ───────────────────────────────────────────────────
 
@@ -628,8 +626,8 @@ SH
 @test "unknown operation errors with available ops list" {
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op frobnicate
   [ "$status" -eq 1 ]
-  [[ "$output" == *"unknown operation 'frobnicate'"* ]]
-  [[ "$output" == *"Available:"* ]]
+  [[ $output == *"unknown operation 'frobnicate'"* ]]
+  [[ $output == *"Available:"* ]]
 }
 
 @test "no-VCS operations exit 1 with message" {
@@ -637,7 +635,7 @@ SH
   cd "$TEST_DIR/no-vcs"
   VCS_OVERRIDE= run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fetch
   [ "$status" -eq 1 ]
-  [[ "$output" == *"no VCS detected"* ]]
+  [[ $output == *"no VCS detected"* ]]
 }
 
 # ─── jj arms (skipped when jj isn't available) ────────────────────────
@@ -648,7 +646,7 @@ SH
 
   VCS_OVERRIDE= run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op detect
   [ "$status" -eq 0 ]
-  [[ "$output" == "jj" ]]
+  [[ $output == "jj" ]]
 }
 
 # ─── jj commit arms (skipped when jj isn't available) ─────────────────
@@ -658,17 +656,17 @@ SH
   jj git init 2>/dev/null || skip "jj git init failed"
 
   # Create a base change with a bookmark
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   # Working copy has feature files + an unrelated file
   jj new main
   jj bookmark create feature -r @
-  echo feature > feature.txt
-  echo feature-test > feature_test.txt
-  echo junk > notes.md
+  echo feature >feature.txt
+  echo feature-test >feature_test.txt
+  echo junk >notes.md
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt feature_test.txt
   [ "$status" -eq 0 ]
@@ -677,9 +675,9 @@ SH
   # Diff from @-- (base) to @- (feature commit) — main bookmark moved to @-
   # so we can't diff from main anymore.
   run jj diff --from @-- --to @- --name-only
-  [[ "$output" == *"feature.txt"* ]]
-  [[ "$output" == *"feature_test.txt"* ]]
-  [[ "$output" != *"notes.md"* ]]
+  [[ $output == *"feature.txt"* ]]
+  [[ $output == *"feature_test.txt"* ]]
+  [[ $output != *"notes.md"* ]]
 
   # notes.md should be in a separate revision, not in the feature commit
   run jj file show notes.md -r @- 2>&1
@@ -690,15 +688,15 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   jj new main
   jj bookmark create feature -r @
-  echo feature > feature.txt
-  echo feature-test > feature_test.txt
+  echo feature >feature.txt
+  echo feature-test >feature_test.txt
 
   # All changed files passed — no split needed
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt feature_test.txt
@@ -706,76 +704,76 @@ SH
 
   # @- should have both files. Diff from @-- (base) to @- (feature commit).
   run jj diff --from @-- --to @- --name-only
-  [[ "$output" == *"feature.txt"* ]]
-  [[ "$output" == *"feature_test.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
+  [[ $output == *"feature_test.txt"* ]]
 }
 
 @test "jj: commit with no files errors" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
 
   jj new
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"at least one file required"* ]]
+  [[ $output == *"at least one file required"* ]]
 }
 
 @test "jj: commit with a non-dirty file errors" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
 
   jj new
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt nonexistent.txt
   [ "$status" -eq 1 ]
-  [[ "$output" == *"not dirty"* ]]
-  [[ "$output" == *"nonexistent.txt"* ]]
+  [[ $output == *"not dirty"* ]]
+  [[ $output == *"nonexistent.txt"* ]]
 }
 
 @test "jj: commit accepts ./-prefixed paths (no false negative)" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   jj new main
   jj bookmark create feature -r @
-  echo feature > feature.txt
-  echo more >> README.md
+  echo feature >feature.txt
+  echo more >>README.md
 
   # ./ prefix must not cause "not dirty" false negative (#13)
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" ./feature.txt ./README.md
   [ "$status" -eq 0 ]
 
   run jj diff --from @-- --to @- --name-only
-  [[ "$output" == *"feature.txt"* ]]
-  [[ "$output" == *"README.md"* ]]
+  [[ $output == *"feature.txt"* ]]
+  [[ $output == *"README.md"* ]]
 }
 
 @test "jj: commit accepts absolute paths (no false negative)" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   jj new main
   jj bookmark create feature -r @
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   local abs
   abs="$(pwd)/feature.txt"
@@ -789,15 +787,15 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   jj new main
   jj bookmark create feature -r @
-  echo feature > feature.txt
-  echo junk > notes.md
+  echo feature >feature.txt
+  echo junk >notes.md
 
   # Commit feature.txt with ./ prefix while notes.md is also dirty.
   # feature.txt must land in the feature commit, NOT be split as "unrelated".
@@ -806,9 +804,9 @@ SH
 
   # @- is the feature commit; @-- is base. Only feature.txt should be there.
   run jj diff --from @-- --to @- --name-only
-  [[ "$output" == *"feature.txt"* ]]
-  [[ "$output" != *"notes.md"* ]]
-  [[ "$output" != *"README.md"* ]]
+  [[ $output == *"feature.txt"* ]]
+  [[ $output != *"notes.md"* ]]
+  [[ $output != *"README.md"* ]]
 }
 
 # ─── jj diff-range: target @ (issue #4) ──────────────────────────────
@@ -821,26 +819,26 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   jj new main
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   # Work is in @ (uncommitted); @- is main (the base).
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-names
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op new-files
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
 }
 
 @test "jj: diff-range shows committed work in @- (post-commit state, @ empty)" {
@@ -856,16 +854,16 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   # Create a feature bookmark (as the branch step would) so commit moves
   # the feature bookmark, not main.
   jj new main
   jj bookmark create feature -r @
-  echo feature > feature.txt
+  echo feature >feature.txt
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt
   [ "$status" -eq 0 ]
 
@@ -873,24 +871,24 @@ SH
   # diff-range must still show feature.txt via the @ target.
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-range
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feat: add feature"* ]]
+  [[ $output == *"feat: add feature"* ]]
 }
 
 @test "jj: diff-range with unresolvable base exits non-zero" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"nonexistent-ref"}' > .do-results.json
+  echo '{"base":"nonexistent-ref"}' >.do-results.json
 
   jj new main
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
   [ "$status" -ne 0 ]
@@ -901,22 +899,22 @@ SH
 @test "branch rejects unsafe names before invoking git" {
   mk_initial_commit
   mk_remote_fixture
-  echo '{"base":"master"}' > .do-results.json
+  echo '{"base":"master"}' >.do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch '-lead-dash'
   [ "$status" -eq 1 ]
-  [[ "$output" == *"invalid branch name '-lead-dash'"* ]]
+  [[ $output == *"invalid branch name '-lead-dash'"* ]]
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch 'foo;touch-pwned'
   [ "$status" -eq 1 ]
-  [[ "$output" == *"invalid branch name 'foo;touch-pwned'"* ]]
+  [[ $output == *"invalid branch name 'foo;touch-pwned'"* ]]
   ! git show-ref --verify --quiet 'refs/heads/foo;touch-pwned'
 }
 
 @test "default-branch refuses to guess when no verified branch exists" {
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op default-branch
   [ "$status" -eq 1 ]
-  [[ "$output" == *"unable to resolve default branch"* ]]
+  [[ $output == *"unable to resolve default branch"* ]]
 }
 
 @test "jj: branch and read ops use a remote-only base bookmark" {
@@ -925,25 +923,25 @@ SH
   git init -q --bare "$TEST_DIR/remote.git"
   git remote set-url origin "$TEST_DIR/remote.git"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
   jj git push --remote origin --bookmark main
   jj bookmark delete main
   jj git fetch --remote origin
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-remote-base
   [ "$status" -eq 0 ]
-  echo feature > feature.txt
+  echo feature >feature.txt
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: remote base" feature.txt
   [ "$status" -eq 0 ]
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-names
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-range
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feat: remote base"* ]]
+  [[ $output == *"feat: remote base"* ]]
 }
 
 @test "jj: a remote-qualified base resolves the remote-tracking bookmark" {
@@ -952,33 +950,33 @@ SH
   git init -q --bare "$TEST_DIR/remote.git"
   git remote set-url origin "$TEST_DIR/remote.git"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
   jj git push --remote origin --bookmark main
   jj bookmark delete main
   jj git fetch --remote origin
-  echo '{"base":"main@origin"}' > .do-results.json
+  echo '{"base":"main@origin"}' >.do-results.json
 
   jj new
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-names
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
 }
 
 @test "jj: branch keeps picked-up working-copy work on the feature bookmark" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   jj new main
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-picked-up
   [ "$status" -eq 0 ]
@@ -986,7 +984,7 @@ SH
   # The bookmark attaches to the change carrying the picked-up work...
   run jj diff --from main --to feature-picked-up --name-only
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
   # ...the working copy keeps the work, and head-revision sees the branch.
   [ -f feature.txt ]
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision
@@ -998,22 +996,22 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   jj new main
-  echo side > side.txt
+  echo side >side.txt
   jj describe -m "side"
   jj new
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-off-base
   [ "$status" -ne 0 ]
-  [[ "$output" == *"not stacked"* ]]
+  [[ $output == *"not stacked"* ]]
   run jj bookmark list --template 'name ++ "\n"'
-  [[ "$output" != *"feature-off-base"* ]]
+  [[ $output != *"feature-off-base"* ]]
 }
 
 @test "jj: branch refuses when picked-up work sits on the base revision" {
@@ -1022,31 +1020,31 @@ SH
 
   # The base bookmark lands on an undescribed working change: its content is
   # picked-up work sitting on the base revision itself.
-  echo base > README.md
+  echo base >README.md
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-at-base
   [ "$status" -ne 0 ]
-  [[ "$output" == *"base revision"* ]]
+  [[ $output == *"base revision"* ]]
   run jj bookmark list --template 'name ++ "\n"'
-  [[ "$output" != *"feature-at-base"* ]]
+  [[ $output != *"feature-at-base"* ]]
 }
 
 @test "jj: commit preserves workflow state and never retargets trunk" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main","workflow":"state"}' > .do-results.json
+  echo '{"base":"main","workflow":"state"}' >.do-results.json
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-safe-bookmark
   [ "$status" -eq 0 ]
   main_before="$(jj log --revision main --no-graph --template commit_id)"
 
-  echo feature > feature.txt
-  echo unrelated > unrelated.txt
+  echo feature >feature.txt
+  echo unrelated >unrelated.txt
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: keep trunk" feature.txt
   [ "$status" -eq 0 ]
   [ -f .do-results.json ]
@@ -1060,38 +1058,38 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-dash-arguments
   [ "$status" -eq 0 ]
 
-  echo feature > feature.txt
-  echo unrelated > -dash-unrelated
+  echo feature >feature.txt
+  echo unrelated >-dash-unrelated
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "-fix: argument safety" feature.txt
   [ "$status" -eq 0 ]
   run jj log --revision @- --no-graph --template 'description.first_line()'
   [ "$output" = "-fix: argument safety" ]
   run jj diff --from @-- --to @- --name-only
-  [[ "$output" == *"feature.txt"* ]]
-  [[ "$output" != *"-dash-unrelated"* ]]
+  [[ $output == *"feature.txt"* ]]
+  [[ $output != *"-dash-unrelated"* ]]
   run jj diff --name-only
   [ "$status" -eq 0 ]
-  [[ "$output" == *"-dash-unrelated"* ]]
+  [[ $output == *"-dash-unrelated"* ]]
 }
 
 @test "jj: commit refuses an unbookmarked working copy instead of moving trunk" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
   main_before="$(jj log --revision main --no-graph --template commit_id)"
   jj new main
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: must have bookmark" feature.txt
   [ "$status" -eq 1 ]
@@ -1105,7 +1103,7 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
   jj new main
@@ -1114,12 +1112,12 @@ SH
   # The #87 shape: an initialized followup run with no prior base to inherit.
   node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init --from=followup "follow-up run"
 
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: add feature" feature.txt
   [ "$status" -ne 0 ]
-  [[ "$output" == *"workflow state resolved no base"* ]]
-  [[ "$output" == *'op: "set", field: "base"'* ]]
+  [[ $output == *"workflow state resolved no base"* ]]
+  [[ $output == *'op: "set", field: "base"'* ]]
 }
 
 @test "jj: driver init --from=followup keeps the prior base so commit succeeds" {
@@ -1128,7 +1126,7 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
   jj new main
@@ -1145,7 +1143,7 @@ SH
   run jq -r '.base' .do-results.json
   [ "$output" = "main" ]
 
-  echo feature > feature.txt
+  echo feature >feature.txt
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: follow-up" feature.txt
   [ "$status" -eq 0 ]
 }
@@ -1158,26 +1156,26 @@ SH
   git remote remove origin
   git remote add origin "$remote"
 
-  echo base > README.md
+  echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
   jj git push --remote origin --bookmark main
   jj git fetch --remote origin
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op push main
   [ "$status" -eq 1 ]
-  [[ "$output" == *"refusing jj trunk push"* ]]
+  [[ $output == *"refusing jj trunk push"* ]]
   main_before="$(git --git-dir="$remote" rev-parse refs/heads/main)"
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-narrow-push
   [ "$status" -eq 0 ]
-  echo feature > feature.txt
+  echo feature >feature.txt
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: narrow push" feature.txt
   [ "$status" -eq 0 ]
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op push
   [ "$status" -eq 0 ]
-  echo fix >> feature.txt
+  echo fix >>feature.txt
   feature_after_first="$(git --git-dir="$remote" rev-parse refs/heads/feature-narrow-push)"
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op fix-commit "fix: narrow push" feature.txt
   [ "$status" -eq 0 ]
@@ -1205,7 +1203,7 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > base.txt
+  echo base >base.txt
   jj describe -m "base"
   jj new -m "feature"
 
@@ -1215,13 +1213,13 @@ SH
   jj describe -m "base-v2" @- >/dev/null 2>&1
   jj --at-op "$op" describe -m "base-v3" @- >/dev/null 2>&1
   jj bookmark create main -r @- >/dev/null 2>&1
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
-  echo feature > feature.txt
+  echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-names
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
   [ "$status" -eq 0 ]
@@ -1231,7 +1229,7 @@ SH
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op new-files
   [ "$status" -eq 0 ]
-  [[ "$output" == *"feature.txt"* ]]
+  [[ $output == *"feature.txt"* ]]
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-range
   [ "$status" -eq 0 ]
@@ -1241,7 +1239,7 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > base.txt
+  echo base >base.txt
   jj describe -m "base"
   jj new -m "feature"
   jj bookmark create main -r @- >/dev/null 2>&1
@@ -1252,26 +1250,26 @@ SH
   op="$(jj op log --limit 1 --no-graph --template 'id')"
   jj describe -m "base-v2" @- >/dev/null 2>&1
   jj --at-op "$op" describe -m "base-v3" @- >/dev/null 2>&1
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
   [ "$status" -ne 0 ]
-  [[ "$output" == *"is conflicted"* ]]
-  [[ "$output" == *"targets"* ]]
+  [[ $output == *"is conflicted"* ]]
+  [[ $output == *"targets"* ]]
 }
 
 @test "jj: driver set base rejects a change ID that names no bookmark" {
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo base > base.txt
+  echo base >base.txt
   jj describe -m "base"
   change="$(jj log -r @ --no-graph --template 'change_id')"
 
   node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init "task" >/dev/null
   run node "$REPO_ROOT/pure/dist/agency-do.js" do-driver set base "$change"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"does not name a local or selected-remote bookmark"* ]]
+  [[ $output == *"does not name a local or selected-remote bookmark"* ]]
 }
 
 @test "jj: diff-range names an ambiguous merge-base instead of picking one" {
@@ -1280,7 +1278,7 @@ SH
   command -v jj >/dev/null || skip "jj not installed"
   jj git init 2>/dev/null || skip "jj git init failed"
 
-  echo x > x.txt
+  echo x >x.txt
   jj describe -m "x"
   jj bookmark create sx -r @
   jj new 'root()' -m "y"
@@ -1288,9 +1286,9 @@ SH
   jj new sx sy -m "m1"
   jj bookmark create main -r @
   jj new sx sy -m "m2"
-  echo '{"base":"main"}' > .do-results.json
+  echo '{"base":"main"}' >.do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
   [ "$status" -ne 0 ]
-  [[ "$output" == *"is ambiguous"* ]]
+  [[ $output == *"is ambiguous"* ]]
 }

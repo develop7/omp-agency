@@ -88,16 +88,17 @@ type DoneSummary =
 compute :: State.State -> Effect (Either String DoneSummary)
 compute state = do
   now <- Sys.nowIso
-  let firstStarted = case Array.head state.steps of
-        Just step -> step.startedAt
-        Nothing -> case state.pendingStep of
-          Just pending -> pending.startedAt
-          Nothing -> state.startedAt
-      lastCompleted = case state.pendingStep of
-        Just _ -> now
-        Nothing -> case Array.last state.steps of
-          Just step -> step.completedAt
-          Nothing -> state.startedAt
+  let
+    firstStarted = case Array.head state.steps of
+      Just step -> step.startedAt
+      Nothing -> case state.pendingStep of
+        Just pending -> pending.startedAt
+        Nothing -> state.startedAt
+    lastCompleted = case state.pendingStep of
+      Just _ -> now
+      Nothing -> case Array.last state.steps of
+        Just step -> step.completedAt
+        Nothing -> state.startedAt
   totalStart <- Sys.isoToEpoch firstStarted
   totalEnd <- Sys.isoToEpoch lastCompleted
   timedResults <- traverse timedStep state.steps
@@ -107,39 +108,44 @@ compute state = do
     completed <- totalEnd
     timed <- traverse identity timedResults
     pending <- traverse identity pendingResult
-    let totalDuration = max 0 (completed - started)
-        nonSkipped = Array.filter (\item -> item.step.status /= State.StepSkipped) timed
-        durations = map (\item -> Tuple item.step item.seconds) nonSkipped
-        slowest = slowestStep durations
-        dominant = Array.mapMaybe (dominantName totalDuration) durations
-        skipped = map (skippedName <<< _.step) (Array.filter (\item -> item.step.status == State.StepSkipped) timed)
-        failed = map (_.step >>> _.name) (Array.filter (\item -> item.step.status == State.StepFailed) timed)
+    let
+      totalDuration = max 0 (completed - started)
+      nonSkipped = Array.filter (\item -> item.step.status /= State.StepSkipped) timed
+      durations = map (\item -> Tuple item.step item.seconds) nonSkipped
+      slowest = slowestStep durations
+      dominant = Array.mapMaybe (dominantName totalDuration) durations
+      skipped = map (skippedName <<< _.step) (Array.filter (\item -> item.step.status == State.StepSkipped) timed)
+      failed = map (_.step >>> _.name) (Array.filter (\item -> item.step.status == State.StepFailed) timed)
     pure { rows: timed, pending, totalSeconds: totalDuration, slowest, dominant, skipped, failed, jobs: state.jobs }
 
 -- | Render the human-facing markdown table and slowest-step line.
 renderMarkdown :: DoneSummary -> String
 renderMarkdown summary =
-  let completedRows = map (renderTimedRow summary.totalSeconds) summary.rows
-      pendingRows = case summary.pending of
-        Nothing -> []
-        Just pending -> [ "| " <> pending.name <> " | ⋯ | " <> fmtDur pending.seconds <> " | (in progress) |" ]
-      rows = completedRows <> pendingRows
-      table = "| Step | Status | Duration | Verification |\n"
-        <> "|------|--------|----------|--------------|\n"
-        <> joinWith "\n" rows
-        <> (if Array.null rows then "" else "\n")
-        <> "| **Total** | | **" <> fmtDur summary.totalSeconds <> "** | |\n\n"
-      slowLine = case summary.slowest of
-        Nothing -> ""
-        Just (Tuple name seconds) -> "**Slowest step**: `" <> name <> "` (" <> fmtDur seconds <> ")\n"
-      jobsSection =
-        if Array.null summary.jobs then ""
-        else "**Jobs**\n\n"
-          <> "| Job | Name | Step | Started | Deadline | Outcome | Verification |\n"
-          <> "|-----|------|------|---------|----------|---------|--------------|\n"
-          <> joinWith "\n" (map jobRow summary.jobs)
-          <> "\n"
-  in table <> slowLine <> jobsSection <> "\n"
+  let
+    completedRows = map (renderTimedRow summary.totalSeconds) summary.rows
+    pendingRows = case summary.pending of
+      Nothing -> []
+      Just pending -> [ "| " <> pending.name <> " | ⋯ | " <> fmtDur pending.seconds <> " | (in progress) |" ]
+    rows = completedRows <> pendingRows
+    table = "| Step | Status | Duration | Verification |\n"
+      <> "|------|--------|----------|--------------|\n"
+      <> joinWith "\n" rows
+      <> (if Array.null rows then "" else "\n")
+      <> "| **Total** | | **"
+      <> fmtDur summary.totalSeconds
+      <> "** | |\n\n"
+    slowLine = case summary.slowest of
+      Nothing -> ""
+      Just (Tuple name seconds) -> "**Slowest step**: `" <> name <> "` (" <> fmtDur seconds <> ")\n"
+    jobsSection =
+      if Array.null summary.jobs then ""
+      else "**Jobs**\n\n"
+        <> "| Job | Name | Step | Started | Deadline | Outcome | Verification |\n"
+        <> "|-----|------|------|---------|----------|---------|--------------|\n"
+        <> joinWith "\n" (map jobRow summary.jobs)
+        <> "\n"
+  in
+    table <> slowLine <> jobsSection <> "\n"
 
 -- | One ledger row; every caller-supplied cell (id, name, startedAt,
 -- | deadline, verification) is escaped like verifications, so a hand-edited
@@ -148,35 +154,57 @@ renderMarkdown summary =
 jobRow :: State.Job -> String
 jobRow job =
   "| " <> escapeVerification job.id
-    <> " | " <> escapeVerification job.name
-    <> " | " <> job.step
-    <> " | " <> escapeVerification job.startedAt
-    <> " | " <> escapeVerification (fromMaybe "—" job.deadline)
-    <> " | " <> maybe "—" (\finished -> State.renderJobOutcome finished.outcome) job.finished
-    <> " | " <> maybe "" (\finished -> maybe "" escapeVerification finished.verification) job.finished
+    <> " | "
+    <> escapeVerification job.name
+    <> " | "
+    <> job.step
+    <> " | "
+    <> escapeVerification job.startedAt
+    <> " | "
+    <> escapeVerification (fromMaybe "—" job.deadline)
+    <> " | "
+    <> maybe "—" (\finished -> State.renderJobOutcome finished.outcome) job.finished
+    <> " | "
+    <> maybe "" (\finished -> maybe "" escapeVerification finished.verification) job.finished
     <> " |"
 
 -- | Render the machine-readable facts block for the same computed summary.
 renderFacts :: DoneSummary -> String
 renderFacts summary =
-  let slowestName = case summary.slowest of
-        Nothing -> ""
-        Just (Tuple name _) -> name
-      slowestSeconds = case summary.slowest of
-        Nothing -> 0
-        Just (Tuple _ seconds) -> seconds
-      pendingName = case summary.pending of
-        Nothing -> ""
-        Just pending -> pending.name
-  in "\n<<<FACTS\n"
-    <> "totalSeconds=" <> show summary.totalSeconds <> "\n"
-    <> "slowestStep=" <> slowestName <> "\n"
-    <> "slowestSeconds=" <> show slowestSeconds <> "\n"
-    <> "dominantSteps=" <> joinWith "," summary.dominant <> "\n"
-    <> "skippedSteps=" <> joinWith "," summary.skipped <> "\n"
-    <> "failedSteps=" <> joinWith "," summary.failed <> "\n"
-    <> "pendingStep=" <> pendingName <> "\n"
-    <> "FACTS\n"
+  let
+    slowestName = case summary.slowest of
+      Nothing -> ""
+      Just (Tuple name _) -> name
+    slowestSeconds = case summary.slowest of
+      Nothing -> 0
+      Just (Tuple _ seconds) -> seconds
+    pendingName = case summary.pending of
+      Nothing -> ""
+      Just pending -> pending.name
+  in
+    "\n<<<FACTS\n"
+      <> "totalSeconds="
+      <> show summary.totalSeconds
+      <> "\n"
+      <> "slowestStep="
+      <> slowestName
+      <> "\n"
+      <> "slowestSeconds="
+      <> show slowestSeconds
+      <> "\n"
+      <> "dominantSteps="
+      <> joinWith "," summary.dominant
+      <> "\n"
+      <> "skippedSteps="
+      <> joinWith "," summary.skipped
+      <> "\n"
+      <> "failedSteps="
+      <> joinWith "," summary.failed
+      <> "\n"
+      <> "pendingStep="
+      <> pendingName
+      <> "\n"
+      <> "FACTS\n"
 
 -- | Compatibility wrapper for callers that supply an explicit total duration.
 render :: State.State -> Int -> Effect String
@@ -185,8 +213,10 @@ render state totalDuration = do
   pure case summary of
     Left error -> "done: " <> error <> "\n"
     Right value ->
-      let overridden = value { totalSeconds = totalDuration }
-      in renderMarkdown overridden <> renderFacts overridden
+      let
+        overridden = value { totalSeconds = totalDuration }
+      in
+        renderMarkdown overridden <> renderFacts overridden
 
 timedStep :: State.Step -> Effect (Either String DoneRow)
 timedStep step = do
@@ -208,17 +238,19 @@ timedPending now pending = do
 
 renderTimedRow :: Int -> DoneRow -> String
 renderTimedRow totalDuration item =
-  let step = item.step
-      seconds = item.seconds
-      icon = case step.status of
-        State.StepPassed -> "✓"
-        State.StepFailed -> "✗"
-        State.StepSkipped -> "—"
-        State.StepUnknown _ -> "?"
-      bold = step.status /= State.StepSkipped && totalDuration > 0 && (seconds * 100 `div` totalDuration) >= 30
-      durationText = if bold then "**" <> fmtDur seconds <> "**" else fmtDur seconds
-      verification = escapeVerification step.verification
-  in "| " <> step.name <> " | " <> icon <> " | " <> durationText <> " | " <> verification <> " |"
+  let
+    step = item.step
+    seconds = item.seconds
+    icon = case step.status of
+      State.StepPassed -> "✓"
+      State.StepFailed -> "✗"
+      State.StepSkipped -> "—"
+      State.StepUnknown _ -> "?"
+    bold = step.status /= State.StepSkipped && totalDuration > 0 && (seconds * 100 `div` totalDuration) >= 30
+    durationText = if bold then "**" <> fmtDur seconds <> "**" else fmtDur seconds
+    verification = escapeVerification step.verification
+  in
+    "| " <> step.name <> " | " <> icon <> " | " <> durationText <> " | " <> verification <> " |"
 
 slowestStep :: Array (Tuple State.Step Int) -> Maybe (Tuple String Int)
 slowestStep values = go values Nothing
@@ -226,10 +258,12 @@ slowestStep values = go values Nothing
   go remaining best = case Array.uncons remaining of
     Nothing -> best
     Just { head: Tuple step seconds, tail } ->
-      let next = case best of
-            Nothing -> Just (Tuple step.name seconds)
-            Just (Tuple name current) -> if seconds > current then Just (Tuple step.name seconds) else Just (Tuple name current)
-      in go tail next
+      let
+        next = case best of
+          Nothing -> Just (Tuple step.name seconds)
+          Just (Tuple name current) -> if seconds > current then Just (Tuple step.name seconds) else Just (Tuple name current)
+      in
+        go tail next
 
 dominantName :: Int -> Tuple State.Step Int -> Maybe String
 dominantName totalDuration (Tuple step seconds) =
@@ -240,27 +274,37 @@ skippedName step = step.name <> ":" <> fromMaybe "unspecified" step.reason
 
 fmtDur :: Int -> String
 fmtDur seconds = if seconds < 60 then show seconds <> "s" else show (seconds `div` 60) <> "m " <> show (seconds `mod` 60) <> "s"
+
 summaryValue :: State.State -> DoneSummary -> Json
 summaryValue state summary = objectValue
-  [ Tuple "workflow" (objectValue
-      [ Tuple "workflow" (fromString state.workflow)
-      , Tuple "startedAt" (fromString state.startedAt)
-      , Tuple "active" (fromString (State.renderActiveStatus state.active))
-      , Tuple "status" (fromString (State.renderWorkflowStatus state.status))
-      ])
+  [ Tuple "workflow"
+      ( objectValue
+          [ Tuple "workflow" (fromString state.workflow)
+          , Tuple "startedAt" (fromString state.startedAt)
+          , Tuple "active" (fromString (State.renderActiveStatus state.active))
+          , Tuple "status" (fromString (State.renderWorkflowStatus state.status))
+          ]
+      )
   , Tuple "steps" (fromArray (map rowValue summary.rows))
-  , Tuple "pendingStep" (case summary.pending of
-      Nothing -> jsonNull
-      Just pending -> objectValue
-        [ Tuple "name" (fromString pending.name)
-        , Tuple "seconds" (numberValue pending.seconds)
-        ])
+  , Tuple "pendingStep"
+      ( case summary.pending of
+          Nothing -> jsonNull
+          Just pending -> objectValue
+            [ Tuple "name" (fromString pending.name)
+            , Tuple "seconds" (numberValue pending.seconds)
+            ]
+      )
   , Tuple "jobs" (fromArray (map State.jobJson summary.jobs))
   , Tuple "totalSeconds" (numberValue summary.totalSeconds)
-  , Tuple "slowest" (maybe jsonNull (\(Tuple name seconds) -> objectValue
-      [ Tuple "name" (fromString name)
-      , Tuple "seconds" (numberValue seconds)
-      ]) summary.slowest)
+  , Tuple "slowest"
+      ( maybe jsonNull
+          ( \(Tuple name seconds) -> objectValue
+              [ Tuple "name" (fromString name)
+              , Tuple "seconds" (numberValue seconds)
+              ]
+          )
+          summary.slowest
+      )
   , Tuple "dominantSteps" (stringArray summary.dominant)
   , Tuple "skippedSteps" (stringArray summary.skipped)
   , Tuple "failedSteps" (stringArray summary.failed)
@@ -277,7 +321,6 @@ rowValue row = objectValue
     ] <> maybe [] (\reason -> [ Tuple "reason" (fromString reason) ]) row.step.reason
   )
 
-
 objectValue :: Array (Tuple String Json) -> Json
 objectValue fields = fromObject (Obj.fromFoldable fields)
 
@@ -289,7 +332,6 @@ stringArray = fromArray <<< map fromString
 
 escapeVerification :: String -> String
 escapeVerification value = replaceAll (Pattern "|") (Replacement "\\|") (replaceAll (Pattern "\n") (Replacement " ") value)
-
 
 failText :: String -> Outcome.OpOutcome
 failText message = Outcome.failure 1 (message <> "\n")

@@ -7,7 +7,7 @@
 use nickel_lang_core::{
     cache::{CacheHub, InputFormat, SourcePath},
     error::NullReporter,
-    eval::{cache::CacheImpl, value::NickelValue, VmContext, VirtualMachine},
+    eval::{cache::CacheImpl, value::NickelValue, VirtualMachine, VmContext},
     serialize::{to_string, ExportFormat},
 };
 use serde::{Deserialize, Serialize};
@@ -56,12 +56,10 @@ pub struct WorkflowResult {
 pub fn eval_workflow(req: JsValue) -> JsValue {
     let result = serde_wasm_bindgen::from_value(req)
         .map(evaluate_workflow)
-        .unwrap_or_else(|error| {
-            WorkflowResult {
-                exit: 1,
-                stdout: String::new(),
-                stderr: format!("Request parsing failed: {}", error),
-            }
+        .unwrap_or_else(|error| WorkflowResult {
+            exit: 1,
+            stdout: String::new(),
+            stderr: format!("Request parsing failed: {}", error),
         });
     serde_wasm_bindgen::to_value(&result).unwrap()
 }
@@ -317,5 +315,3 @@ mod tests {
         );
     }
 }
-
-

@@ -74,6 +74,16 @@ jobs:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop --accept-flake-config -c just lint-skills
 
+  fmt:
+    name: Format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop --accept-flake-config -c just fmt-check
+
   runtime-check:
     name: Runtime package
     runs-on: ubuntu-latest
@@ -92,7 +102,7 @@ jobs:
   publish:
     name: Publish runtime
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, lint, lint-workflows, lint-skills, runtime-check]
+    needs: [test, lint, lint-workflows, lint-skills, fmt, runtime-check]
     runs-on: ubuntu-latest
     permissions:
       contents: write

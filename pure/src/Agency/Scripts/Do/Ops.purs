@@ -84,6 +84,7 @@ data DriverOp
   | DriverSummary
   | DriverJobStart { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int }
   | DriverJobEnd { id :: String, outcome :: State.JobOutcome, verification :: Maybe String }
+
 -- | Parsed sync options. The parser enforces that noVcs, base, and stack
 -- | combinations are valid; callers constructing this type directly bypass
 -- | that boundary by design.
@@ -195,10 +196,15 @@ parseDriverInit args = go args { review: false, noVcs: false, minimal: false, re
   go remaining state = case Array.uncons remaining of
     Nothing ->
       if state.review && state.from /= "" && state.from /= "default" then
-        Left (parseError 2
-          ("do-driver: --review is incompatible with --from=" <> state.from <> "\n"
-            <> "         --from=" <> state.from <> " starts past research, where the plan-approval pause lives.\n"
-            <> "         drop --review if the plan is already approved, or drop --from for a full workflow."))
+        Left
+          ( parseError 2
+              ( "do-driver: --review is incompatible with --from=" <> state.from <> "\n"
+                  <> "         --from="
+                  <> state.from
+                  <> " starts past research, where the plan-approval pause lives.\n"
+                  <> "         drop --review if the plan is already approved, or drop --from for a full workflow."
+              )
+          )
       else Right (DriverInit state)
     Just { head: arg, tail: after } -> case arg of
       "--review" -> go after (state { review = true })
@@ -213,7 +219,8 @@ parseDriverInit args = go args { review: false, noVcs: false, minimal: false, re
           go after (state { from = from })
         Nothing -> Left (parseError 2 "do-driver: --from requires a non-empty step")
       _ | Args.startsWith "--" arg -> Left (parseError 2 ("do-driver: unknown flag: " <> arg))
-      _ | state.task /= "" -> Left (parseError 2 ("do-driver: multiple task arguments given (already have '" <> state.task <> "')"))
+      _
+        | state.task /= "" -> Left (parseError 2 ("do-driver: multiple task arguments given (already have '" <> state.task <> "')"))
         | otherwise -> go after (state { task = arg })
 
 parseJobStart :: Array String -> Either ParseError DriverOp
@@ -312,6 +319,7 @@ parseBoolean value = case value of
   "true" -> Just true
   "false" -> Just false
   _ -> Nothing
+
 parseDoneOp :: Array String -> Either ParseError DoneOp
 parseDoneOp args =
   if Array.null args then Right Done
@@ -369,20 +377,21 @@ resolveWorkflowContext captureOutput allowCorruptState = do
     _ -> do
       jjPresent <- Sys.isDir (root <> "/.jj")
       gitPresent <- Sys.isDir (root <> "/.git")
-      let state = case stateResult of
-            Left _ -> Nothing
-            Right value -> value
-          stateVcs = state >>= Args.nonEmpty <<< State.stateGet "vcs"
-          stateForge = state >>= Args.nonEmpty <<< State.stateGet "forge"
-          vcsOverride = case stateVcs of
-            Just _ -> Nothing
-            Nothing -> Args.nonEmpty vcsOverrideText
-          forgeOverride = case stateForge of
-            Just _ -> Nothing
-            Nothing -> Args.nonEmpty forgeOverrideText
-          base = state >>= Args.nonEmpty <<< State.stateGet "base"
-          vcs = Vcs.detectVcs vcsOverride stateVcs jjPresent gitPresent
-          partial = { stateDir: root, vcs, forge: Forge.Unknown, base, vcsOverride, forgeOverride, captureOutput }
+      let
+        state = case stateResult of
+          Left _ -> Nothing
+          Right value -> value
+        stateVcs = state >>= Args.nonEmpty <<< State.stateGet "vcs"
+        stateForge = state >>= Args.nonEmpty <<< State.stateGet "forge"
+        vcsOverride = case stateVcs of
+          Just _ -> Nothing
+          Nothing -> Args.nonEmpty vcsOverrideText
+        forgeOverride = case stateForge of
+          Just _ -> Nothing
+          Nothing -> Args.nonEmpty forgeOverrideText
+        base = state >>= Args.nonEmpty <<< State.stateGet "base"
+        vcs = Vcs.detectVcs vcsOverride stateVcs jjPresent gitPresent
+        partial = { stateDir: root, vcs, forge: Forge.Unknown, base, vcsOverride, forgeOverride, captureOutput }
       remote <- Vcs.remoteUrlValue partial
       let forge = Forge.detectForge forgeOverride stateForge remote
       pure (Right (partial { forge = forge }))
@@ -392,6 +401,7 @@ allowsCorruptState :: DriverOp -> Boolean
 allowsCorruptState operation = case operation of
   DriverInit options -> options.restart
   _ -> false
+
 -- | Dispatch parsed result commands under one exclusive state transition.
 runResultsOp :: WorkflowContext -> ResultsOp -> Effect Outcome.OpOutcome
 runResultsOp context operation =
@@ -427,7 +437,6 @@ withMutationLock context action = do
   pure case result of
     Left error -> Outcome.failure 1 (error <> "\n")
     Right outcome -> outcome
-
 
 -- | Delegate done reporting and rendering.
 runDoneOp :: WorkflowContext -> DoneOp -> Effect Outcome.OpOutcome

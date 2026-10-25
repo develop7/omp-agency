@@ -43,9 +43,10 @@ import Foreign.Object as Obj
 runInit :: WorkflowContext -> Effect Outcome.OpOutcome
 runInit context = do
   existing <- State.readState (Context.statePath context)
-  let blocking = case existing of
-        Right (Just state) -> State.unfinishedJobs state
-        _ -> []
+  let
+    blocking = case existing of
+      Right (Just state) -> State.unfinishedJobs state
+      _ -> []
   case blocking of
     [] -> do
       timestamp <- Sys.nowIso
@@ -59,8 +60,9 @@ runStepStart context name = withLoadedState context \state -> case state.pending
   Just pending -> pure (failText ("do-results: pendingStep '" <> pending.name <> "' already active — call step-end before starting '" <> name <> "'"))
   Nothing -> do
     timestamp <- Sys.nowIso
-    let pending = { name, startedAt: timestamp }
-        updated = State.startPending pending state
+    let
+      pending = { name, startedAt: timestamp }
+      updated = State.startPending pending state
     State.writeState (Context.statePath context) updated
     pure
       ( Outcome.withValue (objectValue [ Tuple "pendingStep" (fromMaybeJson (State.stateGetJson "pendingStep" updated)) ]) $
@@ -86,7 +88,8 @@ unfinishedJobBlocker operation stepName state =
     blocking =
       if stepName == "done" then open
       else Array.filter (\job -> job.step == stepName) open
-  in if Array.null blocking then Nothing
+  in
+    if Array.null blocking then Nothing
     else
       Just
         ( "do-results: unfinished job(s) block " <> operation <> " for '" <> stepName <> "': "
@@ -160,17 +163,18 @@ runJobStart context input = withLoadedState context \state -> do
   case deadline of
     Left error -> pure (failText ("do-driver: " <> error))
     Right limit -> do
-      let job =
-            { id: input.id
-            , name: input.name
-            , step: input.step
-            , startedAt: started
-            , deadline: limit
-            , finished: Nothing
-            }
-          deadlineText = case limit of
-            Nothing -> ""
-            Just value -> " deadline=" <> value
+      let
+        job =
+          { id: input.id
+          , name: input.name
+          , step: input.step
+          , startedAt: started
+          , deadline: limit
+          , finished: Nothing
+          }
+        deadlineText = case limit of
+          Nothing -> ""
+          Just value -> " deadline=" <> value
       case State.appendJob job state of
         Left error -> pure (failText error)
         Right appended -> do
@@ -221,10 +225,11 @@ runJobEnd context input = withLoadedState context \state -> do
 runSet :: WorkflowContext -> String -> String -> Effect Outcome.OpOutcome
 runSet context field value = withLoadedState context \state -> do
   valid <- validateSetValue context field value
-  let updated = do
-        _ <- valid
-        json <- jsonValueFor field value
-        State.setField field json state
+  let
+    updated = do
+      _ <- valid
+      json <- jsonValueFor field value
+      State.setField field json state
   case updated of
     Left error -> pure (failText error)
     Right final -> do
@@ -255,37 +260,38 @@ runDriverInit context options = do
       -- --restart keeps unfinished worker jobs so a recovered run resumes the
       -- same liveness ledger; a plain init discards them with everything else
       -- from the prior run.
-      let carriedJobs = case existing of
-            Right (Just prior) | options.restart -> State.unfinishedJobs prior
-            _ -> []
-          base = (State.initState timestamp) { jobs = carriedJobs }
-          vcsDetected = Vcs.vcsName context.vcs /= "unknown"
-          isDefaultEntry = options.from == "" || options.from == "default"
-          -- A prior base is inherited only when it names a ref. Absent, empty,
-          -- or non-string values (hand-corrupted state) stay unset deliberately:
-          -- the run proceeds and the missing-base diagnostic names the remedy
-          -- rather than failing init over state it can continue without.
-          priorBase = case existing of
-            Right (Just prior) -> State.stateGetJson "base" prior >>= toString >>= Args.nonEmpty
-            _ -> Nothing
-          initialized = do
-            withNoVcs <- State.setField "noVcs" (fromBoolean options.noVcs) base
-            withReview <- State.setField "review" (fromBoolean options.review) withNoVcs
-            withMinimal <- State.setField "minimal" (fromBoolean options.minimal) withReview
-            withVcs <- if not vcsDetected then Right withMinimal else State.setField "vcs" (fromString (Vcs.vcsName context.vcs)) withMinimal
-            withForge <- State.setField "forge" (fromString (Forge.forgeName context.forge)) withVcs
-            withCapabilities <- putCapabilities context.forge withForge
-            -- Runs that never persist a base (their entry point starts past
-            -- sync) carry the prior run's resolved base forward so downstream
-            -- VCS ops can protect the trunk (#87). The no-vcs sentinel names
-            -- no ref and stays behind with --no-vcs runs.
-            withBase <-
-              if options.noVcs || not vcsDetected || isDefaultEntry then Right withCapabilities
-              else case priorBase of
-                Just prior | prior /= State.noVcsBaseValue -> State.setField "base" (fromString prior) withCapabilities
-                _ -> Right withCapabilities
-            withFrom <- if options.from == "" then Right withBase else State.setField "from" (fromString options.from) withBase
-            if options.task == "" then Right withFrom else State.setField "task" (fromString options.task) withFrom
+      let
+        carriedJobs = case existing of
+          Right (Just prior) | options.restart -> State.unfinishedJobs prior
+          _ -> []
+        base = (State.initState timestamp) { jobs = carriedJobs }
+        vcsDetected = Vcs.vcsName context.vcs /= "unknown"
+        isDefaultEntry = options.from == "" || options.from == "default"
+        -- A prior base is inherited only when it names a ref. Absent, empty,
+        -- or non-string values (hand-corrupted state) stay unset deliberately:
+        -- the run proceeds and the missing-base diagnostic names the remedy
+        -- rather than failing init over state it can continue without.
+        priorBase = case existing of
+          Right (Just prior) -> State.stateGetJson "base" prior >>= toString >>= Args.nonEmpty
+          _ -> Nothing
+        initialized = do
+          withNoVcs <- State.setField "noVcs" (fromBoolean options.noVcs) base
+          withReview <- State.setField "review" (fromBoolean options.review) withNoVcs
+          withMinimal <- State.setField "minimal" (fromBoolean options.minimal) withReview
+          withVcs <- if not vcsDetected then Right withMinimal else State.setField "vcs" (fromString (Vcs.vcsName context.vcs)) withMinimal
+          withForge <- State.setField "forge" (fromString (Forge.forgeName context.forge)) withVcs
+          withCapabilities <- putCapabilities context.forge withForge
+          -- Runs that never persist a base (their entry point starts past
+          -- sync) carry the prior run's resolved base forward so downstream
+          -- VCS ops can protect the trunk (#87). The no-vcs sentinel names
+          -- no ref and stays behind with --no-vcs runs.
+          withBase <-
+            if options.noVcs || not vcsDetected || isDefaultEntry then Right withCapabilities
+            else case priorBase of
+              Just prior | prior /= State.noVcsBaseValue -> State.setField "base" (fromString prior) withCapabilities
+              _ -> Right withCapabilities
+          withFrom <- if options.from == "" then Right withBase else State.setField "from" (fromString options.from) withBase
+          if options.task == "" then Right withFrom else State.setField "task" (fromString options.task) withFrom
       case initialized of
         Left error -> pure (failText error)
         Right final -> do
@@ -377,8 +383,14 @@ isActiveRun state =
 
 booleanFields :: Array String
 booleanFields =
-  [ "review", "noVcs", "minimal", "hasEvidence"
-  , "supportsPrCreate", "supportsPrComment", "supportsIssueView", "supportsPrChecks"
+  [ "review"
+  , "noVcs"
+  , "minimal"
+  , "hasEvidence"
+  , "supportsPrCreate"
+  , "supportsPrComment"
+  , "supportsIssueView"
+  , "supportsPrChecks"
   , "requireRemote"
   ]
 
@@ -403,9 +415,10 @@ recordedStepValue state =
     step = case recorded of
       Nothing -> jsonNull
       Just value -> State.stepJson value
-  in objectValue
-    [ Tuple "step" step
-    , Tuple "steps" (fromNumber (Int.toNumber (Array.length state.steps)))
-    , Tuple "pendingStep" (fromMaybeJson (State.stateGetJson "pendingStep" state))
-    ]
+  in
+    objectValue
+      [ Tuple "step" step
+      , Tuple "steps" (fromNumber (Int.toNumber (Array.length state.steps)))
+      , Tuple "pendingStep" (fromMaybeJson (State.stateGetJson "pendingStep" state))
+      ]
 

@@ -25,7 +25,7 @@ setup_test_dir() {
   # as dirty.
   local jj_home
   jj_home="$(mktemp -d)"
-  cat > "$jj_home/jjconfig.toml" <<'TOML'
+  cat >"$jj_home/jjconfig.toml" <<'TOML'
 [user]
 name = "Bats Fixture"
 email = "bats-fixture@example.com"

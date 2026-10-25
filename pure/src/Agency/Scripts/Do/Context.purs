@@ -11,6 +11,7 @@ import Data.Maybe (Maybe)
 
 import Agency.Scripts.Do.ForgeKind as ForgeKind
 import Agency.Scripts.Do.VcsKind as VcsKind
+
 -- | Immutable capabilities and resolved inputs shared by one workflow run.
 -- | Resolution happens in the adapter; providers only consume this value.
 -- | captureOutput controls subprocess providers; the Nickel bridge always

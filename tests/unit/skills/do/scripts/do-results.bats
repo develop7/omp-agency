@@ -40,7 +40,7 @@ run_dr() {
 @test "init echoes confirmation with startedAt timestamp" {
   run_dr init
   [ "$status" -eq 0 ]
-  [[ "$output" =~ ^init:\ startedAt=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+  [[ $output =~ ^init:\ startedAt=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
 # Helper: run do-driver — the command that creates live jobs, used here to
@@ -58,8 +58,8 @@ run_dd() {
 
   run_dr init
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unfinished job(s) block init"* ]]
-  [[ "$output" == *"'j1'"* ]]
+  [[ $output == *"unfinished job(s) block init"* ]]
+  [[ $output == *"'j1'"* ]]
   cmp .do-results.json before-init.json
 }
 
@@ -84,7 +84,7 @@ run_dd() {
   run_dr step-start research
   run_dr step-start implement
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "pendingStep 'research' already active" ]]
+  [[ $output =~ "pendingStep 'research' already active" ]]
 }
 
 @test "step-end appends to steps and clears pendingStep" {
@@ -114,7 +114,7 @@ run_dd() {
   run_dr step-start research
   run_dr step-end passed "ok"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ ^recorded:\ research\ passed\ \(steps=1,\ pending=none\)$ ]]
+  [[ $output =~ ^recorded:\ research\ passed\ \(steps=1,\ pending=none\)$ ]]
 }
 
 @test "step-end with reason includes it in the record" {
@@ -136,7 +136,7 @@ run_dd() {
 
   run_dr step-end skipped ""
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "reason required for skipped" ]]
+  [[ $output =~ "reason required for skipped" ]]
 
   cmp .do-results.json before.json
   run jq -e '.pendingStep.name == "evidence"' .do-results.json
@@ -174,7 +174,7 @@ run_dd() {
   run_dr init
   run_dr step-end passed "ok"
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "no pendingStep" ]]
+  [[ $output =~ "no pendingStep" ]]
 }
 
 @test "step appends with explicit timestamps" {
@@ -192,7 +192,7 @@ run_dd() {
 @test "step echoes recorded confirmation" {
   run_dr init
   run_dr step research passed "ok" "2024-01-01T00:00:00Z" "2024-01-01T00:01:00Z"
-  [[ "$output" =~ ^recorded:\ research\ passed\ \(steps=1\)$ ]]
+  [[ $output =~ ^recorded:\ research\ passed\ \(steps=1\)$ ]]
 }
 
 @test "step resolves 'now' sentinel to current UTC timestamp" {
@@ -205,7 +205,7 @@ run_dd() {
 
   # Should match ISO 8601 UTC format
   run jq -r '.steps[0].startedAt' .do-results.json
-  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+  [[ $output =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
 @test "set with string value" {
@@ -245,7 +245,7 @@ run_dd() {
 @test "unknown command errors with usage" {
   run_dr frobnicate
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "Unknown command: frobnicate" ]]
+  [[ $output =~ "Unknown command: frobnicate" ]]
 }
 
 @test "multiple step lifecycle produces ordered steps array" {

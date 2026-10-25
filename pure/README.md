@@ -83,4 +83,3 @@ The OMP custom-tool contract is the second ES module bundle. `src/agency-tools.t
 lazily imports `pure/dist/agency-api.js`, sends `{ tool, args, captureOutput: true }`,
 and turns the returned output into the model-visible tool result. `just build`
 regenerates both bundles; they are build outputs and are not committed.
-

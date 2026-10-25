@@ -62,7 +62,8 @@ runAgencyDriver request = case Array.uncons request.args of
   Nothing -> pure (failureResult 1 agencyDriverUsage)
   Just { head: operation, tail: operands } -> case operation of
     "sync" -> dispatchWith (const false) Ops.parseSyncOp Ops.runSyncOp operands
-    _ | Array.elem operation resultsOperationNames -> dispatchResults operation operands
+    _
+      | Array.elem operation resultsOperationNames -> dispatchResults operation operands
       | Array.elem operation driverOperationNames -> dispatchDriver operation operands
       | otherwise -> pure (failureResult 1 agencyDriverUsage)
   where
@@ -70,18 +71,19 @@ runAgencyDriver request = case Array.uncons request.args of
     dispatchWith (const false) Ops.parseResultsOp Ops.runResultsOp (Array.cons operation operands)
   dispatchDriver operation operands =
     dispatchWith Ops.allowsCorruptState Ops.parseDriverOp Ops.runDriverOp (Array.cons operation operands)
+
   dispatchWith :: forall op. (op -> Boolean) -> (Array String -> Either Ops.ParseError op) -> (Context.WorkflowContext -> op -> Effect Outcome.OpOutcome) -> Array String -> Effect ToolResult
   dispatchWith allowCorruptState parser runner args =
     runParsedWith request.captureOutput allowCorruptState (parser args) runner
 
 resultsOperationNames :: Array String
-resultsOperationNames = ["step-start", "step-end", "step"]
+resultsOperationNames = [ "step-start", "step-end", "step" ]
 
 driverOperationNames :: Array String
 driverOperationNames = Ops.driverOperationNames
 
 agencyDriverUsage :: String
-agencyDriverUsage = "agency_driver: operation required (" <> joinWith "|" (driverOperationNames <> ["sync"] <> resultsOperationNames) <> ")"
+agencyDriverUsage = "agency_driver: operation required (" <> joinWith "|" (driverOperationNames <> [ "sync" ] <> resultsOperationNames) <> ")"
 
 parseVcsRead :: Array String -> Either String Vcs.VcsOp
 parseVcsRead args = case Vcs.parseVcsOp args of

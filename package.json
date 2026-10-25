@@ -13,7 +13,8 @@
     ]
   },
   "devDependencies": {
-    "@oh-my-pi/omptype": "18.12.6"
+    "@oh-my-pi/omptype": "18.12.6",
+    "purs-tidy": "0.11.1"
   },
   "dependencies": {
     "wrap-ansi": "10.0.2"

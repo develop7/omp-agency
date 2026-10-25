@@ -48,6 +48,7 @@ module Agency.Scripts.Do.State
   , finishPending
   , finishWorkflow
   ) where
+
 import Prelude
 
 import Data.Argonaut.Core (Json, fromArray, fromObject, fromString, toArray, toObject, toString)
@@ -411,7 +412,8 @@ validJob job = do
       | finished.finishedAt < job.startedAt ->
           Left
             ( "state: job '" <> job.id <> "' finishedAt '" <> finished.finishedAt
-                <> "' precedes startedAt '" <> job.startedAt
+                <> "' precedes startedAt '"
+                <> job.startedAt
                 <> "'"
             )
       | otherwise -> Right unit
@@ -461,15 +463,17 @@ parseState source = do
         parsedJobs <- traverse parseJob boundedValues
         validateUnfinishedIds parsedJobs
         pure parsedJobs
-  let extras =
-        foldl
-          (\acc key ->
+  let
+    extras =
+      foldl
+        ( \acc key ->
             if any (\known -> known == key) knownKeys then acc
             else case Obj.lookup key object of
               Just value -> Map.insert key value acc
-              Nothing -> acc)
-          Map.empty
-          (Obj.keys object)
+              Nothing -> acc
+        )
+        Map.empty
+        (Obj.keys object)
   pure
     { workflow
     , startedAt
@@ -493,17 +497,19 @@ stepJson step =
         , Tuple "startedAt" (fromString step.startedAt)
         , Tuple "completedAt" (fromString step.completedAt)
         ]
-  in case step.reason of
-    Nothing -> fromObject base
-    Just reason -> fromObject (Obj.insert "reason" (fromString reason) base)
+  in
+    case step.reason of
+      Nothing -> fromObject base
+      Just reason -> fromObject (Obj.insert "reason" (fromString reason) base)
 
 pendingJson :: PendingStep -> Json
 pendingJson pending =
   fromObject
-    (Obj.fromFoldable
-      [ Tuple "name" (fromString pending.name)
-      , Tuple "startedAt" (fromString pending.startedAt)
-      ])
+    ( Obj.fromFoldable
+        [ Tuple "name" (fromString pending.name)
+        , Tuple "startedAt" (fromString pending.startedAt)
+        ]
+    )
 
 -- | Canonical job result, including its completion evidence when present.
 jobJson :: Job -> Json
@@ -519,15 +525,17 @@ jobJson job =
     withDeadline = case job.deadline of
       Nothing -> base
       Just deadline -> Obj.insert "deadline" (fromString deadline) base
-  in case job.finished of
-    Nothing -> fromObject withDeadline
-    Just finished ->
-      let
-        withFinishedAt = Obj.insert "finishedAt" (fromString finished.finishedAt) withDeadline
-        withOutcome = Obj.insert "outcome" (fromString (renderJobOutcome finished.outcome)) withFinishedAt
-      in case finished.verification of
-        Nothing -> fromObject withOutcome
-        Just verification -> fromObject (Obj.insert "verification" (fromString verification) withOutcome)
+  in
+    case job.finished of
+      Nothing -> fromObject withDeadline
+      Just finished ->
+        let
+          withFinishedAt = Obj.insert "finishedAt" (fromString finished.finishedAt) withDeadline
+          withOutcome = Obj.insert "outcome" (fromString (renderJobOutcome finished.outcome)) withFinishedAt
+        in
+          case finished.verification of
+            Nothing -> fromObject withOutcome
+            Just verification -> fromObject (Obj.insert "verification" (fromString verification) withOutcome)
 
 -- | Serialize the canonical state value for the persisted file.
 stringifyState :: State -> String
@@ -554,7 +562,8 @@ encodeState state =
       else withPending <> [ Tuple "jobs" (fromArray (map jobJson state.jobs)) ]
     extras =
       Array.sortWith fst (Map.toUnfoldable state.extras :: Array (Tuple String Json))
-  in fromObject (Obj.fromFoldable (withJobs <> extras))
+  in
+    fromObject (Obj.fromFoldable (withJobs <> extras))
 
 stateGetJson :: String -> State -> Maybe Json
 stateGetJson key state =
@@ -674,8 +683,10 @@ jobIdList jobs = joinWith ", " (map (\job -> "'" <> job.id <> "'") jobs)
 -- | empty; honest abort (`failed`) and in-flight transitions stay open.
 completionClaim :: String -> String -> State -> Either String Unit
 completionClaim key value state =
-  let blocking = unfinishedJobs state
-  in if Array.null blocking then Right unit
+  let
+    blocking = unfinishedJobs state
+  in
+    if Array.null blocking then Right unit
     else
       Left
         ( "state: unfinished job(s) block set " <> key <> "=" <> value <> ": "
@@ -727,10 +738,12 @@ appendJob job state = do
   if any (unfinishedJobWithId job.id) state.jobs then
     Left ("state: job '" <> job.id <> "' already running")
   else if Array.length state.jobs >= maxPersistedJobs then
-    let room = makeJobRoom state.jobs in
-    if Array.length room >= maxPersistedJobs then
-      Left (jobLimitError "reached")
-    else Right (state { jobs = room <> [ job ] })
+    let
+      room = makeJobRoom state.jobs
+    in
+      if Array.length room >= maxPersistedJobs then
+        Left (jobLimitError "reached")
+      else Right (state { jobs = room <> [ job ] })
   else Right (state { jobs = state.jobs <> [ job ] })
 
 -- | The ledger with its oldest finished entries dropped until it fits below
@@ -782,7 +795,8 @@ resolveJob jobId outcome verification completedAt state =
           finishedAt = if finishNeedsClamp job completedAt then job.startedAt else completedAt
           resolve job' =
             job' { finished = Just { finishedAt, outcome, verification } }
-        in Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
+        in
+          Right (state { jobs = fromMaybe state.jobs (Array.modifyAt index resolve state.jobs) })
 
 startPending :: PendingStep -> State -> State
 startPending pending state = state { pendingStep = Just pending }
@@ -816,14 +830,16 @@ withStateLock path action = do
   acquired <- try (FSSync.mkdir lockPath)
   case acquired of
     Left error ->
-      let systemError = unsafeCoerce error
-      in pure
-        ( Left
-            ( if SystemError.code systemError == "EEXIST" then
-                "state: lock '" <> lockPath <> "' already exists; another state mutation is running, or it is stale after a crash — remove the lock explicitly after confirming no mutation is active"
-              else "state: unable to acquire lock '" <> lockPath <> "': " <> SystemError.message systemError
-            )
-        )
+      let
+        systemError = unsafeCoerce error
+      in
+        pure
+          ( Left
+              ( if SystemError.code systemError == "EEXIST" then
+                  "state: lock '" <> lockPath <> "' already exists; another state mutation is running, or it is stale after a crash — remove the lock explicitly after confirming no mutation is active"
+                else "state: unable to acquire lock '" <> lockPath <> "': " <> SystemError.message systemError
+              )
+          )
     Right _ -> do
       result <- try action
       released <- try (FSSync.rmdir lockPath)

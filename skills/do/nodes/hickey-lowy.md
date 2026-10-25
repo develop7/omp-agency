@@ -51,7 +51,7 @@ requirements. The brief supplies:
   finding. Restoring a guard the deleted implementation demonstrably had is in scope."
 - **Duplication-audit hint**, when the diff adds new files — check with the `vcs_read` tool using
   `{ op: "new-files" }` and only include the hint if its JSON path array contains entries (`[]` means none): survey the codebase
-  for the canonical in-repo pattern for the same *kind* of operation and flag it as the headline finding
+  for the canonical in-repo pattern for the same _kind_ of operation and flag it as the headline finding
   if the diff reinvents rather than extends it
 
 **Do not seed structural questions** beyond that hint — pre-formed questions ("is module X the right

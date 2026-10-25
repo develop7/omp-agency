@@ -4,6 +4,7 @@ module Agency.Scripts.Do.Args
   , nonEmpty
   , startsWith
   ) where
+
 import Prelude
 
 import Data.Array as Array
@@ -29,5 +30,4 @@ nonEmpty value = if value == "" then Nothing else Just value
 -- | Test a string prefix using the strings package's code-unit primitives.
 startsWith :: String -> String -> Boolean
 startsWith prefix value = take (length prefix) value == prefix
-
 

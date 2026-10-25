@@ -72,8 +72,9 @@ run = do
                     Right finalState -> assert "set unknown field survives load/save" ((State.stateGetJson "newFlag" finalState >>= toBoolean) == Just true)
   cwd <- Sys.cwd
   writeFailureDirectory <- Sys.uniqueTempPath (cwd <> "/.state-write-failure")
-  let writeFailurePath = writeFailureDirectory <> "/.do-results.json"
-      rmOptions = { force: true, maxRetries: 0, recursive: true, retryDelay: 0 }
+  let
+    writeFailurePath = writeFailureDirectory <> "/.do-results.json"
+    rmOptions = { force: true, maxRetries: 0, recursive: true, retryDelay: 0 }
   FSSync.mkdir writeFailureDirectory
   FSSync.mkdir writeFailurePath
   writeFailure <- try (State.writeState writeFailurePath State.emptyState)
@@ -115,50 +116,51 @@ run = do
   assert "boolean fields decode literal true" (map toBoolean (Results.jsonValueFor "review" "true") == Right (Just true))
   let terminal = State.finishWorkflow State.WorkflowCompleted (State.initState "2024-01-01T00:00:00Z")
   assert "terminal success makes the workflow idle" (terminal.active == State.ActiveIdle && terminal.status == State.WorkflowCompleted)
-  let firstStep =
-        { name: "sync"
-        , status: State.StepPassed
-        , verification: "first recorded"
-        , startedAt: "2024-01-01T00:00:00Z"
-        , completedAt: "2024-01-01T00:00:00Z"
-        , reason: Nothing
+  let
+    firstStep =
+      { name: "sync"
+      , status: State.StepPassed
+      , verification: "first recorded"
+      , startedAt: "2024-01-01T00:00:00Z"
+      , completedAt: "2024-01-01T00:00:00Z"
+      , reason: Nothing
+      }
+    middleStep =
+      { name: "research"
+      , status: State.StepPassed
+      , verification: "middle recorded"
+      , startedAt: "2024-01-01T00:00:01Z"
+      , completedAt: "2024-01-01T00:00:01Z"
+      , reason: Nothing
+      }
+    lastStep =
+      { name: "check"
+      , status: State.StepPassed
+      , verification: "last recorded"
+      , startedAt: "2024-01-01T00:00:02Z"
+      , completedAt: "2024-01-01T00:00:02Z"
+      , reason: Nothing
+      }
+    nextStep =
+      { name: "evidence"
+      , status: State.StepPassed
+      , verification: "new record"
+      , startedAt: "2024-01-01T00:00:03Z"
+      , completedAt: "2024-01-01T00:00:03Z"
+      , reason: Nothing
+      }
+    oneBeforeLimit =
+      (State.initState "2024-01-01T00:00:00Z")
+        { steps = [ firstStep ] <> Array.replicate (State.maxPersistedSteps - 2) middleStep
         }
-      middleStep =
-        { name: "research"
-        , status: State.StepPassed
-        , verification: "middle recorded"
-        , startedAt: "2024-01-01T00:00:01Z"
-        , completedAt: "2024-01-01T00:00:01Z"
-        , reason: Nothing
+    fullHistory =
+      oneBeforeLimit
+        { steps = oneBeforeLimit.steps <> [ lastStep ]
         }
-      lastStep =
-        { name: "check"
-        , status: State.StepPassed
-        , verification: "last recorded"
-        , startedAt: "2024-01-01T00:00:02Z"
-        , completedAt: "2024-01-01T00:00:02Z"
-        , reason: Nothing
+    overLimitHistory =
+      fullHistory
+        { steps = fullHistory.steps <> [ nextStep ]
         }
-      nextStep =
-        { name: "evidence"
-        , status: State.StepPassed
-        , verification: "new record"
-        , startedAt: "2024-01-01T00:00:03Z"
-        , completedAt: "2024-01-01T00:00:03Z"
-        , reason: Nothing
-        }
-      oneBeforeLimit =
-        (State.initState "2024-01-01T00:00:00Z")
-          { steps = [ firstStep ] <> Array.replicate (State.maxPersistedSteps - 2) middleStep
-          }
-      fullHistory =
-        oneBeforeLimit
-          { steps = oneBeforeLimit.steps <> [ lastStep ]
-          }
-      overLimitHistory =
-        fullHistory
-          { steps = fullHistory.steps <> [ nextStep ]
-          }
   case State.appendStep nextStep oneBeforeLimit of
     Left error -> do
       Console.error ("FAIL: append below limit: " <> error)
@@ -207,17 +209,18 @@ run = do
       Sys.exit 1
     Right parsed -> assert "parse accepts a skipped step with a reason" (parsed.steps /= [])
   lockDirectory <- Sys.uniqueTempPath (cwd <> "/.state-lock")
-  let lockStatePath = lockDirectory <> "/.do-results.json"
-      lockPath = lockStatePath <> ".lock"
-      lockContext =
-        { stateDir: lockDirectory
-        , vcs: VcsKind.Unknown
-        , forge: ForgeKind.Unknown
-        , base: Nothing
-        , vcsOverride: Nothing
-        , forgeOverride: Nothing
-        , captureOutput: true
-        }
+  let
+    lockStatePath = lockDirectory <> "/.do-results.json"
+    lockPath = lockStatePath <> ".lock"
+    lockContext =
+      { stateDir: lockDirectory
+      , vcs: VcsKind.Unknown
+      , forge: ForgeKind.Unknown
+      , base: Nothing
+      , vcsOverride: Nothing
+      , forgeOverride: Nothing
+      , captureOutput: true
+      }
   FSSync.mkdir lockDirectory
   case State.setField "task" (fromString "original") State.emptyState of
     Left error -> do
@@ -247,25 +250,26 @@ run = do
       case failedRelease of
         Left _ -> assert "state lock releases after a failing action" (not releasedAfterFailure)
         Right _ -> assert "state lock rethrows a failing action" false
-  let fullJob =
-        { id: "police-pass1"
-        , name: "Pass 1 structure review"
-        , step: "police"
-        , startedAt: "2026-10-16T12:00:00Z"
-        , deadline: Just "2026-10-16T12:10:00Z"
-        , finished: Just
-            { finishedAt: "2026-10-16T12:07:41Z"
-            , outcome: State.JobCompleted
-            , verification: Just "reviewed 12 files"
-            }
-        }
-      openJob =
-        fullJob
-          { id = "police-pass2"
-          , name = "Pass 2 detail review"
-          , finished = Nothing
+  let
+    fullJob =
+      { id: "police-pass1"
+      , name: "Pass 1 structure review"
+      , step: "police"
+      , startedAt: "2026-10-16T12:00:00Z"
+      , deadline: Just "2026-10-16T12:10:00Z"
+      , finished: Just
+          { finishedAt: "2026-10-16T12:07:41Z"
+          , outcome: State.JobCompleted
+          , verification: Just "reviewed 12 files"
           }
-      ledgerState = (State.initState "2026-10-16T12:00:00Z") { jobs = [ fullJob, openJob ] }
+      }
+    openJob =
+      fullJob
+        { id = "police-pass2"
+        , name = "Pass 2 detail review"
+        , finished = Nothing
+        }
+    ledgerState = (State.initState "2026-10-16T12:00:00Z") { jobs = [ fullJob, openJob ] }
   assert
     "job entries survive stringify with driver-owned fields"
     ( contains
@@ -321,10 +325,11 @@ run = do
   case State.parseState "{\"jobs\":[{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"bananas\"}]}" of
     Left error -> assert "unknown job outcome is rejected" (error == "state: invalid job outcome 'bananas'")
     Right _ -> assert "unknown job outcome is rejected" false
-  let jobEntry index =
-        "{\"id\":\"job" <> show index <> "\",\"name\":\"Job " <> show index
-          <> "\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"completed\"}"
-      jobsJson indexes = "{\"jobs\":[" <> joinWith "," (map jobEntry indexes) <> "]}"
+  let
+    jobEntry index =
+      "{\"id\":\"job" <> show index <> "\",\"name\":\"Job " <> show index
+        <> "\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"completed\"}"
+    jobsJson indexes = "{\"jobs\":[" <> joinWith "," (map jobEntry indexes) <> "]}"
   case State.parseState (jobsJson (Array.range 0 31)) of
     Left error -> do
       Console.error ("FAIL: ledger at limit: " <> error)
@@ -333,8 +338,9 @@ run = do
   case State.parseState (jobsJson (Array.range 0 32)) of
     Left error -> assert "parse rejects a ledger beyond the limit" (error == "state: job ledger limit (32) exceeded")
     Right _ -> assert "parse rejects a ledger beyond the limit" false
-  let minimalJob = "{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}"
-      finishedJob = "{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"completed\"}"
+  let
+    minimalJob = "{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\"}"
+    finishedJob = "{\"id\":\"a\",\"name\":\"A\",\"step\":\"police\",\"startedAt\":\"2026-10-16T12:00:00Z\",\"finishedAt\":\"2026-10-16T12:01:00Z\",\"outcome\":\"completed\"}"
   case State.parseState ("{\"jobs\":[" <> minimalJob <> "," <> minimalJob <> "]}") of
     Left error -> assert "duplicate unfinished job ids are rejected at parse" (error == "state: duplicate unfinished job id 'a'")
     Right _ -> assert "duplicate unfinished job ids are rejected at parse" false
@@ -372,16 +378,17 @@ run = do
           Sys.exit 1
         Right two -> do
           assert "distinct ids append" (Array.length two.jobs == 2)
-          let finishedFiller =
-                openJob
-                  { id = "done-filler"
-                  , finished = Just
-                      { finishedAt: "2026-10-16T12:05:00Z"
-                      , outcome: State.JobCompleted
-                      , verification: Nothing
-                      }
-                  }
-              atLimit = two { jobs = two.jobs <> Array.replicate (State.maxPersistedJobs - Array.length two.jobs) finishedFiller }
+          let
+            finishedFiller =
+              openJob
+                { id = "done-filler"
+                , finished = Just
+                    { finishedAt: "2026-10-16T12:05:00Z"
+                    , outcome: State.JobCompleted
+                    , verification: Nothing
+                    }
+                }
+            atLimit = two { jobs = two.jobs <> Array.replicate (State.maxPersistedJobs - Array.length two.jobs) finishedFiller }
           assert "limit fixture reaches the bound" (Array.length atLimit.jobs == State.maxPersistedJobs)
           -- A full ledger of finished history yields its oldest entry so
           -- job-start keeps working; live unfinished jobs are never pruned.
@@ -441,9 +448,10 @@ run = do
       Sys.exit 1
     Right (Ops.DriverJobStart options) -> assert "budgetMinutes parses" (options.budgetMinutes == Just 10)
     Right _ -> assert "budgetMinutes parses" false
-  let budgetCase text = case Ops.parseDriverOp [ "job-start", "p1", "Pass", "police", text ] of
-        Left error -> assert ("budgetMinutes rejects " <> text) (error.message == "job-start: budgetMinutes must be an integer between 1 and 120")
-        Right _ -> assert ("budgetMinutes rejects " <> text) false
+  let
+    budgetCase text = case Ops.parseDriverOp [ "job-start", "p1", "Pass", "police", text ] of
+      Left error -> assert ("budgetMinutes rejects " <> text) (error.message == "job-start: budgetMinutes must be an integer between 1 and 120")
+      Right _ -> assert ("budgetMinutes rejects " <> text) false
   budgetCase "0"
   budgetCase "121"
   budgetCase "12.5"

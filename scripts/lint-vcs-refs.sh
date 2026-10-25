@@ -61,8 +61,11 @@ FORGE_PATTERNS=(
 strict=false
 for arg in "$@"; do
   case "$arg" in
-    --strict) strict=true ;;
-    *) echo "lint-vcs-refs: unknown arg: $arg" >&2; exit 2 ;;
+  --strict) strict=true ;;
+  *)
+    echo "lint-vcs-refs: unknown arg: $arg" >&2
+    exit 2
+    ;;
   esac
 done
 
@@ -80,11 +83,11 @@ violations=0
 is_vcs_exempt() {
   [ "$strict" = false ] || return 1
   case "$1" in
-    */do/SKILL.md)            return 0 ;;
-    */talk/SKILL.md)          return 0 ;;
-    */do/nodes/branch.md)    return 0 ;;
-    */do/nodes/sync.md)      return 0 ;;
-    *)                        return 1 ;;
+  */do/SKILL.md) return 0 ;;
+  */talk/SKILL.md) return 0 ;;
+  */do/nodes/branch.md) return 0 ;;
+  */do/nodes/sync.md) return 0 ;;
+  *) return 1 ;;
   esac
 }
 
@@ -193,7 +196,7 @@ reviewer_tools() {
   if [ -n "$line" ]; then
     local IFS=','
     local tools=()
-    read -r -a tools <<< "$line"
+    read -r -a tools <<<"$line"
     local tool
     for tool in "${tools[@]}"; do
       printf '%s\n' "$(trim "$tool")"
@@ -344,10 +347,10 @@ check_contract_site() {
 contract_violations=0
 if [ -f "$CANONICAL_FILE" ]; then
   if CANONICAL="$(contract_quote "$CANONICAL_FILE" '- **Baseline contract**:')"; then
-    check_contract_site "$SKILLS_DIR/code-police/SKILL.md" 'The **baseline contract** is part of the authoritative rules bundle' "$CANONICAL" \
-      || contract_violations=$((contract_violations + 1))
-    check_contract_site "$SKILLS_DIR/fact-check/SKILL.md" '**Baseline preservation.**' "$CANONICAL" \
-      || contract_violations=$((contract_violations + 1))
+    check_contract_site "$SKILLS_DIR/code-police/SKILL.md" 'The **baseline contract** is part of the authoritative rules bundle' "$CANONICAL" ||
+      contract_violations=$((contract_violations + 1))
+    check_contract_site "$SKILLS_DIR/fact-check/SKILL.md" '**Baseline preservation.**' "$CANONICAL" ||
+      contract_violations=$((contract_violations + 1))
   else
     echo "::error file=$CANONICAL_FILE::Canonical baseline contract quote not extractable." >&2
     contract_violations=$((contract_violations + 1))

@@ -116,14 +116,14 @@ This avoids shell interpolation that would occur with an inline shell `--body ".
 substitution, and escaping them with `\`` produces literal backslashes in the rendered PR — breaking code fences; see
 [juspay/kolu#402](https://github.com/juspay/kolu/pull/402)).
 
-```text
+````text
 call the `forge` tool with:
 {
   op: "pr-create",
   draft: true, title: "...", base: "<defaultBranch>", head: "<headRevision>",
   body: "...body with ```fenced blocks``` intact..."
 }
-```
+````
 
 The `body` parameter is load-bearing — do not put body text in other fields. The same pattern applies to the `forge` tool's
 `pr-edit` and `pr-comment` operations.
