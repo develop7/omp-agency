@@ -18,10 +18,16 @@ function readManifest() {
   try {
     manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   } catch (error) {
-    fail(`cannot parse ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`);
+    fail(
+      `cannot parse ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
-  if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)) {
+  if (
+    manifest === null ||
+    typeof manifest !== "object" ||
+    Array.isArray(manifest)
+  ) {
     fail("must be an object");
   }
   if (!Array.isArray(manifest.steps) || manifest.steps.length === 0) {
@@ -33,7 +39,11 @@ function readManifest() {
   if (new Set(manifest.steps).size !== manifest.steps.length) {
     fail("steps must not contain duplicates");
   }
-  if (manifest.entryPoints === null || typeof manifest.entryPoints !== "object" || Array.isArray(manifest.entryPoints)) {
+  if (
+    manifest.entryPoints === null ||
+    typeof manifest.entryPoints !== "object" ||
+    Array.isArray(manifest.entryPoints)
+  ) {
     fail("entryPoints must be an object");
   }
 
@@ -42,7 +52,11 @@ function readManifest() {
     fail("entryPoints must not be empty");
   }
   for (const [id, target] of entryPoints) {
-    if (id === "" || typeof target !== "string" || !manifest.steps.includes(target)) {
+    if (
+      id === "" ||
+      typeof target !== "string" ||
+      !manifest.steps.includes(target)
+    ) {
       fail(`entry point ${JSON.stringify(id)} must target a declared step`);
     }
   }
@@ -54,7 +68,14 @@ function readManifest() {
 }
 
 function pureArray(values) {
-  return values.map((value, index) => `${index === 0 ? "  [" : "  ,"} ${JSON.stringify(value)}`).join("\n") + "\n  ]";
+  return (
+    values
+      .map(
+        (value, index) =>
+          `${index === 0 ? "  [" : "  ,"} ${JSON.stringify(value)}`,
+      )
+      .join("\n") + "\n  ]"
+  );
 }
 
 function renderPure(manifest) {
@@ -86,7 +107,9 @@ for (const [path, content] of Object.entries(generated)) {
       fail(`generated file is missing: ${path}`);
     }
     if (current !== content) {
-      fail(`generated file is stale: ${path}; run 'node scripts/generate-workflow-vocabulary.mjs'`);
+      fail(
+        `generated file is stale: ${path}; run 'node scripts/generate-workflow-vocabulary.mjs'`,
+      );
     }
   } else {
     writeFileSync(path, content, "utf8");

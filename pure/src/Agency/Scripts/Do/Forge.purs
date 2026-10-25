@@ -26,6 +26,7 @@ import Data.Maybe (Maybe(..))
 import Data.String (Pattern(..), joinWith)
 import Data.String.CodeUnits (contains)
 import Effect (Effect)
+
 -- | Forge operation algebra. Arguments remain verbatim for the forge CLI.
 data ForgeOp
   = Detect
@@ -42,6 +43,7 @@ forgeName kind = case kind of
   Github -> "github"
   Bitbucket -> "bitbucket"
   Unknown -> "unknown"
+
 operationNames :: Array String
 operationNames = [ "pr-view", "pr-create", "pr-edit", "pr-comment", "issue-view", "pr-checks" ]
 
@@ -116,9 +118,10 @@ runForgeOp context operation = case operation of
   where
   dispatch ctx opName command subcommand args = case ctx.forge of
     Github -> do
-      let jsonProjection = Array.elem "--json" args
-            && not (Array.elem "--jq" args)
-            && not (Array.elem "--template" args)
+      let
+        jsonProjection = Array.elem "--json" args
+          && not (Array.elem "--jq" args)
+          && not (Array.elem "--template" args)
       if ctx.captureOutput then do
         result <- Sys.exec Binaries.gh ([ command, subcommand ] <> args)
         if result.code /= 0 then pure (Outcome.captured result)
@@ -131,6 +134,9 @@ runForgeOp context operation = case operation of
         case result.error of
           Just error -> pure (Outcome.failure 1 ("forge-op: gh failed to spawn: " <> error <> "\n"))
           Nothing -> pure (Outcome.passthrough result.code)
-    _ -> pure (Outcome.failure 1
-      ("forge-op: forge '" <> forgeName ctx.forge <> "' does not support '" <> opName <> "'\n"
-        <> "        Bitbucket support is tracked in srid/agency#10.\n"))
+    _ -> pure
+      ( Outcome.failure 1
+          ( "forge-op: forge '" <> forgeName ctx.forge <> "' does not support '" <> opName <> "'\n"
+              <> "        Bitbucket support is tracked in srid/agency#10.\n"
+          )
+      )

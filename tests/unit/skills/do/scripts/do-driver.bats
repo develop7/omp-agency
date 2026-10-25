@@ -19,16 +19,16 @@ run_driver() {
 run_api_driver() {
   run env AGENCY_API_BUNDLE="${AGENCY_API_BUNDLE:-$REPO_ROOT/pure/dist/agency-api.js}" \
     node --input-type=module --eval \
-      'const { runTool } = await import(process.env.AGENCY_API_BUNDLE); const result = await runTool({ tool: "agency_driver", args: JSON.parse(process.env.AGENCY_DRIVER_ARGS), captureOutput: true })(); process.stdout.write(JSON.stringify(result)); process.exitCode = result.exit'
+    'const { runTool } = await import(process.env.AGENCY_API_BUNDLE); const result = await runTool({ tool: "agency_driver", args: JSON.parse(process.env.AGENCY_DRIVER_ARGS), captureOutput: true })(); process.stdout.write(JSON.stringify(result)); process.exitCode = result.exit'
 }
 
 @test "init creates .do-results.json with default flags" {
   run_driver init "my task"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"review=false"* ]]
-  [[ "$output" == *"noVcs=false"* ]]
-  [[ "$output" == *"minimal=false"* ]]
-  [[ "$output" == *"from=default"* ]]
+  [[ $output == *"review=false"* ]]
+  [[ $output == *"noVcs=false"* ]]
+  [[ $output == *"minimal=false"* ]]
+  [[ $output == *"from=default"* ]]
 
   [ -f ".do-results.json" ]
   run jq -r '.task' .do-results.json
@@ -36,7 +36,7 @@ run_api_driver() {
 }
 
 @test "init refuses corrupt state without replacing it" {
-  printf 'not json' > .do-results.json
+  printf 'not json' >.do-results.json
   cp .do-results.json corrupt-before.json
 
   run_driver init "recovered task"
@@ -46,7 +46,7 @@ run_api_driver() {
 }
 
 @test "init --restart replaces corrupt state with clean initialization" {
-  printf 'not json' > .do-results.json
+  printf 'not json' >.do-results.json
 
   run_driver init --restart "recovered task"
 
@@ -56,14 +56,14 @@ run_api_driver() {
 }
 
 @test "API init --restart replaces corrupt state but summary remains strict" {
-  printf 'not json' > .do-results.json
+  printf 'not json' >.do-results.json
 
   AGENCY_DRIVER_ARGS='["init","--restart","recovered task"]' run_api_driver
   [ "$status" -eq 0 ]
   run jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []' .do-results.json
   [ "$status" -eq 0 ]
 
-  printf 'not json' > .do-results.json
+  printf 'not json' >.do-results.json
   cp .do-results.json corrupt-before.json
   AGENCY_DRIVER_ARGS='["summary"]' run_api_driver
   [ "$status" -eq 1 ]
@@ -73,7 +73,7 @@ run_api_driver() {
 @test "init --review sets review=true" {
   run_driver init --review "my task"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"review=true"* ]]
+  [[ $output == *"review=true"* ]]
   run jq -r '.review' .do-results.json
   [ "$output" = "true" ]
 }
@@ -81,7 +81,7 @@ run_api_driver() {
 @test "init --no-vcs sets noVcs=true" {
   run_driver init --no-vcs "my task"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"noVcs=true"* ]]
+  [[ $output == *"noVcs=true"* ]]
   run jq -r '.noVcs' .do-results.json
   [ "$output" = "true" ]
 }
@@ -89,7 +89,7 @@ run_api_driver() {
 @test "init --minimal sets minimal=true" {
   run_driver init --minimal "my task"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"minimal=true"* ]]
+  [[ $output == *"minimal=true"* ]]
   run jq -r '.minimal' .do-results.json
   [ "$output" = "true" ]
 }
@@ -97,7 +97,7 @@ run_api_driver() {
 @test "init --from sets from field" {
   run_driver init --from=ci-only "my task"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"from=ci-only"* ]]
+  [[ $output == *"from=ci-only"* ]]
   run jq -r '.from' .do-results.json
   [ "$output" = "ci-only" ]
 }
@@ -201,7 +201,7 @@ run_api_driver() {
 @test "init --review incompatible with --from (non-default)" {
   run_driver init --review --from=followup "my task"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"incompatible with --from=followup"* ]]
+  [[ $output == *"incompatible with --from=followup"* ]]
 }
 
 @test "init --review compatible with --from=default" {
@@ -212,19 +212,19 @@ run_api_driver() {
 @test "init unknown flag errors" {
   run_driver init --bogus "my task"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"unknown flag: --bogus"* ]]
+  [[ $output == *"unknown flag: --bogus"* ]]
 }
 
 @test "init --base is rejected (sync flag)" {
   run_driver init --base feat-x "my task"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"--base is a sync flag, not an init flag"* ]]
+  [[ $output == *"--base is a sync flag, not an init flag"* ]]
 }
 
 @test "init --stack is rejected (sync flag)" {
   run_driver init --stack "my task"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"--stack is a sync flag, not an init flag"* ]]
+  [[ $output == *"--stack is a sync flag, not an init flag"* ]]
 }
 
 @test "init with no task: still works (task is optional)" {
@@ -244,7 +244,7 @@ run_api_driver() {
   run_driver start research
   run_driver end passed "verified"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"recorded: research passed"* ]]
+  [[ $output == *"recorded: research passed"* ]]
 }
 
 @test "end done terminalizes the workflow" {
@@ -286,7 +286,7 @@ run_api_driver() {
 
   run_driver skip evidence "no PR evidence section"
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "already active" ]]
+  [[ $output =~ "already active" ]]
 
   cmp .do-results.json before.json
 }
@@ -314,7 +314,7 @@ run_api_driver() {
 
   run_driver end skipped
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "reason required for skipped" ]]
+  [[ $output =~ "reason required for skipped" ]]
 
   cmp .do-results.json before.json
 }
@@ -332,17 +332,17 @@ run_api_driver() {
   run_driver end passed "ok"
   run_driver summary
   [ "$status" -eq 0 ]
-  [[ "$output" == *"| Step | Status | Duration | Verification |"* ]]
+  [[ $output == *"| Step | Status | Duration | Verification |"* ]]
 }
 
 @test "no command: errors with usage" {
   run_driver
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Usage:"* ]]
+  [[ $output == *"Usage:"* ]]
 }
 
 @test "unknown command: errors with usage" {
   run_driver frobnicate
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Unknown command: frobnicate"* ]]
+  [[ $output == *"Unknown command: frobnicate"* ]]
 }

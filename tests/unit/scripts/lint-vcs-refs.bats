@@ -22,97 +22,97 @@ run_lint() {
 }
 
 @test "clean skill files: exit 0" {
-  echo "No raw git commands here." > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  echo "No raw git commands here." >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 0 ]
-  [[ "$output" == *"No raw VCS or forge commands found"* ]]
+  [[ $output == *"No raw VCS or forge commands found"* ]]
 }
 
 @test "gh pr create detected (forge pattern)" {
-  printf 'Run `gh pr create --draft`\n' > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  printf 'Run `gh pr create --draft`\n' >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"gh pr create"* ]]
-  [[ "$output" == *"forge tool"* ]]
+  [[ $output == *"gh pr create"* ]]
+  [[ $output == *"forge tool"* ]]
 }
 
 @test "gh issue view detected (forge pattern)" {
-  printf 'Fetch with `gh issue view <url>`\n' > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  printf 'Fetch with `gh issue view <url>`\n' >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"gh issue view"* ]]
+  [[ $output == *"gh issue view"* ]]
 }
 
 @test "do/nodes/*.md scanned (expanded file scope)" {
   mkdir -p "$FIXTURE_SKILLS/do/nodes"
-  printf 'Create a PR: `gh pr create --draft`\n' > "$FIXTURE_SKILLS/do/nodes/create-pr.md"
+  printf 'Create a PR: `gh pr create --draft`\n' >"$FIXTURE_SKILLS/do/nodes/create-pr.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"create-pr.md"* ]]
+  [[ $output == *"create-pr.md"* ]]
 }
 
 @test "raw git diff detected in non-exempt skill file" {
-  printf 'Run this:\n`git diff HEAD`\n' > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  printf 'Run this:\n`git diff HEAD`\n' >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"git diff "* ]]
+  [[ $output == *"git diff "* ]]
 }
 
 @test "git push detected" {
-  printf 'Push with `git push origin main`\n' > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  printf 'Push with `git push origin main`\n' >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"git push "* ]]
+  [[ $output == *"git push "* ]]
 }
 
 @test "jj diff detected" {
-  printf 'Use `jj diff -r @`\n' > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  printf 'Use `jj diff -r @`\n' >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"jj diff "* ]]
+  [[ $output == *"jj diff "* ]]
 }
 
 @test "do/SKILL.md exempt in default mode" {
-  printf 'Internally calls `git diff HEAD`\n' > "$FIXTURE_SKILLS/do/SKILL.md"
+  printf 'Internally calls `git diff HEAD`\n' >"$FIXTURE_SKILLS/do/SKILL.md"
   run_lint
   [ "$status" -eq 0 ]
-  [[ "$output" != *"::error"* ]]
+  [[ $output != *"::error"* ]]
 }
 
 @test "do/SKILL.md caught in --strict mode" {
-  printf 'Internally calls `git diff HEAD`\n' > "$FIXTURE_SKILLS/do/SKILL.md"
+  printf 'Internally calls `git diff HEAD`\n' >"$FIXTURE_SKILLS/do/SKILL.md"
   run_lint --strict
   [ "$status" -eq 1 ]
 }
 
 @test "talk/SKILL.md exempt in default mode" {
-  printf 'Agent may run `git log --oneline`\n' > "$FIXTURE_SKILLS/talk/SKILL.md"
+  printf 'Agent may run `git log --oneline`\n' >"$FIXTURE_SKILLS/talk/SKILL.md"
   run_lint
   [ "$status" -eq 0 ]
-  [[ "$output" != *"::error"* ]]
+  [[ $output != *"::error"* ]]
 }
 
 @test "talk/SKILL.md caught in --strict mode" {
-  printf 'Agent may run `git log --oneline`\n' > "$FIXTURE_SKILLS/talk/SKILL.md"
+  printf 'Agent may run `git log --oneline`\n' >"$FIXTURE_SKILLS/talk/SKILL.md"
   run_lint --strict
   [ "$status" -eq 1 ]
 }
 
 @test "jj new detected" {
-  printf 'Then `jj new @-`\n' > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  printf 'Then `jj new @-`\n' >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"jj new "* ]]
+  [[ $output == *"jj new "* ]]
 }
 
 @test "git status --porcelain detected" {
-  printf 'Check `git status --porcelain`\n' > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  printf 'Check `git status --porcelain`\n' >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
 }
 
 @test "no false positive on prose mentioning git without executable pattern" {
-  printf 'The agent uses VCS operations via vcs-op.\n' > "$FIXTURE_SKILLS/feature-a/SKILL.md"
+  printf 'The agent uses VCS operations via vcs-op.\n' >"$FIXTURE_SKILLS/feature-a/SKILL.md"
   run_lint
   [ "$status" -eq 0 ]
 }
@@ -124,33 +124,33 @@ run_lint() {
 
 @test "tool-allowlist check passes when reviewer skills reference allowed tools" {
   mkdir -p "$FIXTURE_SKILLS/lowy" "$FIXTURE_SKILLS/code-police"
-  printf 'Use the `vcs_read` tool with `{ op: "diff-range" }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
-  printf 'Do not use the `ask` tool. Orchestration may use `web_search`.\n' > "$FIXTURE_SKILLS/code-police/SKILL.md"
+  printf 'Use the `vcs_read` tool with `{ op: "diff-range" }`.\n' >"$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Do not use the `ask` tool. Orchestration may use `web_search`.\n' >"$FIXTURE_SKILLS/code-police/SKILL.md"
   run_lint
   [ "$status" -eq 0 ]
-  [[ "$output" == *"tool references are consistent"* ]]
+  [[ $output == *"tool references are consistent"* ]]
 }
 
 @test "tool-allowlist check fails on disallowed reviewer tool reference" {
   mkdir -p "$FIXTURE_SKILLS/lowy"
-  printf 'Invoke the `bash` tool with a shell command.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Invoke the `bash` tool with a shell command.\n' >"$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Tool reference 'bash' is not on the reviewer-agent effective allowlist."* ]]
+  [[ $output == *"Tool reference 'bash' is not on the reviewer-agent effective allowlist."* ]]
 }
 
 @test "tool-allowlist check fails on disallowed scout tool reference in code-police" {
   mkdir -p "$FIXTURE_SKILLS/code-police"
-  printf 'Invoke the `bash` tool with a shell command.\n' > "$FIXTURE_SKILLS/code-police/SKILL.md"
+  printf 'Invoke the `bash` tool with a shell command.\n' >"$FIXTURE_SKILLS/code-police/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Tool reference 'bash' is not on the scout effective allowlist."* ]]
+  [[ $output == *"Tool reference 'bash' is not on the scout effective allowlist."* ]]
 }
 
 @test "tool-allowlist check rejects typed inline calls to unavailable tools" {
   setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy"
-  printf 'Invoke `bash {command: "true"}`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Invoke `bash {command: "true"}`.\n' >"$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 1 ]
 }
@@ -161,8 +161,8 @@ run_lint() {
 setup_agents_fixture() {
   FIXTURE_AGENTS="$TEST_DIR/fixtures/agents"
   mkdir -p "$FIXTURE_AGENTS"
-  printf -- '---\nname: hickey\ntools: read, grep, glob, vcs_read\n---\nbody\n' > "$FIXTURE_AGENTS/hickey.md"
-  printf -- '---\nname: lowy\ntools: read, grep, glob, vcs_read\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  printf -- '---\nname: hickey\ntools: read, grep, glob, vcs_read\n---\nbody\n' >"$FIXTURE_AGENTS/hickey.md"
+  printf -- '---\nname: lowy\ntools: read, grep, glob, vcs_read\n---\nbody\n' >"$FIXTURE_AGENTS/lowy.md"
 }
 
 run_lint_agents() {
@@ -172,42 +172,42 @@ run_lint_agents() {
 @test "tool-allowlist check runs reviewer branch and passes equal frontmatters" {
   setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy"
-  printf 'Use the `vcs_read` tool with `{ op: "new-files" }`.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Use the `vcs_read` tool with `{ op: "new-files" }`.\n' >"$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 0 ]
-  [[ "$output" == *"tool references are consistent"* ]]
+  [[ $output == *"tool references are consistent"* ]]
 }
 
 @test "tool-allowlist check fails on reviewer frontmatter mismatch" {
   setup_agents_fixture
-  printf -- '---\nname: lowy\ntools: read, grep\n---\nbody\n' > "$FIXTURE_AGENTS/lowy.md"
+  printf -- '---\nname: lowy\ntools: read, grep\n---\nbody\n' >"$FIXTURE_AGENTS/lowy.md"
   run_lint_agents
   [ "$status" -eq 1 ]
-  [[ "$output" == *"frontmatter tools differ"* ]]
+  [[ $output == *"frontmatter tools differ"* ]]
 }
 
 @test "tool-allowlist check fails on disallowed reviewer reference with agents present" {
   setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy"
-  printf 'Invoke the `bash` tool with a shell command.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Invoke the `bash` tool with a shell command.\n' >"$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Tool reference 'bash' is not on the reviewer-agent effective allowlist."* ]]
+  [[ $output == *"Tool reference 'bash' is not on the reviewer-agent effective allowlist."* ]]
 }
 
 @test "negation guard: 'Note' does not suppress the check" {
   setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy"
-  printf 'Note: invoke the `bash` tool when needed.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Note: invoke the `bash` tool when needed.\n' >"$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Tool reference 'bash'"* ]]
+  [[ $output == *"Tool reference 'bash'"* ]]
 }
 
 @test "negation guard: 'Do not use' still suppresses the check" {
   setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy"
-  printf 'Do not use the `ask` tool.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Do not use the `ask` tool.\n' >"$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 0 ]
 }
@@ -215,7 +215,7 @@ run_lint_agents() {
 @test "negation guard: bolded 'Do **not** use' suppresses the check" {
   setup_agents_fixture
   mkdir -p "$FIXTURE_SKILLS/lowy"
-  printf 'Do **not** use the `ask` tool.\n' > "$FIXTURE_SKILLS/lowy/SKILL.md"
+  printf 'Do **not** use the `ask` tool.\n' >"$FIXTURE_SKILLS/lowy/SKILL.md"
   run_lint_agents
   [ "$status" -eq 0 ]
 }
@@ -229,33 +229,33 @@ write_contract_sites() {
   local canonical_quote="$1" echo_quote="$2"
   mkdir -p "$FIXTURE_SKILLS/do/nodes" "$FIXTURE_SKILLS/code-police" "$FIXTURE_SKILLS/fact-check"
   printf -- '- **Baseline contract**: "Contract alpha\n  %s"\n' "$canonical_quote" \
-    > "$FIXTURE_SKILLS/do/nodes/hickey-lowy.md"
+    >"$FIXTURE_SKILLS/do/nodes/hickey-lowy.md"
   printf 'The **baseline contract** is part of the authoritative rules bundle: "%s"\n' "$echo_quote" \
-    > "$FIXTURE_SKILLS/code-police/SKILL.md"
+    >"$FIXTURE_SKILLS/code-police/SKILL.md"
   printf '**Baseline preservation.** Apply verbatim: "%s"\n' "$echo_quote" \
-    > "$FIXTURE_SKILLS/fact-check/SKILL.md"
+    >"$FIXTURE_SKILLS/fact-check/SKILL.md"
 }
 
 @test "baseline contract: matching sites pass with line-wrap normalized" {
   write_contract_sites 'beta."' 'Contract alpha beta.'
   run_lint
   [ "$status" -eq 0 ]
-  [[ "$output" != *"::error"* ]]
+  [[ $output != *"::error"* ]]
 }
 
 @test "baseline contract: diverging echo site exits 1" {
   write_contract_sites 'beta."' 'Contract alpha gamma.'
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"diverges from the canonical text"* ]]
+  [[ $output == *"diverges from the canonical text"* ]]
 }
 
 @test "baseline contract: echo site missing its marker exits 1" {
   write_contract_sites 'beta."' 'Contract alpha beta.'
-  printf 'No marker and no contract here.\n' > "$FIXTURE_SKILLS/code-police/SKILL.md"
+  printf 'No marker and no contract here.\n' >"$FIXTURE_SKILLS/code-police/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Could not extract baseline contract quote at marker"* ]]
+  [[ $output == *"Could not extract baseline contract quote at marker"* ]]
 }
 
 @test "baseline contract: missing echo site file exits 1" {
@@ -263,15 +263,15 @@ write_contract_sites() {
   rm "$FIXTURE_SKILLS/fact-check/SKILL.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Baseline contract site missing"* ]]
+  [[ $output == *"Baseline contract site missing"* ]]
 }
 
 @test "baseline contract: canonical quote not extractable exits 1" {
   mkdir -p "$FIXTURE_SKILLS/do/nodes"
-  printf 'A node file without the contract marker.\n' > "$FIXTURE_SKILLS/do/nodes/hickey-lowy.md"
+  printf 'A node file without the contract marker.\n' >"$FIXTURE_SKILLS/do/nodes/hickey-lowy.md"
   run_lint
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Canonical baseline contract quote not extractable"* ]]
+  [[ $output == *"Canonical baseline contract quote not extractable"* ]]
 }
 
 @test "baseline contract: missing canonical on the default skills tree exits 1" {
@@ -280,5 +280,5 @@ write_contract_sites() {
   cp "$(repo_script src/agency-tools.ts)" "$TEST_DIR/src/"
   run env -u SKILLS_DIR bash "$TEST_DIR/scripts/lint-vcs-refs.sh"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"missing from the default skills tree"* ]]
+  [[ $output == *"missing from the default skills tree"* ]]
 }

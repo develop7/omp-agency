@@ -29,8 +29,6 @@ sensible default choices and keep moving.
    a JSON array `[{ name, initial_status }]`; mark `completed` steps and seed the todo UI.
 4. For each step, call the `workflow` tool with `{ field: "cli" }` — it returns a JSON object
    `{ step, skip, pattern, instructions, requires, pattern_config }`, or `{ "done": true }`.
-   - **Scheduler skip** (`skip` is true, the step is NOT yet started): call
-     `agency_driver { op: "skip", step: <step>, reason: <reason> }` and continue.
    - **Otherwise**: call `agency_driver { op: "start", step: <step> }`, read `nodes/<step>.md`, do the work.
      When the step finishes, call `agency_driver` with
      `{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }`.
@@ -83,7 +81,6 @@ There are two legal ways to record a skipped step, and which one you use depends
   The reason is **required** for a skipped end — the driver refuses a reasonless skipped completion.
 
 Rule of thumb: `skip` is for "don't start this." `end skipped` is for "started, but there's nothing to do."
-
 
 Every node is bookended by calling `agency_driver` with `{ op: "start", step: <name> }` before work and
 `{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }` after verification. The driver records step state in

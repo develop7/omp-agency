@@ -45,15 +45,17 @@ Check whether a PR already exists for this branch by calling the `forge` tool wi
    ```md
    ## [Hickey/Lowy](https://kolu.dev/blog/hickey-lowy/) Analysis
 
-   | # | Lens   | Finding                                | Disposition      |
-   |---|--------|----------------------------------------|------------------|
-   | 1 | Hickey | viewportDimensions complects two roles | Fixed in this PR |
-   | 2 | Lowy   | clipboard.ts named after a consumer    | ⚠️ **No-op**     |
+   | #   | Lens   | Finding                                | Disposition      |
+   | --- | ------ | -------------------------------------- | ---------------- |
+   | 1   | Hickey | viewportDimensions complects two roles | Fixed in this PR |
+   | 2   | Lowy   | clipboard.ts named after a consumer    | ⚠️ **No-op**     |
 
    ### Hickey rationale
+
    <prose>
 
    ### Lowy rationale
+
    <prose>
    ```
 

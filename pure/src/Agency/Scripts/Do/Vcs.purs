@@ -170,6 +170,7 @@ parseVcsOp args =
   where
   unknownOperation name =
     "vcs-op: unknown operation '" <> name <> "'\nAvailable: " <> availableOps
+
 -- | Run one VCS operation against one resolved workflow context. Computed
 -- | output is returned to the adapter; only explicitly pass-through commands
 -- | inherit the adapter streams.
@@ -241,18 +242,24 @@ fastForwardIfSafe context = case context.vcs of
               if behindCount > 0 && aheadCount == 0 then
                 capturedCommand Binaries.git [ "pull", "--ff-only" ] context
               else pure Outcome.success
-            _ -> pure (failureLines
-              [ "vcs-op: unable to parse git rev-list counts"
-              , "        HEAD.." <> upstreamName <> ": " <> trim behind.stdout
-              , "        " <> upstreamName <> "..HEAD: " <> trim ahead.stdout
-              ])
+            _ -> pure
+              ( failureLines
+                  [ "vcs-op: unable to parse git rev-list counts"
+                  , "        HEAD.." <> upstreamName <> ": " <> trim behind.stdout
+                  , "        " <> upstreamName <> "..HEAD: " <> trim ahead.stdout
+                  ]
+              )
 
 noUpstream :: Sys.ExecResult -> Boolean
 noUpstream result =
-  let message = trim result.stderr
-  in trim result.stdout == ""
-    && (contains (Pattern "no upstream") message
-      || contains (Pattern "does not point to a branch") message)
+  let
+    message = trim result.stderr
+  in
+    trim result.stdout == ""
+      &&
+        ( contains (Pattern "no upstream") message
+            || contains (Pattern "does not point to a branch") message
+        )
 
 -- | The sync invocations that resolve a base. One owner: both missing-base
 -- | diagnostics render their remediation from these forms.
@@ -430,8 +437,10 @@ inspectDirty context = case context.vcs of
   Unknown -> pure NoVcsDetected
   _ -> do
     result <- workingCopyResult context
-    pure if result.code /= 0 then InspectionFailed (Outcome.captured result)
-    else if trim result.stdout /= "" then DirtyDetected else Clean
+    pure
+      if result.code /= 0 then InspectionFailed (Outcome.captured result)
+      else if trim result.stdout /= "" then DirtyDetected
+      else Clean
 
 -- | Share the inspection and listing query, retaining subprocess diagnostics.
 workingCopyResult :: WorkflowContext -> Effect Sys.ExecResult
@@ -440,9 +449,10 @@ workingCopyResult context = do
     Git -> Sys.exec Binaries.git [ "status", "--porcelain", "--untracked-files=all" ]
     Jj -> Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--summary" ]
     Unknown -> pure { code: 1, stdout: "", stderr: "vcs-op: no VCS detected\n" }
-  pure if result.code /= 0 && trim result.stderr == "" then
-    result { stderr = "vcs-op: unable to inspect " <> vcsName context.vcs <> " working copy\n" }
-  else result
+  pure
+    if result.code /= 0 && trim result.stderr == "" then
+      result { stderr = "vcs-op: unable to inspect " <> vcsName context.vcs <> " working copy\n" }
+    else result
 
 dirty :: WorkflowContext -> Effect Outcome.OpOutcome
 dirty context = do
@@ -491,13 +501,17 @@ namedPaths context command args =
     result <- Sys.exec command args
     if result.code /= 0 then pure (Outcome.captured result)
     else
-      let delimiter = if command == Binaries.git then Pattern "\x0000" else Pattern "\n"
-          paths = Array.filter (_ /= "") (split delimiter result.stdout)
-          stdout = if Array.null paths then "" else joinWith "\n" paths <> "\n"
-      in pure (Outcome.withValue (Json.fromArray (map Json.fromString paths)) (Outcome.withStdout stdout))
+      let
+        delimiter = if command == Binaries.git then Pattern "\x0000" else Pattern "\n"
+        paths = Array.filter (_ /= "") (split delimiter result.stdout)
+        stdout = if Array.null paths then "" else joinWith "\n" paths <> "\n"
+      in
+        pure (Outcome.withValue (Json.fromArray (map Json.fromString paths)) (Outcome.withStdout stdout))
   else
-    let humanArgs = Array.filter (_ /= "-z") args
-    in passthroughCommand context command humanArgs
+    let
+      humanArgs = Array.filter (_ /= "-z") args
+    in
+      passthroughCommand context command humanArgs
 
 diffStat :: WorkflowContext -> Array String -> Effect Outcome.OpOutcome
 diffStat context paths = case context.base of
@@ -528,9 +542,11 @@ newFiles context paths = case context.base of
           result <- Sys.exec Binaries.jj ([ "diff", "--from", from, "--to", "@", "--summary", "--" ] <> paths)
           if result.code /= 0 then pure (Outcome.captured result)
           else
-            let added = Array.mapMaybe addedName (split (Pattern "\n") result.stdout)
-                stdout = if Array.null added then "" else joinWith "\n" added <> "\n"
-            in pure (Outcome.withValue (Json.fromArray (map Json.fromString added)) (Outcome.withStdout stdout))
+            let
+              added = Array.mapMaybe addedName (split (Pattern "\n") result.stdout)
+              stdout = if Array.null added then "" else joinWith "\n" added <> "\n"
+            in
+              pure (Outcome.withValue (Json.fromArray (map Json.fromString added)) (Outcome.withStdout stdout))
     Unknown -> pure noVcsOutcome
   where
   addedName line =
@@ -610,10 +626,12 @@ jjRangeFrom context base = do
         Left failure -> Left (failureLine (commandError ("vcs-op: unable to resolve merge-base for base '" <> base <> "'") failure))
         Right [] -> Right ref
         Right [ sha ] -> Right sha
-        Right shas -> Left (failureLines
-          [ "vcs-op: merge-base for base '" <> base <> "' is ambiguous (heads: " <> joinWith ", " shas <> ")"
-          , "        Several merge bases exist (criss-cross history); diffing would pick one silently. Reconcile the history — for example `jj rebase` — so the range has a single merge base first."
-          ])
+        Right shas -> Left
+          ( failureLines
+              [ "vcs-op: merge-base for base '" <> base <> "' is ambiguous (heads: " <> joinWith ", " shas <> ")"
+              , "        Several merge bases exist (criss-cross history); diffing would pick one silently. Reconcile the history — for example `jj rebase` — so the range has a single merge base first."
+              ]
+          )
 
 branch :: WorkflowContext -> String -> Effect Outcome.OpOutcome
 branch context name = case validateBranchName name of
@@ -678,17 +696,24 @@ stageThenCommit context message files = do
 
 validateDirty :: VcsKind -> Array String -> Effect (Either String Unit)
 validateDirty vcs files = do
-  bad <- Array.filterA (\file -> do
-    result <- case vcs of
-      Git -> Sys.exec Binaries.git [ "status", "--porcelain", "--", file ]
-      Jj -> Sys.exec Binaries.jj [ "diff", "--name-only", "--", file ]
-      Unknown -> pure { code: 1, stdout: "", stderr: "" }
-    pure (result.code /= 0 || trim result.stdout == "")) files
+  bad <- Array.filterA
+    ( \file -> do
+        result <- case vcs of
+          Git -> Sys.exec Binaries.git [ "status", "--porcelain", "--", file ]
+          Jj -> Sys.exec Binaries.jj [ "diff", "--name-only", "--", file ]
+          Unknown -> pure { code: 1, stdout: "", stderr: "" }
+        pure (result.code /= 0 || trim result.stdout == "")
+    )
+    files
   if Array.null bad then pure (Right unit)
-  else pure (Left (joinLines
-    [ "vcs-op: file(s) not dirty (not in working-copy changes): " <> joinWithSpace bad
-    , "        The caller must pass files it actually changed."
-    ]))
+  else pure
+    ( Left
+        ( joinLines
+            [ "vcs-op: file(s) not dirty (not in working-copy changes): " <> joinWithSpace bad
+            , "        The caller must pass files it actually changed."
+            ]
+        )
+    )
 
 jjCommit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
 jjCommit context message files = do
@@ -703,11 +728,13 @@ jjCommit context message files = do
         case traverse identity canonicalResults of
           Left outcome -> pure outcome
           Right canonicalGroups ->
-            let canonical = Array.concat canonicalGroups
-                allChanged = lines allResult.stdout
-                unrelated = Array.filter (\changed -> not (Array.any (\file -> file == changed) canonical)) allChanged
-            in if Array.null unrelated then describeAndMove context bookmark message
-            else splitAndMove context bookmark message unrelated
+            let
+              canonical = Array.concat canonicalGroups
+              allChanged = lines allResult.stdout
+              unrelated = Array.filter (\changed -> not (Array.any (\file -> file == changed) canonical)) allChanged
+            in
+              if Array.null unrelated then describeAndMove context bookmark message
+              else splitAndMove context bookmark message unrelated
   where
   canonicalFiles file = do
     result <- Sys.exec Binaries.jj [ "diff", "--name-only", "--", file ]
@@ -719,12 +746,16 @@ jjCommit context message files = do
 -- | bookmark on its parent. Either revision is safe unless it is the base.
 featureBookmark :: WorkflowContext -> Effect (Either Outcome.OpOutcome String)
 featureBookmark context = case context.base of
-  Nothing -> pure (Left (failureLines
-    [ "vcs-op commit: jj requires a resolved base to protect the trunk bookmark; workflow state resolved no base."
-    , "        A prior value that does not name a ref (empty, non-string, or the no-vcs sentinel) is dropped at init — set the base to the branch's PR target."
-    , "        Explicit base: agency_driver({ op: \"set\", field: \"base\", value: \"<target>\" })"
-    , "        Or resolve it via sync: " <> baseSyncForms.explicit <> ", " <> baseSyncForms.stack <> ", or " <> baseSyncForms.default <> " for the default."
-    ]))
+  Nothing -> pure
+    ( Left
+        ( failureLines
+            [ "vcs-op commit: jj requires a resolved base to protect the trunk bookmark; workflow state resolved no base."
+            , "        A prior value that does not name a ref (empty, non-string, or the no-vcs sentinel) is dropped at init — set the base to the branch's PR target."
+            , "        Explicit base: agency_driver({ op: \"set\", field: \"base\", value: \"<target>\" })"
+            , "        Or resolve it via sync: " <> baseSyncForms.explicit <> ", " <> baseSyncForms.stack <> ", or " <> baseSyncForms.default <> " for the default."
+            ]
+        )
+    )
   Just base -> do
     found <- jjFeatureBookmark
     pure (protect base found)
@@ -802,19 +833,21 @@ valueResult result value =
 
 renderValue :: VcsValue -> Outcome.OpOutcome
 renderValue result =
-  let stdout =
-        if result.code == 0 then
-          if result.value == "" then "" else result.value <> "\n"
-        else result.stdout
-  in Outcome.withValue (if result.code == 0 then Json.fromString result.value else Json.jsonNull)
-    { exit: result.code
-    , output: Outcome.Captured
-        { stdout
-        , stderr: result.stderr
-        , stderrFirst: false
-        }
-    , value: Json.jsonNull
-    }
+  let
+    stdout =
+      if result.code == 0 then
+        if result.value == "" then "" else result.value <> "\n"
+      else result.stdout
+  in
+    Outcome.withValue (if result.code == 0 then Json.fromString result.value else Json.jsonNull)
+      { exit: result.code
+      , output: Outcome.Captured
+          { stdout
+          , stderr: result.stderr
+          , stderrFirst: false
+          }
+      , value: Json.jsonNull
+      }
 
 scalarCommand :: String -> Array String -> Effect Outcome.OpOutcome
 scalarCommand command args = do
@@ -866,14 +899,16 @@ remoteEntries context = case context.vcs of
       pure (traverse identity results)
   Jj -> do
     listed <- Sys.exec Binaries.jj [ "git", "remote", "list" ]
-    pure if listed.code /= 0 then Left (commandError "vcs-op: unable to list jj remotes" listed)
-    else Right (Array.mapMaybe parseJjRemote (lines listed.stdout))
+    pure
+      if listed.code /= 0 then Left (commandError "vcs-op: unable to list jj remotes" listed)
+      else Right (Array.mapMaybe parseJjRemote (lines listed.stdout))
   Unknown -> pure (Left "vcs-op: no VCS detected")
   where
   gitRemote name = do
     url <- Sys.exec Binaries.git [ "remote", "get-url", name ]
-    pure if url.code == 0 && trim url.stdout /= "" then Right { name, url: trim url.stdout }
-    else Left (commandError ("vcs-op: unable to read remote '" <> name <> "'") url)
+    pure
+      if url.code == 0 && trim url.stdout /= "" then Right { name, url: trim url.stdout }
+      else Left (commandError ("vcs-op: unable to read remote '" <> name <> "'") url)
 
 selectRemote :: Array Remote -> Either String Remote
 selectRemote remotes = case Array.find (\remote -> remote.name == "origin") remotes of
@@ -1023,23 +1058,26 @@ jjCommitIds revset = do
 -- | never cite a bookmark the probe did not query.
 jjBookmarkCommit :: String -> Maybe String -> Effect (Either String (Maybe String))
 jjBookmarkCommit name remote = do
-  let label = case remote of
-        Nothing -> name
-        Just scope -> name <> "@" <> scope
-      revset = case remote of
-        Nothing -> "bookmarks(" <> exactPattern name <> ")"
-        Just scope -> "remote_bookmarks(" <> exactPattern name <> ", remote=" <> exactPattern scope <> ")"
+  let
+    label = case remote of
+      Nothing -> name
+      Just scope -> name <> "@" <> scope
+    revset = case remote of
+      Nothing -> "bookmarks(" <> exactPattern name <> ")"
+      Just scope -> "remote_bookmarks(" <> exactPattern name <> ", remote=" <> exactPattern scope <> ")"
   result <- jjCommitIds revset
   pure case result of
     Left failure -> Left (commandError ("vcs-op: unable to resolve jj bookmark '" <> label <> "'") failure)
     Right [] -> Right Nothing
     Right [ sha ] -> Right (Just sha)
-    Right shas -> Left (joinLines
-      [ "vcs-op: jj bookmark '" <> label <> "' is conflicted (targets: " <> joinWith ", " shas <> ")"
-      , case remote of
-          Nothing -> "        Nothing can be pinned while it names several revisions; point it at one with `jj bookmark set " <> name <> " -r <commit-id>`."
-          Just scope -> "        Nothing can be pinned while the remote bookmark '" <> name <> "' names several revisions on '" <> scope <> "'; re-sync its record with `jj git fetch --remote " <> scope <> "` and retry, or resolve the remote ref to a single target."
-      ])
+    Right shas -> Left
+      ( joinLines
+          [ "vcs-op: jj bookmark '" <> label <> "' is conflicted (targets: " <> joinWith ", " shas <> ")"
+          , case remote of
+              Nothing -> "        Nothing can be pinned while it names several revisions; point it at one with `jj bookmark set " <> name <> " -r <commit-id>`."
+              Just scope -> "        Nothing can be pinned while the remote bookmark '" <> name <> "' names several revisions on '" <> scope <> "'; re-sync its record with `jj git fetch --remote " <> scope <> "` and retry, or resolve the remote ref to a single target."
+          ]
+      )
 
 -- | An exact jj string pattern: a bookmark name is an opaque literal, never a
 -- | glob (jj parses bare strings as glob patterns).
@@ -1059,8 +1097,9 @@ sameGitRevision :: String -> String -> Effect (Either String Boolean)
 sameGitRevision left right = do
   leftResult <- Sys.exec Binaries.git [ "rev-parse", left ]
   rightResult <- Sys.exec Binaries.git [ "rev-parse", right ]
-  pure if leftResult.code /= 0 || rightResult.code /= 0 then Left "vcs-op: unable to compare current branch with default"
-  else Right (trim leftResult.stdout == trim rightResult.stdout)
+  pure
+    if leftResult.code /= 0 || rightResult.code /= 0 then Left "vcs-op: unable to compare current branch with default"
+    else Right (trim leftResult.stdout == trim rightResult.stdout)
 
 -- | Whether @ carries picked-up work: an undescribed change with content
 -- beyond the workflow state file (owned by Context.stateFile, carried by
@@ -1093,10 +1132,11 @@ sameJjRevision left rightSha fallback = do
 currentFeatureBookmark :: WorkflowContext -> Effect (Either String String)
 currentFeatureBookmark context = do
   current <- currentBranchValue context
-  pure if current.code /= 0 then Left (commandError "vcs-op: unable to resolve current feature bookmark" { code: current.code, stdout: current.stdout, stderr: current.stderr })
-  else if current.value == "" then Left "vcs-op: no feature bookmark is checked out; refusing broad jj push"
-  else if context.base == Just current.value then Left ("vcs-op: current bookmark '" <> current.value <> "' is the base; refusing broad jj push")
-  else Right current.value
+  pure
+    if current.code /= 0 then Left (commandError "vcs-op: unable to resolve current feature bookmark" { code: current.code, stdout: current.stdout, stderr: current.stderr })
+    else if current.value == "" then Left "vcs-op: no feature bookmark is checked out; refusing broad jj push"
+    else if context.base == Just current.value then Left ("vcs-op: current bookmark '" <> current.value <> "' is the base; refusing broad jj push")
+    else Right current.value
 
 validateBranchName :: String -> Either String Unit
 validateBranchName name =
@@ -1123,8 +1163,10 @@ commandError fallback result = if trim result.stderr == "" then fallback else tr
 
 lines :: String -> Array String
 lines value = Array.filter (_ /= "") (map trim (split (Pattern "\n") value))
+
 joinWithSpace :: Array String -> String
 joinWithSpace values = joinWith " " values
+
 -- | jj split requires a `./` prefix for a dash-leading path, even after `--`.
 jjSplitPath :: String -> String
 jjSplitPath path = if Args.startsWith "-" path then "./" <> path else path
@@ -1140,7 +1182,6 @@ failureLines values = Outcome.failure 1 (joinLines values <> "\n")
 
 joinLines :: Array String -> String
 joinLines = joinWith "\n"
-
 
 firstLine :: String -> String
 firstLine output = fromMaybe "" (trim <$> Array.head (split (Pattern "\n") output))

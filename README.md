@@ -40,8 +40,8 @@ Type-checkers, tests, and CI catch correctness; they don't catch design. An LLM-
 
 `/do` closes that gap with two structural-review passes that run **post-implement on the concrete diff** as parallel sub-agents:
 
-- **`hickey`** — accidental complexity, after Rich Hickey's [*Simple Made Easy*](https://www.infoq.com/presentations/Simple-Made-Easy/).
-- **`lowy`** — volatility-based decomposition, after Juval Lowy's [*Righting Software*](https://rightingsoftware.org/) (building on [Parnas 1972](https://www.win.tue.nl/~wstomv/edu/2ip30/references/criteria_for_modularization.pdf)).
+- **`hickey`** — accidental complexity, after Rich Hickey's [_Simple Made Easy_](https://www.infoq.com/presentations/Simple-Made-Easy/).
+- **`lowy`** — volatility-based decomposition, after Juval Lowy's [_Righting Software_](https://rightingsoftware.org/) (building on [Parnas 1972](https://www.win.tue.nl/~wstomv/edu/2ip30/references/criteria_for_modularization.pdf)).
 
 Both lenses review the same unchanged diff, then cross-validate each other's recommendations. The
 diff's deleted side is the behavioral baseline: reviewers must preserve deleted behavior unless the
@@ -83,14 +83,14 @@ Then set the model for subagent reviewers in your OMP config:
 ```yaml
 # ~/.omp/agent/config.yml
 modelRoles:
-  task: anthropic/claude-sonnet-4-5   # what hickey/lowy/code-police run on
+  task: anthropic/claude-sonnet-4-5 # what hickey/lowy/code-police run on
 ```
 
 Service tiers for subagents are controlled by `tier.subagent` (default `inherit`):
 
 ```yaml
 tier:
-  subagent: flex   # auto, default, flex, scale, priority, none
+  subagent: flex # auto, default, flex, scale, priority, none
 ```
 
 ## What's included
@@ -98,7 +98,7 @@ tier:
 ### Primary skills
 
 - **`do`** — Full pipeline: research → implement → structural review (`hickey`, `lowy`) → quality gate (`code-police`) → CI → evidence (opt-in) → ship. Skip specific steps by mentioning them in the prompt, or pass **`--minimal`** to skip docs / structural review / police / evidence wholesale on trivially-scoped diffs (one-line fixes, typos, config tweaks).
-- **`talk`** — Conversation-and-research mode. Discuss ideas, explore approaches, read code, inspect upstream sources in temporary scratch space when needed — read-only by default. Auto-runs `hickey` + `lowy` on design sketches. Pass **`--html`** to write the response as a self-contained HTML artifact (in `docs/plans/` if that directory exists, else the repo root) instead of replying in chat — pair with a runner that can render and select-to-comment on the artifact (e.g. [juspay/kolu#922](https://github.com/juspay/kolu/pull/922)) for tight comment-driven iteration on the same file. When the topic involves UI work, the artifact embeds *rendered* HTML/CSS prototypes of the proposed components so you can react to the visual itself, not a prose description of it…
+- **`talk`** — Conversation-and-research mode. Discuss ideas, explore approaches, read code, inspect upstream sources in temporary scratch space when needed — read-only by default. Auto-runs `hickey` + `lowy` on design sketches. Pass **`--html`** to write the response as a self-contained HTML artifact (in `docs/plans/` if that directory exists, else the repo root) instead of replying in chat — pair with a runner that can render and select-to-comment on the artifact (e.g. [juspay/kolu#922](https://github.com/juspay/kolu/pull/922)) for tight comment-driven iteration on the same file. When the topic involves UI work, the artifact embeds _rendered_ HTML/CSS prototypes of the proposed components so you can react to the visual itself, not a prose description of it…
 - **`ralph`** — Iterative measurement-driven improvement loop. Measure, profile, mutate, re-measure, commit. Works for performance, bundle size, complexity — anything quantifiable.
 
 ### Supporting skills
@@ -119,12 +119,12 @@ Agency's sub-agents (`hickey`, `lowy`, `code-police`) use the `@task` model role
 
 Each agency skill reads its project-specific configuration from a single file named after itself, under a top-level `.agency/` directory:
 
-| File | Read by | Contains |
-|------|---------|----------|
-| `.agency/do.md` | `/do` | `## Check command` / `## Format command` / `## Test command` / `## CI command` / `## Documentation` (required for those steps to run) and an optional `## PR evidence` section that opts into the evidence step |
-| `.agency/code-police.md` | `code-police` | extra quality rules layered on top of the built-in checklist |
-| `.agency/hickey.md` | `hickey` | extra complecting/fragmentation patterns extending the Layer 4 catalog |
-| `.agency/lowy.md` | `lowy` | project-declared areas of volatility used by the review pass |
+| File                     | Read by       | Contains                                                                                                                                                                                                        |
+| ------------------------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.agency/do.md`          | `/do`         | `## Check command` / `## Format command` / `## Test command` / `## CI command` / `## Documentation` (required for those steps to run) and an optional `## PR evidence` section that opts into the evidence step |
+| `.agency/code-police.md` | `code-police` | extra quality rules layered on top of the built-in checklist                                                                                                                                                    |
+| `.agency/hickey.md`      | `hickey`      | extra complecting/fragmentation patterns extending the Layer 4 catalog                                                                                                                                          |
+| `.agency/lowy.md`        | `lowy`        | project-declared areas of volatility used by the review pass                                                                                                                                                    |
 
 All four files are **plain Markdown** — no frontmatter, no ceremony — and **opt-in** (the consuming skill silently skips its extension behavior when the file is missing). Each skill reads only its own file; nothing crosses, so a project can adopt skills à la carte without touching the others.
 
@@ -134,21 +134,27 @@ Content is free-form: inline prose, a pointer to another file (`See ./code-polic
 # /do config
 
 ## Check command
+
 just check
 
 ## Format command
+
 just fmt
 
 ## Test command
+
 just test
 
 ## CI command
+
 just ci
 
 ## Documentation
+
 Keep README.md in sync with user-facing changes.
 
 ## PR evidence
+
 Capture proof when the change has a behavior worth proving — **visual** (a UI diff) or
 **behavioral** (state survives an interaction or a restart, e.g. a persistence / restore /
 debounce / reconnect fix with no visual diff):
@@ -171,11 +177,11 @@ See [Kolu's `.agency/`](https://github.com/juspay/kolu/tree/master/.agency) for 
 ## Development
 
 All recipes self-route through the pinned Nix toolchain (PureScript, Spago,
-esbuild, bats, Node.js, Rust, wasm-bindgen, shellcheck, actionlint, git, jj,
-just) — no `nix develop` needed first; enter the shell only if you want the
-tools on
-PATH directly. Nickel remains available as an editor/debugging nicety; runtime
-workflow evaluation is provided by `nickel-vm` WASM:
+esbuild, bats, Node.js, Rust, wasm-bindgen, shellcheck, actionlint, treefmt,
+git, jj, just) — no `nix develop` needed first; enter the shell only if you
+want the tools on PATH directly. Nickel remains available as an
+editor/debugging nicety; runtime workflow evaluation is provided by
+`nickel-vm` WASM:
 
 ```bash
 just test              # build, then run bats and typed tool boundary tests
@@ -185,8 +191,10 @@ just test-vm           # run the Nickel WASM VM unit tests (release profile)
 just lint              # run shellcheck on bash scripts
 just lint-workflows    # run actionlint on GitHub Actions workflows + composite-action metadata
 just lint-skills       # lint skill markdown: no raw VCS/forge commands; reviewer skill tool references stay on the executor's allowlist
+just fmt               # format all source files via treefmt (prettier, rustfmt, alejandra, shfmt, nickel, taplo, just, purs-tidy)
+just fmt-check         # CI gate: fail if any file would be reformatted
 just build             # compile and bundle the PureScript core
-just ci                # full CI: tests + lint + actionlint + skill prose lint + runtime package proof
+just ci                # full CI: tests + lint + actionlint + skill prose lint + format check + runtime package proof
 just nickel-build      # build the Nickel WASM evaluator and Node glue
 just runtime-check     # stage the minimal runtime package and verify it
 node nickel-vm/scripts/smoke.mjs  # run the workflow contract smoke suite (inside nix develop)

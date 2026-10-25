@@ -7,7 +7,6 @@ module Agency.Scripts.Do.Binaries
   , gh
   ) where
 
-
 -- | Git executable name.
 git :: String
 git = "git"

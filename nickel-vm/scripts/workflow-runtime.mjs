@@ -22,13 +22,19 @@ export async function evaluateWorkflow(request) {
   try {
     const parsed = parseRequest(request);
     const { cwd, operation } = parsed;
-    const [workflow_source, vocabulary_source, state_source] = await Promise.all([
-      readWorkflowAsset(cwd, "workflow.ncl"),
-      readWorkflowAsset(cwd, "workflow-manifest.json"),
-      readStateSource(cwd),
-    ]);
+    const [workflow_source, vocabulary_source, state_source] =
+      await Promise.all([
+        readWorkflowAsset(cwd, "workflow.ncl"),
+        readWorkflowAsset(cwd, "workflow-manifest.json"),
+        readStateSource(cwd),
+      ]);
     const nickel = await loadNickel();
-    const evaluatorRequest = { workflow_source, vocabulary_source, state_source, operation };
+    const evaluatorRequest = {
+      workflow_source,
+      vocabulary_source,
+      state_source,
+      operation,
+    };
     if (operation === "cli_seed") evaluatorRequest.seed = parsed.seed;
     const result = workflowResult(await nickel.eval_workflow(evaluatorRequest));
     if (result.exit !== 0) return { ...result, value: null };
@@ -44,7 +50,8 @@ export function workflowFailure(error) {
   return {
     exit: 1,
     stdout: "",
-    stderr: error instanceof Error ? error.stack || error.message : String(error),
+    stderr:
+      error instanceof Error ? error.stack || error.message : String(error),
     value: null,
   };
 }
@@ -107,13 +114,20 @@ async function readStateSource(cwd) {
       );
     }
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`workflow: cannot read state file .do-results.json at ${statePath}: ${detail}`);
+    throw new Error(
+      `workflow: cannot read state file .do-results.json at ${statePath}: ${detail}`,
+    );
   }
 }
 
 /** @param {unknown} error */
 function isMissingFile(error) {
-  return error !== null && typeof error === "object" && "code" in error && error.code === "ENOENT";
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
 
 /** @param {string} asset @param {string} bundledPath @param {string} fallbackPath @param {unknown} error */
@@ -180,15 +194,22 @@ function renderCli(value) {
   if (value.done === true && Object.keys(value).length === 1) {
     return "{ done = true }";
   }
-  const fields = ["step", "skip", "pattern", "instructions", "requires", "pattern_config"];
+  const fields = [
+    "step",
+    "skip",
+    "pattern",
+    "instructions",
+    "requires",
+    "pattern_config",
+  ];
   requireExactFields("cli", value, fields);
   return (
-    `{ step = ${renderString(value.step, "cli step")}, `
-    + `skip = ${renderBoolean(value.skip, "cli skip")}, `
-    + `pattern = ${renderTag(value.pattern, "cli pattern")}, `
-    + `instructions = ${renderString(value.instructions, "cli instructions")}, `
-    + `requires = ${renderStringArray(value.requires, "cli requires")}, `
-    + `pattern_config = ${renderPatternConfig(value.pattern_config)} }`
+    `{ step = ${renderString(value.step, "cli step")}, ` +
+    `skip = ${renderBoolean(value.skip, "cli skip")}, ` +
+    `pattern = ${renderTag(value.pattern, "cli pattern")}, ` +
+    `instructions = ${renderString(value.instructions, "cli instructions")}, ` +
+    `requires = ${renderStringArray(value.requires, "cli requires")}, ` +
+    `pattern_config = ${renderPatternConfig(value.pattern_config)} }`
   );
 }
 
@@ -207,8 +228,8 @@ function renderSeedStep(value) {
   }
   requireExactFields("cli_seed item", value, ["name", "initial_status"]);
   return (
-    `{ name = ${renderString(value.name, "cli_seed name")}, `
-    + `initial_status = ${renderTag(value.initial_status, "cli_seed initial_status")} }`
+    `{ name = ${renderString(value.name, "cli_seed name")}, ` +
+    `initial_status = ${renderTag(value.initial_status, "cli_seed initial_status")} }`
   );
 }
 
@@ -218,7 +239,10 @@ function renderPatternConfig(value) {
     throw new Error("workflow: cli pattern_config must be an object");
   }
   const fields = Object.entries(value)
-    .map(([key, item]) => `${key} = ${key === "loop_artifacts" ? renderTag(item, "pattern_config loop_artifacts") : renderJsonValue(item, `pattern_config ${key}`)}`)
+    .map(
+      ([key, item]) =>
+        `${key} = ${key === "loop_artifacts" ? renderTag(item, "pattern_config loop_artifacts") : renderJsonValue(item, `pattern_config ${key}`)}`,
+    )
     .join(", ");
   return fields === "" ? "{}" : `{ ${fields} }`;
 }
@@ -226,9 +250,11 @@ function renderPatternConfig(value) {
 /** @param {unknown} value @param {string} context */
 function renderJsonValue(value, context) {
   if (typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "boolean" || typeof value === "number") return String(value);
+  if (typeof value === "boolean" || typeof value === "number")
+    return String(value);
   if (value === null) return "null";
-  if (Array.isArray(value)) return `[${value.map((item) => renderJsonValue(item, context)).join(", ")}]`;
+  if (Array.isArray(value))
+    return `[${value.map((item) => renderJsonValue(item, context)).join(", ")}]`;
   if (isRecord(value)) {
     const fields = Object.entries(value)
       .map(([key, item]) => `${key} = ${renderJsonValue(item, context)}`)
@@ -240,13 +266,15 @@ function renderJsonValue(value, context) {
 
 /** @param {unknown} value @param {string} context */
 function renderString(value, context) {
-  if (typeof value !== "string") throw new Error(`workflow: ${context} must be a string`);
+  if (typeof value !== "string")
+    throw new Error(`workflow: ${context} must be a string`);
   return JSON.stringify(value);
 }
 
 /** @param {unknown} value @param {string} context */
 function renderBoolean(value, context) {
-  if (typeof value !== "boolean") throw new Error(`workflow: ${context} must be a boolean`);
+  if (typeof value !== "boolean")
+    throw new Error(`workflow: ${context} must be a boolean`);
   return String(value);
 }
 

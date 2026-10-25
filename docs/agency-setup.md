@@ -15,6 +15,7 @@ omp plugin install agency@omp-agency
 ```
 
 This installs:
+
 - **Skills** (`talk`, `do`, `hickey`, `lowy`, `code-police`, `fact-check`, `elegance`, `ralph`, `forge-pr`) — discovered from the plugin's `skills/` directory
 - **Agents** (`hickey`, `lowy`) — discovered from the plugin's `agents/` directory, available as `task` tool agent types
 - **Extension** (`agency-tools`) — registers the five `/do` operation tools (`vcs_read`, `vcs_write`, `forge`, `workflow`, `agency_driver`) over the PureScript core
@@ -63,18 +64,23 @@ Create `.agency/do.md` at the repo root to configure `/do` for your project:
 # /do config
 
 ## Check command
+
 just check
 
 ## Format command
+
 just fmt
 
 ## Test command
+
 just test
 
 ## CI command
+
 just ci
 
 ## Documentation
+
 Keep README.md in sync with user-facing changes.
 ```
 

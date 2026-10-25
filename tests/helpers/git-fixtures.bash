@@ -5,7 +5,7 @@
 # Create an initial commit with a tracked file in the current git repo.
 # Assumes git config (user.email, user.name) is already set.
 mk_initial_commit() {
-  echo "hello" > file.txt
+  echo "hello" >file.txt
   git add file.txt
   git commit -q -m "initial"
 }

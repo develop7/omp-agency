@@ -40,10 +40,11 @@ run context options = do
               case resolved of
                 Left outcome -> failSync context outcome
                 Right base -> do
-                  let dirtyWarning = case inspected of
-                        Just Vcs.DirtyDetected ->
-                          Outcome.failure 0 "Dirty tree detected. Continuing will create a fresh branch on top of these changes. If you wanted the agent to extend your WIP in place without touching git, re-run with --no-vcs.\n"
-                        _ -> Outcome.success
+                  let
+                    dirtyWarning = case inspected of
+                      Just Vcs.DirtyDetected ->
+                        Outcome.failure 0 "Dirty tree detected. Continuing will create a fresh branch on top of these changes. If you wanted the agent to extend your WIP in place without touching git, re-run with --no-vcs.\n"
+                      _ -> Outcome.success
                   protocol <- recordPhase context options startedAt base
                   pure (Outcome.append (Outcome.append (phaseOutput phases) dirtyWarning) protocol)
 
@@ -94,10 +95,12 @@ resolveContext context options startedAt = do
   case initial of
     Left error -> pure (Left (failText ("sync: " <> error)))
     Right maybeState ->
-      let state0 = fromMaybe (State.initState startedAt) maybeState
-      in case putSyncFields context options.noVcs state0 of
-        Left error -> pure (Left (failText ("sync: " <> error)))
-        Right state1 -> pure (Right state1)
+      let
+        state0 = fromMaybe (State.initState startedAt) maybeState
+      in
+        case putSyncFields context options.noVcs state0 of
+          Left error -> pure (Left (failText ("sync: " <> error)))
+          Right state1 -> pure (Right state1)
 
 type SyncBase =
   { state :: State.State
@@ -132,27 +135,38 @@ basePhase context options state1 =
 recordPhase :: WorkflowContext -> { noVcs :: Boolean, base :: Maybe String, stack :: Boolean } -> String -> SyncBase -> Effect Outcome.OpOutcome
 recordPhase context options startedAt resolved = do
   completed <- Sys.nowIso
-  let contextWithBase = context { base = Just resolved.base }
-      fetchState = if options.noVcs then "fetch skipped" else "fetch ok"
-      step =
-        { name: "sync"
-        , status: State.StepPassed
-        , verification: fetchState <> "; vcs=" <> Vcs.vcsName context.vcs <> "; forge=" <> Forge.forgeName context.forge <> "; noVcs=" <> show options.noVcs <> "; base=" <> resolved.base
-        , startedAt
-        , completedAt: completed
-        , reason: Nothing
-        }
+  let
+    contextWithBase = context { base = Just resolved.base }
+    fetchState = if options.noVcs then "fetch skipped" else "fetch ok"
+    step =
+      { name: "sync"
+      , status: State.StepPassed
+      , verification: fetchState <> "; vcs=" <> Vcs.vcsName context.vcs <> "; forge=" <> Forge.forgeName context.forge <> "; noVcs=" <> show options.noVcs <> "; base=" <> resolved.base
+      , startedAt
+      , completedAt: completed
+      , reason: Nothing
+      }
   case State.appendStep step resolved.state of
     Left error -> pure (failText error)
     Right updated -> do
       State.writeState (Context.statePath context) updated
-      pure (Outcome.withStdout
-        ( "vcs=" <> Vcs.vcsName contextWithBase.vcs <> "\n"
-          <> "forge=" <> Forge.forgeName contextWithBase.forge <> "\n"
-          <> "branch=" <> resolved.branch <> "\n"
-          <> "defaultBranch=" <> resolved.defaultRef <> "\n"
-          <> "base=" <> resolved.base <> "\n"
-        ))
+      pure
+        ( Outcome.withStdout
+            ( "vcs=" <> Vcs.vcsName contextWithBase.vcs <> "\n"
+                <> "forge="
+                <> Forge.forgeName contextWithBase.forge
+                <> "\n"
+                <> "branch="
+                <> resolved.branch
+                <> "\n"
+                <> "defaultBranch="
+                <> resolved.defaultRef
+                <> "\n"
+                <> "base="
+                <> resolved.base
+                <> "\n"
+            )
+        )
 
 quietResult :: Outcome.OpOutcome -> Outcome.OpOutcome
 quietResult result = case result.output of
@@ -196,9 +210,13 @@ resolveSyncBase options defaultRef context = case options.base of
 noFeatureBranch :: String -> String -> Either String String
 noFeatureBranch current defaultRef =
   Left
-    ("sync: --stack found no feature branch to stack onto\n"
-      <> "       current branch is '" <> if current == "" then "<none>" else current <> "' (default is '" <> defaultRef <> "').\n"
-      <> "       checkout the feature branch first, or pass --base <branch> explicitly.")
+    ( "sync: --stack found no feature branch to stack onto\n"
+        <> "       current branch is '"
+        <>
+          if current == "" then "<none>"
+          else current <> "' (default is '" <> defaultRef <> "').\n"
+            <> "       checkout the feature branch first, or pass --base <branch> explicitly."
+    )
 
 failText :: String -> Outcome.OpOutcome
 failText message = Outcome.failure 1 (message <> "\n")

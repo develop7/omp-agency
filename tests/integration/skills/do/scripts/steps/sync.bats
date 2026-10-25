@@ -6,14 +6,13 @@ setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
   setup_test_dir
 
-
   # Create a git fixture with a working local remote
   git init -q
   git config user.email "test@test.com"
   git config user.name "Test"
 
   # Create initial commit + set up remote
-  echo "hello" > file.txt
+  echo "hello" >file.txt
   git add file.txt
   git commit -q -m "initial"
   git init -q --bare "$TEST_DIR/remote.git"
@@ -36,11 +35,11 @@ run_sync() {
   run_sync true
   [ "$status" -eq 0 ]
 
-  [[ "$output" == *"vcs=unknown"* ]]
-  [[ "$output" == *"forge=unknown"* ]]
-  [[ "$output" == *"branch=no-vcs"* ]]
-  [[ "$output" == *"defaultBranch=no-vcs"* ]]
-  [[ "$output" == *"base=no-vcs"* ]]
+  [[ $output == *"vcs=unknown"* ]]
+  [[ $output == *"forge=unknown"* ]]
+  [[ $output == *"branch=no-vcs"* ]]
+  [[ $output == *"defaultBranch=no-vcs"* ]]
+  [[ $output == *"base=no-vcs"* ]]
   run jq -r '.base' .do-results.json
   [ "$output" = "no-vcs" ]
 }
@@ -49,8 +48,8 @@ run_sync() {
   run_sync false
   [ "$status" -eq 0 ]
 
-  [[ "$output" == *"vcs=git"* ]]
-  [[ "$output" == *"forge=unknown"* ]]
+  [[ $output == *"vcs=git"* ]]
+  [[ $output == *"forge=unknown"* ]]
 }
 
 @test "sync creates .do-results.json with vcs field" {
@@ -92,7 +91,7 @@ run_sync() {
 @test "sync errors on invalid noVcs value" {
   run_sync maybe
   [ "$status" -eq 2 ]
-  [[ "$output" == *"noVcs must be 'true' or 'false'"* ]]
+  [[ $output == *"noVcs must be 'true' or 'false'"* ]]
 }
 
 @test "sync detects github forge from remote URL" {
@@ -104,14 +103,14 @@ run_sync() {
 
   run_sync true
   [ "$status" -eq 0 ]
-  [[ "$output" == *"forge=github"* ]]
+  [[ $output == *"forge=github"* ]]
 }
 
 @test "sync --base <branch> resolves base to that branch" {
   git branch feat-parent
   run_sync --base feat-parent false
   [ "$status" -eq 0 ]
-  [[ "$output" == *"base=feat-parent"* ]]
+  [[ $output == *"base=feat-parent"* ]]
   run jq -r '.base' .do-results.json
   [ "$output" = "feat-parent" ]
 }
@@ -119,14 +118,14 @@ run_sync() {
 @test "sync --stack --base are mutually exclusive" {
   run_sync --base foo --stack true
   [ "$status" -eq 2 ]
-  [[ "$output" == *"mutually exclusive"* ]]
+  [[ $output == *"mutually exclusive"* ]]
 }
 
 @test "sync --base is incompatible with --no-vcs" {
   # --no-vcs means noVcs=true; base selection is meaningless without VCS.
   run_sync --base foo true
   [ "$status" -eq 2 ]
-  [[ "$output" == *"incompatible with --no-vcs"* ]]
+  [[ $output == *"incompatible with --no-vcs"* ]]
 }
 
 @test "sync false in a jj repo fetches with --remote <name>, not positionally (#55)" {
@@ -137,7 +136,7 @@ run_sync() {
   test -d .jj/repo || skip "jj workspace missing after colocated init"
   git config user.email "test@test.com"
   git config user.name "Test"
-  echo base > file.txt
+  echo base >file.txt
   jj describe -m base
   jj bookmark create main -r @
   jj git push --remote origin --bookmark main
@@ -148,7 +147,7 @@ run_sync() {
   # the pre-fix argv and fails the test outright (exit 77); every other
   # invocation delegates to the real jj so sync's remote resolution and
   # protocol lines still run for real.
-  cat > "$TEST_DIR/bin/jj" <<'SH'
+  cat >"$TEST_DIR/bin/jj" <<'SH'
 #!/bin/sh
 if [ "$1" = "git" ] && [ "$2" = "fetch" ]; then
   : "${JJ_FETCH_LOG:?JJ_FETCH_LOG not set}"
@@ -164,9 +163,9 @@ SH
 
   run env REAL_JJ="$real_jj" JJ_FETCH_LOG="$TEST_DIR/fetch-argv.log" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" sync false
   [ "$status" -eq 0 ]
-  [[ "$output" == *"vcs=jj"* ]]
+  [[ $output == *"vcs=jj"* ]]
   run jq -r '.steps[0].verification' .do-results.json
-  [[ "$output" == "fetch ok; vcs=jj;"* ]]
+  [[ $output == "fetch ok; vcs=jj;"* ]]
   [ "$(cat "$TEST_DIR/fetch-argv.log")" = "git fetch --remote origin" ]
   run jq -r '.vcs' .do-results.json
   [ "$output" = "jj" ]
@@ -182,14 +181,14 @@ SH
   git remote set-url origin "$TEST_DIR/jj-fake.git"
   git config user.email "test@test.com"
   git config user.name "Test"
-  echo base > file.txt
+  echo base >file.txt
   jj describe -m base >/dev/null 2>&1
   jj bookmark create known-feature -r @ >/dev/null 2>&1
   jj git push --remote origin --bookmark known-feature >/dev/null 2>&1
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" sync false
   [ "$status" -eq 0 ]
-  [[ "$output" == *"branch=known-feature"* ]]
+  [[ $output == *"branch=known-feature"* ]]
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op head-revision
   [ "$status" -eq 0 ]
   [ "$output" = "known-feature" ]

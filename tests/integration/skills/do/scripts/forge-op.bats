@@ -8,7 +8,6 @@ setup() {
   load "$REPO_ROOT/tests/helpers/git-fixtures.bash"
   setup_test_dir
 
-
   # Real git fixture so vcs-op remote-url returns something forge-op can
   # classify when state is absent (the fallback path).
   git init -q
@@ -37,7 +36,7 @@ teardown() {
 
 @test "detect reads forge from .do-results.json when present" {
   mkdir -p .do-results.json.d 2>/dev/null || true
-  printf '{"forge":"bitbucket"}' > .do-results.json
+  printf '{"forge":"bitbucket"}' >.do-results.json
   run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op detect
   [ "$status" -eq 0 ]
   [ "$output" = "bitbucket" ]
@@ -62,14 +61,20 @@ teardown() {
 @test "supports returns 0 for all ops on github" {
   for op in pr-view pr-create pr-edit pr-comment issue-view pr-checks; do
     FORGE_OVERRIDE=github run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op supports "$op"
-    [ "$status" -eq 0 ] || { echo "expected $op supported on github"; false; }
+    [ "$status" -eq 0 ] || {
+      echo "expected $op supported on github"
+      false
+    }
   done
 }
 
 @test "supports returns 1 for all ops on bitbucket" {
   for op in pr-view pr-create pr-edit pr-comment issue-view pr-checks; do
     FORGE_OVERRIDE=bitbucket run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op supports "$op"
-    [ "$status" -eq 1 ] || { echo "expected $op unsupported on bitbucket"; false; }
+    [ "$status" -eq 1 ] || {
+      echo "expected $op unsupported on bitbucket"
+      false
+    }
   done
 }
 
@@ -88,18 +93,18 @@ teardown() {
 @test "dispatch errors on unsupported forge" {
   FORGE_OVERRIDE=bitbucket run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op pr-create --help
   [ "$status" -eq 1 ]
-  [[ "$output" == *"does not support"* ]]
-  [[ "$output" == *"#10"* ]]
+  [[ $output == *"does not support"* ]]
+  [[ $output == *"#10"* ]]
 }
 
 @test "unknown operation errors" {
   run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op nonsense-op
   [ "$status" -eq 1 ]
-  [[ "$output" == *"unknown operation"* ]]
+  [[ $output == *"unknown operation"* ]]
 }
 
 @test "no operation errors with usage" {
   run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Usage"* ]]
+  [[ $output == *"Usage"* ]]
 }

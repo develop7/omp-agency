@@ -15,6 +15,7 @@ import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
+
 -- | Dispatch the legacy script name in argv[0] to its PureScript runner.
 dispatch :: Array String -> Effect Int
 dispatch args = case Array.uncons args of

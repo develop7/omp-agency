@@ -20,7 +20,7 @@ teardown() {
 @test "stages the runtime closure and verifies it" {
   run node "$PACKAGE" --out "$OUT/package" --verify
   [ "$status" -eq 0 ]
-  [[ "$output" == *"import-bearing files verified"* ]]
+  [[ $output == *"import-bearing files verified"* ]]
   [ -f "$OUT/package/package.json" ]
   [ -f "$OUT/package/src/agency-tools.ts" ]
   [ -f "$OUT/package/pure/dist/agency-api.js" ]
@@ -98,7 +98,7 @@ teardown() {
   run node "$PACKAGE" --out "$OUT/package" \
     --catalog develop7/omp-agency dist-test nothex v9.9.9-test
   [ "$status" -eq 1 ]
-  [[ "$output" == *"invalid catalog sha"* ]]
+  [[ $output == *"invalid catalog sha"* ]]
 }
 
 @test "staged tree excludes tests, test sources, and build-only payload" {
@@ -124,7 +124,7 @@ teardown() {
   run node "$PACKAGE" --out "$OUT/package" \
     --catalog develop7/omp-agency dist-test 1234567890abcdef1234567890abcdef12345678 "v1..2"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"invalid catalog version"* ]]
+  [[ $output == *"invalid catalog version"* ]]
 }
 
 @test "verify fails when a staged relative import cannot resolve" {
@@ -134,7 +134,7 @@ teardown() {
   rm "$OUT/package/src/workflow-vocabulary.ts"
   run node "$PACKAGE" --out "$OUT/package" --verify --no-stage
   [ "$status" -eq 1 ]
-  [[ "$output" == *"imports missing"* ]]
+  [[ $output == *"imports missing"* ]]
 }
 
 @test "verify fails when the manifest declares a missing extension" {
@@ -149,5 +149,5 @@ teardown() {
   ' "$OUT/package"
   run node "$PACKAGE" --out "$OUT/package" --verify --no-stage
   [ "$status" -eq 1 ]
-  [[ "$output" == *"declares missing extension"* ]]
+  [[ $output == *"declares missing extension"* ]]
 }

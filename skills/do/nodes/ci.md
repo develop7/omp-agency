@@ -27,8 +27,8 @@ tool if the command takes more than a few seconds — never pipe to `tail`/`head
 `{ op: "set", field: "active", value: "waiting" }`; when it returns, call
 `{ op: "set", field: "active", value: "working" }` before proceeding.
 
-CI commands are local and **forge-independent — run them regardless of forge**. Only the *verification
-method* may be forge-specific: if `.agency/do.md` describes verification via PR checks and
+CI commands are local and **forge-independent — run them regardless of forge**. Only the _verification
+method_ may be forge-specific: if `.agency/do.md` describes verification via PR checks and
 `supportsPrChecks` is false (read from state), fall back to exit code + command output.
 
 **Keep local and remote evidence separate.** A successful local command records only

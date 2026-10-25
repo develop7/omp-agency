@@ -27,15 +27,15 @@ scheduler-level spelling and refuses on an active step):
 - **Otherwise**: read `.agency/do.md` and look for a `## PR evidence` section. If missing or empty,
   reason `"no PR evidence section in .agency/do.md"` — the default for projects that haven't opted in.
 
-**The trigger is visual *or* behavioral.** Visual: screenshots, recordings (video when motion is the
+**The trigger is visual _or_ behavioral.** Visual: screenshots, recordings (video when motion is the
 point). **Behavioral** — proof that state survives an interaction or a restart — is easy to
 under-fire on: persistence, restore, session, autosave, debounce/coalesce, and reconnect fixes often
 have **no visual diff** yet are exactly where a survives-restart capture proves recoverability. Bug
 fixes default to "demonstrate the fixed behavior" even when nothing looks different; gate on "is there
 a behavior worth proving", not on a pixel changing.
 
-**Read the trigger broadly.** The project's section supplies the capture *mechanism*; the criterion
-for *when to fire* is the visual-or-behavioral framing above. If the section's wording leans visual but
+**Read the trigger broadly.** The project's section supplies the capture _mechanism_; the criterion
+for _when to fire_ is the visual-or-behavioral framing above. If the section's wording leans visual but
 the diff is a behavioral fix, capture the behavior anyway. Skip only when there is genuinely no
 behavior worth proving (pure refactor, docs change, internal cleanup with no observable
 before→after).

@@ -14,7 +14,13 @@ export function parseInput(schema, value) {
   if (!(out instanceof type.errors)) return { success: true, data: out };
   return {
     success: false,
-    error: { message: out.summary, issues: out.map(issue => ({ path: [...issue.path], message: issue.problem })) },
+    error: {
+      message: out.summary,
+      issues: out.map((issue) => ({
+        path: [...issue.path],
+        message: issue.problem,
+      })),
+    },
   };
 }
 
@@ -40,7 +46,13 @@ export async function invoke(tools, name, input, cwd = process.cwd()) {
   const definition = tool(tools, name);
   const params = parseInput(definition.parameters, input);
   if (!params.success) throw new Error(params.error.message);
-  return definition.execute("boundary-test", params.data, undefined, undefined, { cwd });
+  return definition.execute(
+    "boundary-test",
+    params.data,
+    undefined,
+    undefined,
+    { cwd },
+  );
 }
 
 export async function withIsolatedRepo(run) {
@@ -70,4 +82,5 @@ export async function readState(cwd = process.cwd()) {
   return JSON.parse(await readFile(join(cwd, ".do-results.json"), "utf8"));
 }
 
-export const snapshot = (cwd) => readFile(join(cwd, ".do-results.json"), "utf8");
+export const snapshot = (cwd) =>
+  readFile(join(cwd, ".do-results.json"), "utf8");

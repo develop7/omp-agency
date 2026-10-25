@@ -44,4 +44,3 @@ For one-off invocations outside the dev shell, pin the interpreter the same
 way: `nix develop --command node nickel-vm/scripts/smoke.mjs`.
 
 The smoke test checks semantic `cli` objects, `cli_seed` arrays, terminal `{ done: true }`, failure `null` values, contradictory operation-and-seed rejection, unknown nonempty `cli_seed` entry-point rejection, and actionable missing-state errors. It intentionally does not pin incidental Nickel text formatting.
-
