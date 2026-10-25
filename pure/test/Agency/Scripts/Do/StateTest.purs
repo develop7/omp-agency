@@ -193,6 +193,19 @@ run = do
     Right _ -> do
       Console.error "FAIL: append accepted an unknown step status"
       Sys.exit 1
+  case State.appendStep (nextStep { status = State.StepSkipped, reason = Nothing }) State.emptyState of
+    Left error -> assert "append rejects a reasonless skipped step" (contains (Pattern "no reason") error)
+    Right _ -> do
+      Console.error "FAIL: append accepted a reasonless skipped step"
+      Sys.exit 1
+  case State.parseState "{\"steps\":[{\"name\":\"sync\",\"status\":\"skipped\",\"verification\":\"\",\"startedAt\":\"2024-01-01T00:00:00Z\",\"completedAt\":\"2024-01-01T00:00:00Z\"}]}" of
+    Left error -> assert "parse rejects a reasonless skipped step" (contains (Pattern "no reason") error)
+    Right _ -> assert "parse rejects a reasonless skipped step" false
+  case State.parseState "{\"steps\":[{\"name\":\"sync\",\"status\":\"skipped\",\"verification\":\"\",\"startedAt\":\"2024-01-01T00:00:00Z\",\"completedAt\":\"2024-01-01T00:00:00Z\",\"reason\":\"--no-vcs\"}]}" of
+    Left error -> do
+      Console.error ("FAIL: parse accepts a skipped step with a reason: " <> error)
+      Sys.exit 1
+    Right parsed -> assert "parse accepts a skipped step with a reason" (parsed.steps /= [])
   lockDirectory <- Sys.uniqueTempPath (cwd <> "/.state-lock")
   let lockStatePath = lockDirectory <> "/.do-results.json"
       lockPath = lockStatePath <> ".lock"

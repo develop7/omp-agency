@@ -348,7 +348,7 @@ parseStep value = do
   startedAt <- requiredString "startedAt" object
   completedAt <- requiredString "completedAt" object
   reason <- stringValue "reason" object
-  pure { name, status, verification, startedAt, completedAt, reason }
+  validStep { name, status, verification, startedAt, completedAt, reason }
 
 parsePending :: Json -> Either String PendingStep
 parsePending value = do
@@ -623,11 +623,17 @@ validStepName name =
   if Array.elem name Vocabulary.workflowSteps then Right unit
   else Left ("state: unknown step '" <> name <> "'")
 
+-- | The shared step-state invariant: a skipped step must carry a reason,
+-- | so the summary never renders "unspecified" (#61). Enforced here — at
+-- | the state boundary — so EVERY write path (step-end, the corrective
+-- | `step` record, and the typed `set steps` setter) shares one check.
 validStep :: Step -> Either String Step
 validStep step = do
   validStepName step.name
   _ <- validStepStatus (renderStepStatus step.status)
-  pure step
+  if step.status == StepSkipped && step.reason == Nothing then
+    Left ("state: step '" <> step.name <> "' is skipped but has no reason — record why it did not run")
+  else Right step
 
 appendStep :: Step -> State -> Either String State
 appendStep step state = do
