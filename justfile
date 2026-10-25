@@ -66,9 +66,13 @@ lint-workflows:
 fmt: node-deps
     {{ nix_shell }} nix fmt
 
-# CI gate: fail if any file would be reformatted (used by nix flake check).
-fmt-check:
-    {{ nix_shell }} nix flake check --no-build
+# CI gate: fail if any file would be reformatted. Uses --ci mode (enables
+# --no-cache and --fail-on-change). The --no-cache flag is essential:
+# treefmt v2.6.0's mtime-based cache leaves stale entries for files that
+# purs-tidy reformats in-place via the bash wrapper. node-deps ensures
+# purs-tidy is available via npx. The treefmt binary comes from the devShell.
+fmt-check: node-deps
+    {{ nix_shell }} treefmt --ci --no-cache
 
 workflow-vocabulary:
     {{ nix_shell }} node scripts/generate-workflow-vocabulary.mjs

@@ -9,7 +9,6 @@ supplies the CLI/API bundles, with compiled dependencies cached separately by `p
 is produced by `nickelVmWasm`; `just nickel-build` installs it into `nickel-vm/dist/` (see `nickel-vm/README.md` for the
 resolver-order patch).
 
-
 ## Format command
 
 just fmt
