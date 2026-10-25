@@ -20,6 +20,9 @@ description: Parallel structural review, reconciled across both lenses before ap
 
 ## Strategies
 
+Read `skill://review-handoff` and use its native-URI contract for every review, retry, fallback,
+cross-validation, dismissal audit, and targeted reconciliation review below.
+
 Invoke `hickey` and `lowy` as two **parallel sub-agents** via the `task` tool (`agent: "hickey"` and
 `agent: "lowy"`), in a single `tasks[]` batch. Reviewers report findings only; they must not edit files.
 Keep the reviewed diff unchanged through both first-pass reviews, cross-validation, and reconciliation.
@@ -28,16 +31,19 @@ also applies to main-model fallback reviews and `--no-vcs` working-tree fixes.
 
 **Fallback, never skip.** If a sub-agent invocation fails for harness/tooling reasons before producing
 a review, retry that reviewer once; if it still cannot produce a sub-agent review, run that review in
-the main model by loading the reviewer skill against the same diff **and the same brief** — the full
-brief list below, verbatim. Do not replace it with an informal review. Model selection lives in the
+the main model by reading the same native brief and diff references and loading the reviewer skill —
+the full brief list below, verbatim. Do not replace it with an informal review. Model selection lives in the
 agent definitions (`agents/*.md`, `model: "@task"`) — pass no model override. The main-model fallback
 uses the reviewer's declared tool set (the frontmatter `tools:` in `agents/{hickey,lowy}.md`) until
 findings are reported; apply fixes only after the reconciliation gate below.
 
-Each sub-agent prompt must be self-contained (sub-agents inherit no context). Brief each one with:
+Prepare one complete brief under `local://review-<round>/` before fan-out. Both reviewers read it and
+its required payloads in full; task prompts carry only read-first instructions, input URIs, and role/output
+requirements. The brief supplies:
 
 - The full task prompt plus anything relevant that **research** uncovered
-- Scope: the actual diff from the `vcs_read` tool with `{ op: "diff-range" }`
+- Scope: the exact diff snapshot fetched once with `vcs_read { op: "diff-range" }`, retained at its
+  existing `artifact://` URI when spilled, otherwise authored in `local://`
 - **Baseline contract**: "The diff's deleted side is the behavioral baseline: preserve deleted
   behavior unless the task explicitly requests a change. Every finding whose fix would make behavior
   stricter or semantically different must cite a deleted-side hunk demonstrating that exact behavior
@@ -68,16 +74,16 @@ in the PR description as a strategic note, not a deferred finding.
 **Cross-validate through both lenses.** Wait for both first-pass outputs. Skip only when both reviewers
 returned zero findings. Otherwise, invoke **both skills again in parallel**, in a single `tasks[]`
 batch, even if one lens returned zero findings: that lens must still audit the other lens's proposals.
-Each self-contained prompt contains:
+Prepare a separate cross-validation brief referencing:
 
-- The same unchanged diff used by the first-pass reviews
-- The same baseline contract as the first-pass brief, verbatim — it governs the other reviewer's
+- The same unchanged brief and diff used by the first-pass reviews
+- The same baseline contract in the first-pass brief, verbatim — it governs the other reviewer's
   recommendations too: cross-validation must flag any recommendation whose fix would make behavior
   stricter or semantically different without citing a deleted-side hunk demonstrating that exact
   behavior (restoring what the baseline had), or an explicit task requirement, the same way it flags
   structural problems.
-- Both reviewers' full findings outputs — paste verbatim; the cross-validator must see the
-  recommendations being audited, not a summary
+- Both reviewers' complete findings at their stable `agent://` output URIs (or exact `local://`
+  snapshots if a reviewer must be resumed); cross-validators read them in full, not a summary
 - The question, phrased neutrally: _"Apply your lens to the diff **and** to the other reviewer's
   recommendations. Does any recommendation, if applied, create a problem your lens would flag? If yes,
   surface it as a new finding with the same disposition rules (Fix in this PR / No-op, no Defer).
@@ -91,7 +97,7 @@ Each self-contained prompt contains:
    - `skills/code-police/SKILL.md` — `Reviewing principles`
    - `skills/fact-check/SKILL.md` — `Anti-patterns in YOUR review (strictly banned)`
 2. **One batch classification.** With the frozen rubric, classify each finding entry with the single bool question: "does this entry dismiss or talk itself out of a finding?" Use the dismissal shapes as the criterion. The question is mechanical; the host owns it — it lives at host level and is not a lens concern.
-3. **Flag handling.** Flagged entries do not get deleted or rewritten by the judge. Route each flagged entry back through fact-check: fact-check receives the entry text verbatim (including its dismissal span) and the frozen rubric, and returns exactly one output — sustain or clear the dismissal. It does not review code in this run. Fact-check's output is authoritative; the judge's flag is advisory.
+3. **Flag handling.** Flagged entries do not get deleted or rewritten by the judge. Route each flagged entry back through fact-check using a native-URI handoff: preserve the entry text verbatim (including its dismissal span) and frozen rubric in `local://`, or reference their complete stable native sources. Fact-check reads both in full and returns exactly one output — sustain or clear the dismissal. It does not review code in this run. Fact-check's output is authoritative; the judge's flag is advisory.
 4. **Ledger only.** The judge's flags feed the reconciled ledger only — they do not create new findings, do not change dispositions, and are never re-judged. A finding that fact-check clears after a flag keeps its pre-flag disposition; a finding that fact-check sustains keeps or upgrades to **Fix in this PR** per the normal reconciliation rules (if the flagged entry had no ledger disposition because the dismissal suppressed it, reconcile it as a first-pass finding under the normal Fix/No-op rules). Record the flag + fact-check outcome in the ledger row's rationale for auditability.
 
 **Reconcile before applying anything.** Wait for both cross-validation outputs and the dismissal-scan + its fact-check follow-ups (if the scan flags no entries, there are no follow-ups — proceed to reconcile immediately), then reconcile every
@@ -102,8 +108,8 @@ first-pass and cross-validation finding into one ledger:
   as **No-op** rows referencing the covering finding so no finding disappears.
 - Resolve conflicting recommendations against the source and both lenses. Do not choose by arrival
   order, apply contradictory fixes sequentially, or treat a conflict as a deferral. If a conflict
-  remains unresolved, send both lenses the unchanged diff, verbatim findings, and proposed resolution
-  for targeted review before editing.
+  remains unresolved, prepare a targeted brief referencing the unchanged diff, complete verbatim
+  findings, and proposed resolution for both lenses to read before editing.
 - Record the agreed fix and dependency order for every **Fix in this PR** row. The gate is complete
   only when every finding has a disposition and no conflicting fixes remain. When both first passes
   returned zero findings, record that outcome; there are no fixes to reconcile or apply.

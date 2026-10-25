@@ -12,10 +12,12 @@ Run for **3 iterations** (or as specified by the user — can be a number or a d
 
 ## 0. Determine Scope
 
-- Before starting, use the `ask` tool to ask: should this operate on the **whole codebase** or only on *
-  *changes in the current branch/PR**?
-- If scoped to current branch/PR, get the diff using the `vcs_read` tool with `{ op: "diff-range" }` to identify changed
-  files and limit all subsequent steps to those files only.
+- For a delegated pass, read `skill://review-handoff` and the complete supplied brief, rules bundle,
+  and native-URI diff snapshot. Use that scope without asking or refetching the diff; do not rediscover
+  project rules. Prepare a new round for each changed iteration, reusing the applicable rules bundle.
+- For a standalone invocation without a brief, use `ask` to choose **whole codebase** or
+  **changes in the current branch/PR**, then obtain a branch diff with
+  `vcs_read { op: "diff-range" }` when applicable.
 
 ## For each iteration (1 to N):
 

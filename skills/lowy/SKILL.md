@@ -16,6 +16,10 @@ The core question: **do boundaries encapsulate axes of change, or just group rel
 
 ## Scope
 
+For delegated reviews, read `skill://review-handoff` and the complete supplied brief and required
+native-URI payloads before applying this lens. The brief fixes the target and contracts; inspecting
+surrounding source below does not authorize refetching the diff or rediscovering supplied project rules.
+
 The trigger is a starting point, not a frame. Default to **whole-module scope**; cross-file boundary questions and sibling modules are in scope when the question recurs there. Don't let the framing define the scope: if the volatility actually lives elsewhere — the data model, consumer pattern, or sequence/activity split — the redirected finding is the headline.
 
 **The graduation sweep — ask the boundary question in both directions**: did volatility leak *into* a module (containment)? And does the diff create app-local machinery hiding a hard volatility (transport, connection lifetime, reconnection, multiplicity racing user intent) that wants its own receptacle/package (graduation)? Name each candidate's volatility and wanted home as a recorded opportunity, never a blocker; prove-then-extract governs *when*.
@@ -28,7 +32,8 @@ For every boundary, split, or new abstraction:
 
 Be specific — "the payment provider", not "requirements might change". No concrete axis means the boundary may be arbitrary.
 
-**Project-declared areas of volatility.** Read `.agency/lowy.md` if it exists. Its rows use this schema:
+**Project-declared areas of volatility.** For a delegated review, use the complete project additions
+resolved in the brief; for a standalone review, read `.agency/lowy.md` if it exists. Its rows use this schema:
 
 | Area of volatility | What changes | Why volatile (likelihood × effect) | Expected encapsulation |
 |--------------------|--------------|------------------------------------|------------------------|

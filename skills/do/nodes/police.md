@@ -26,7 +26,7 @@ changed files are documentation-only (`.md`, `.txt`, README, docs/) — skip thi
 
 Otherwise, read the `code-police` skill via `read skill://code-police` and invoke it. When it asks about scope: **changes in the current branch/PR only**. Its worker budgets come from this step's `pattern_config` as surfaced by `workflow cli`: `worker_budget_minutes` per worker, `worker_retries` fallback attempt, `police_budget_minutes` for the whole step.
 
-The orchestrator resolves optional project rules once using the skill's **Project rules** protocol before spawning passes. Reuse that complete rules bundle for every reviewer, elegance call, and retry; reviewers must not rediscover project-rule files. Optional absence selects built-in rules only; genuine discovery or read failures stop the review.
+The orchestrator resolves optional project rules once using the skill's **Project rules** protocol before spawning passes. Apply `skill://review-handoff`: publish the complete rules bundle at a native URI and require every reviewer, elegance call, and retry to read it in full; reviewers must not rediscover project-rule files. Optional absence selects built-in rules only; genuine discovery or read failures stop the review.
 
 **Commit each violation fix individually** — same rule as hickey+lowy: one commit per violation, not a
 lump. For each violation reported across the three passes, in turn:

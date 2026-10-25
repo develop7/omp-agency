@@ -84,6 +84,12 @@ reviewers in parallel before presenting the recommendation: use `task` with `age
 The deliverable is the post-review proposal. Change the design where a finding lands; do not append raw critique to an
 unchanged sketch. Briefly explain findings that did not land.
 
+Read `skill://review-handoff` before spawning. Write the complete user task, relevant research, and
+design sketch into a named `local://review-<round>/` brief; reference existing native evidence rather
+than copying it. Both reviewers read the same complete brief and required payloads. Keep task context
+and task prompts to read-first instructions, native input URIs, and each lens's role/output requirements.
+Retries or targeted reviews reuse the same unchanged design inputs.
+
 Ask Lowy to identify volatility boundaries and missing seams. Ask Hickey to identify concrete complecting or
 fragmentation risks in this sketch, or explicitly say there is nothing to bite into; generic principles are not findings.
 When the sketch introduces a new top-level abstraction, instruct both reviewers to first find the canonical in-repo
