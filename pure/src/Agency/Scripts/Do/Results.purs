@@ -94,10 +94,11 @@ unfinishedJobBlocker operation stepName state =
             <> " — resolve with job-end first (non-completed outcomes require a verification reason)"
         )
 
--- | A skipped completion must carry a reason: the summary renders every
--- | skipped step as `name:reason`, and a reasonless skip would surface as
--- | "unspecified" (#61). This guard runs before any state write, so a
--- | refused end leaves the pendingStep intact for a corrected retry.
+-- | A skipped completion must carry a reason (#61). The invariant itself
+-- | lives in `State.validStep` so every write path shares one check; this
+-- | guard exists only to refuse EARLY — before `Sys.nowIso` and before the
+-- | job blocker — so a refused `end` leaves the pendingStep intact for a
+-- | corrected retry with a reason.
 skippedReasonGuard :: String -> Maybe String -> Maybe String
 skippedReasonGuard status reason =
   if status == "skipped" && reason == Nothing then

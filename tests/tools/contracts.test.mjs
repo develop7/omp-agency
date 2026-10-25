@@ -296,6 +296,21 @@ test("the corrective step record rejects a reasonless skipped status", async () 
   });
 });
 
+test("the typed steps setter rejects a reasonless skipped step", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", {
+        op: "set", field: "steps",
+        value: [{ name: "sync", status: "skipped", verification: "", startedAt: "2024-01-01T00:00:00Z", completedAt: "2024-01-01T00:00:00Z" }],
+      }, cwd),
+      /no reason/,
+    );
+    assert.equal(await snapshot(cwd), before, "refused set steps must not mutate state");
+  });
+});
+
 test("the corrective step record is blocked by unfinished jobs", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
