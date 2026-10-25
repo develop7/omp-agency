@@ -10,6 +10,10 @@ Review the current changes (scoped to the current branch/PR) against the rules b
 
 The **baseline contract** is part of the authoritative rules bundle (see below and **Running the passes**): "The diff's deleted side is the behavioral baseline: preserve deleted behavior unless the task explicitly requests a change. Every finding whose fix would make behavior stricter or semantically different must cite a deleted-side hunk demonstrating that exact behavior (restoring what the baseline had) or an explicit task requirement; otherwise do not raise it as a finding. Restoring a guard the deleted implementation demonstrably had is in scope."
 
+Read `skill://review-handoff` before preparing or consuming delegated review inputs. Its native-URI
+contract applies to every pass, retry, and main-model fallback; the rules and pass semantics below remain
+authoritative.
+
 ## Arguments
 
 `--no-elegance` — skip Pass 3 entirely and report `Elegance | – | Skipped (--no-elegance)`. Passes 1–2 still run. Use when the `elegance` skill loop already ran over this same tree; otherwise Pass 3 repeats a near-guaranteed no-op.
@@ -20,7 +24,7 @@ Before any reviewer or elegance pass, list the repository root to check for `.ag
 
 Read the project rule file once. Include its inline rules and discover/read each project-rule file it explicitly points to, also once. Resolve and read every applicable pointer before starting a pass; propagate any discovery, read, or permission error instead of silently dropping that rule. Preserve source paths and rule IDs so project rules appear as separate Pass 1 rows.
 
-Build one complete rules bundle containing the baseline contract (above), the Reviewing principles, all built-in rules and Additional principles below, and all applicable project rules and referenced-file contents. Put this bundle in the shared task context for every reviewer and elegance call, including every retry. Pass prompts must make clear that the supplied bundle is authoritative: reviewers must not search for, list, open, or rediscover project-rule files. The orchestrator owns discovery and supplies the same complete applicable rules on every attempt. Do not pass only a summary or pointers in place of rule contents.
+Build one complete rules bundle containing the baseline contract (above), the Reviewing principles, all built-in rules and Additional principles below, and all applicable project rules and referenced-file contents. Write it under `local://review-<round>/` and reference it from the brief for every reviewer and elegance call, including every retry. Pass prompts must require reading that complete authoritative bundle: reviewers must not search for, list, open, or rediscover project-rule files. The orchestrator owns discovery and supplies the same complete applicable rules on every attempt. A summary or original rule-file pointers cannot replace resolved rule contents; the native bundle URI is their transport, not a substitute for reading them.
 
 ## Reviewing principles
 
@@ -62,13 +66,13 @@ At every non-trivial declaration or block, ask whether a reader who did not writ
 
 ## Running the passes
 
-Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"`; emit both calls in one response so they run concurrently. Before spawning them, the orchestrator fetches the diff once itself with `vcs_read {op: "diff-range"}` and embeds the full diff and complete rules bundle in the shared batch context of both scout prompts — scouts never fetch the diff or discover rules themselves. The bundle carries the baseline contract quoted above, and the orchestrator includes it verbatim in every reviewer prompt. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
+Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"` in one `tasks[]` batch. Before spawning, the orchestrator fetches the diff once with `vcs_read {op: "diff-range"}` and prepares a complete native-URI brief referencing that exact diff and the resolved rules bundle. Keep an existing `artifact://` spill; otherwise write the diff in `local://`. Both scouts read the same complete inputs; neither fetches the diff or discovers rules. The rules bundle carries the baseline contract above verbatim. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
 
-Each scout starts without the implementer's context. Supply this skill's complete applicable built-in rules and the orchestrator-resolved project rules in its shared task context; it must use that bundle as the rules of record and must not rediscover project rules. Every `task` spawn in this skill is registered and bounded under **Jobs and bounded liveness** below: resolve each worker's job before stitching the summary.
+Each scout starts without the implementer's context. Put only read-first instructions, native input URIs, and role/output requirements in shared task context and task prompts. The brief and rules bundle supply this skill's complete applicable built-in rules and the orchestrator-resolved project rules as the rules of record. Every `task` spawn in this skill is registered and bounded under **Jobs and bounded liveness** below: resolve each worker's job before stitching the summary.
 
 ### Pass 1: Rule checklist
 
-The Pass 1 scout applies the complete rules bundle supplied in shared context; it must not read or discover rule files. Scope its review to **the diff embedded in the prompt**; return one table covering **every** built-in and project rule:
+The Pass 1 scout reads and applies the complete rules bundle referenced by the brief; it must not read or discover original rule files. Scope its review to **the supplied diff snapshot**; return one table covering **every** built-in and project rule:
 
 | Rule ID | Violation found? | What was identified | Action taken |
 | ------- | ---------------- | ------------------- | ------------ |
@@ -77,7 +81,7 @@ Every "No" requires a **`Checked by:`** field: use a grep-for-absence for purely
 
 ### Pass 2: Fact-check
 
-The Pass 2 scout applies the Reviewing principles and project rules in the complete bundle supplied in shared context; it must not read or discover rule files. Scope its review to **the diff embedded in the prompt**, and perform a logic review rather than a style review. The baseline contract in the bundle governs every proposal, including stricter-validation suggestions. Find where the code lies to itself:
+The Pass 2 scout reads and applies the Reviewing principles and project rules in the complete bundle referenced by the brief; it must not read or discover original rule files. Scope its review to **the supplied diff snapshot**, and perform a logic review rather than a style review. The baseline contract in the bundle governs every proposal, including stricter-validation suggestions. Find where the code lies to itself:
 
 - silent error swallowing and inaccurate fallbacks that mask misconfiguration;
 - unvalidated boundary inputs, code that can fail despite "can't fail" assumptions, and races papered over with comments;
@@ -90,7 +94,7 @@ Fail loud over fail silent; every fallback needs a reason for its failure case; 
 
 Skip under `--no-elegance` and report `Elegance | – | Skipped (--no-elegance)`. Otherwise the orchestrator (running this pass in main context after both scouts return) obtains the shortstat itself with `vcs_read {op: "diff-stat"}`. If the diff is under 10 lines, report `Elegance | 0 | Skipped (tiny diff)`; Passes 1–2 still run.
 
-For a larger diff, run the `elegance` skill loop for three iterations. Supply the complete rules bundle in the shared context for every elegance call and iteration, including retries; it is authoritative, and elegance must not rediscover rule files. Each iteration: understand the changed files and their unnecessary complexity; research simple, elegant, readable patterns with `web_search`; apply a refactor favoring fewer lines, clearer intent, and idiomatic style without adding abstractions; and verify with tests/CI. Simple beats clever, readable beats terse, idiomatic beats generic, and each iteration builds on the last. The Reviewing principles and project rules bind here too.
+For a larger diff, run the `elegance` skill loop for three iterations. Reference the complete authoritative rules bundle in every elegance brief, including retries; elegance reads it in full and must not rediscover rule files. Each iteration prepares a new native-URI round for the current tree and its diff, retaining the same applicable rules; retries of an unchanged iteration reuse its inputs. Each iteration: understand the changed files and their unnecessary complexity; research simple, elegant, readable patterns with `web_search`; apply a refactor favoring fewer lines, clearer intent, and idiomatic style without adding abstractions; and verify with tests/CI. Simple beats clever, readable beats terse, idiomatic beats generic, and each iteration builds on the last. The Reviewing principles and project rules bind here too.
 
 ## Jobs and bounded liveness
 
@@ -98,9 +102,9 @@ Every worker spawned from this skill is a job in the driver's ledger. Budgets co
 
 - **Register at spawn**: before each `task` call, `agency_driver { op: "job-start", id, name, step: "police", budgetMinutes: worker_budget_minutes }` with a fresh, unique `id` (e.g. `police-pass1-1`). The driver derives `deadline = startedAt + budgetMinutes`.
 - **Resolve on return**: `agency_driver { op: "job-end", id, outcome: "completed" }` for a usable report; `outcome: "failed"` for an errored or empty run. Any non-`completed` outcome must carry the recorded stopping reason in `verification` — the driver rejects `failed`/`cancelled`/`escalated` ends without one.
-- **Bounded waits only**: the diff and rules bundle are embedded at spawn. Wait only while the job's `deadline` is still ahead — re-check `read proc://<id>` after every `wait` return and never start a wait that would outlive the deadline.
-- **On stall or timeout** (deadline passed, no result): cancel the worker with `write proc://<id>/kill` (no `content`), then `job-end` `outcome: "cancelled"`. Make at most `worker_retries` fallback attempt: run that same pass in main context on the fixed embedded scope, registered as its own job with a fresh id and bounded by `police_budget_minutes`. Resolve it `outcome: "completed"`, or `outcome: "escalated"` if it too fails — then proceed with the findings so far. Never re-spawn a pass.
-- **Scope discipline**: review only the current branch/PR diff embedded at spawn. If a worker broadens scope, cancel it the same way, `job-end` `outcome: "cancelled"` with `verification` recording the breach, and drop its out-of-scope findings — record them as dropped in the summary.
+- **Bounded waits only**: the complete diff and rules bundle are published at native URIs before spawn and remain unchanged for the round. Wait only while the job's `deadline` is still ahead — re-check `read proc://<id>` after every `wait` return and never start a wait that would outlive the deadline.
+- **On stall or timeout** (deadline passed, no result): cancel the worker with `write proc://<id>/kill` (no `content`), then `job-end` `outcome: "cancelled"`. Make at most `worker_retries` fallback attempt: run that same pass in main context after reading the same fixed native-URI inputs in full, registered as its own job with a fresh id and bounded by `police_budget_minutes`. Resolve it `outcome: "completed"`, or `outcome: "escalated"` if it too fails — then proceed with the findings so far. Never re-spawn a pass.
+- **Scope discipline**: review only the current branch/PR diff snapshot referenced at spawn. If a worker broadens scope, cancel it the same way, `job-end` `outcome: "cancelled"` with `verification` recording the breach, and drop its out-of-scope findings — record them as dropped in the summary.
 - **Honest wrap**: never claim a user-imposed stop or wrap point. Conclude only when every pass reports clean ("All clear") or `police_budget_minutes` is exhausted, and state which of the two ended the review.
 
 ## Output

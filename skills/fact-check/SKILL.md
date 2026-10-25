@@ -11,6 +11,10 @@ lies to itself.
 
 ## 0. Determine Scope
 
+For a delegated audit, first read `skill://review-handoff`, then the supplied brief and every required
+native-URI input in full. Use its fixed target and scope instead of fetching a fresh branch diff or
+rediscovering project rules. Standalone invocations without a supplied brief resolve scope below.
+
 Scope comes from `$ARGUMENTS`:
 
 - `branch` (default when `$ARGUMENTS` is empty) — audit only changes in the current branch/PR. Get the diff using
@@ -18,7 +22,7 @@ Scope comes from `$ARGUMENTS`:
   files.
 - `all` — audit the whole codebase.
 - Anything else — treat the argument as the target itself (a file path, a diff range like `origin/main...HEAD`, or
-  inline text/output to audit, e.g. when invoked by `hickey` to audit its own evaluation). Limit the audit to that
+  user-provided text/output to audit). Delegated evaluations use native-URI inputs, not inline payloads. Limit the audit to that
   target.
 
 **Baseline preservation.** The deleted side of a diff is the behavioral baseline. Apply this contract
@@ -29,8 +33,9 @@ hunk demonstrating that exact behavior (restoring what the baseline had) or an e
 requirement; otherwise do not raise it as a finding. Restoring a guard the deleted implementation
 demonstrably had is in scope." The [cadensight-hub](https://github.com/mrscrum/cadensight-hub/pull/25)
 regression (develop7/omp-agency#56) was an omitted non-string id guard, correctly restored under this
-rule. For `all`, file-path, and inline targets there is no baseline: do not propose new validation
-unless the task authorizes it.
+rule. A supplied brief identifies whether its target is a diff or a non-diff evaluation; native-URI
+transport does not determine the baseline. For `all`, file-path, and non-diff text targets there is no
+baseline: do not propose new validation unless the task authorizes it.
 
 Do **not** use the `ask` tool. This skill runs in a sub-agent and is routinely invoked autonomously (e.g. from `/do` via
 `hickey`).

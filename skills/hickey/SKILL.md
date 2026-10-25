@@ -12,6 +12,10 @@ Tests tell you code works; they tell you nothing about whether it's simple. Comp
 
 ## Scope
 
+For delegated reviews, read `skill://review-handoff` and the complete supplied brief and required
+native-URI payloads before applying this lens. The brief fixes the target and contracts; inspecting
+surrounding source below does not authorize refetching the diff or rediscovering supplied project rules.
+
 The trigger is a *starting point*, not a frame. Default to **whole-module scope**: read the whole file, every touched file of a diff, and adjacent siblings when the pattern recurs there. Don't let the user's framing define the scope — if the cited symptom is one instance of a broader structural issue, the broader finding is the headline, not a footnote. Anchoring on the trigger's framing is itself a finding the review never let form.
 
 ## The Evaluation Process
@@ -49,7 +53,9 @@ Concept Multiplication is *duplicated wholes* (two classes for one concept → d
 
 ### Layer 4: Structural Pattern Catalog
 
-Scan for these plus any project-declared patterns — read `.agency/hickey.md` if it exists and treat its contents as catalog additions.
+Scan for these plus any project-declared patterns. For a delegated review, use the complete project
+catalog additions resolved in the brief. For a standalone review, read `.agency/hickey.md` if it exists
+and treat its contents as catalog additions.
 
 **Complecting patterns**
 

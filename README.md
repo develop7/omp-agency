@@ -102,6 +102,7 @@ tier:
 - **`fact-check`** — Standalone correctness audit: silent error swallowing, unjustified fallbacks, wishful thinking, logic errors. Prosecutor posture, no self-dismissals.
 - **`elegance`** — Iterative elegance pass: understand, research, apply, verify. 3 iterations by default, each building on the last.
 - **`forge-pr`** — PR titles and descriptions devs actually want to read. Narrative paragraphs for the why; lists/tables/diagrams when the content is genuinely structured. GitHub today; Bitbucket support tracked in [#10](https://github.com/srid/agency/issues/10).
+- **`review-handoff`** — Shared OMP-native transport contract for reviewer briefs, rules, diff snapshots, and findings across design reviews, quality passes, retries, and fallbacks.
 
 ## Model tiers
 
@@ -305,8 +306,19 @@ silently removed and commit scope is not expanded.
 Police reviews resolve optional `.agency/code-police.md` rules once in the
 orchestrator, checking directory entries before reading contents. Successful
 absence selects built-in rules; discovery and read failures stop the review.
-Every reviewer receives the complete resolved rules in its shared context,
-including referenced rule files and retries, rather than rediscovering them.
+Every reviewer reads the complete resolved rules bundle, including referenced
+rule-file contents, through the same native-URI handoff on every retry rather
+than rediscovering them.
+
+Reviewer handoffs follow [`review-handoff`](skills/review-handoff/SKILL.md):
+authored briefs and rules go in named `local://review-<round>/` files, existing
+tool spills stay at `artifact://`, and completed reviewer findings stay at
+`agent://` while their output remains unchanged. Task prompts contain short
+read-first instructions and references, never inline payloads or `/tmp` handoff
+files. Reviewers read every required input completely and stop on missing or
+incomplete context. Inputs remain fixed through retries and cross-validation;
+changed inputs start a new round. This is a shared skill contract, not runtime
+interception of OMP's task tool.
 
 Backend parsers and permission checks remain authoritative; old model-facing
 `args` payloads are rejected rather than translated through a compatibility layer.
