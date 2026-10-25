@@ -244,6 +244,58 @@ test("skip refuses the whole operation while an unfinished job blocks the step",
   });
 });
 
+test("skip on an active step is refused — end skipped is the node-local spelling", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", { op: "start", step: "evidence" }, cwd);
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "skip", step: "evidence", reason: "no PR evidence section" }, cwd),
+      /already active/,
+    );
+    assert.equal(await snapshot(cwd), before, "refused skip must not mutate state");
+  });
+});
+
+test("end skipped requires a reason and records the node-local skip", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    await invoke(registered, "agency_driver", { op: "start", step: "evidence" }, cwd);
+
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "end", status: "skipped" }, cwd),
+      /reason required for skipped/,
+    );
+    assert.equal(await snapshot(cwd), before, "refused end must not mutate state");
+
+    const ended = await invoke(registered, "agency_driver", {
+      op: "end", status: "skipped", reason: "no PR evidence section in .agency/do.md",
+    }, cwd);
+    assert.equal(ended.details.value.step.status, "skipped");
+    assert.equal(ended.details.value.step.reason, "no PR evidence section in .agency/do.md");
+    const state = await readState(cwd);
+    assert.equal(state.pendingStep, undefined, "skipped end clears the pending step");
+    assert.equal(state.steps[0].status, "skipped");
+    assert.equal(state.steps[0].reason, "no PR evidence section in .agency/do.md");
+  });
+});
+
+test("the corrective step record rejects a reasonless skipped status", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = await initState(cwd, { noVcs: true });
+    const before = await snapshot(cwd);
+    await assert.rejects(
+      invoke(registered, "agency_driver", {
+        op: "step", step: "evidence", status: "skipped", verification: "recorded directly",
+        startedAt: "now", completedAt: "now",
+      }, cwd),
+      /reason required for skipped/,
+    );
+    assert.equal(await snapshot(cwd), before, "refused step record must not mutate state");
+  });
+});
+
 test("the corrective step record is blocked by unfinished jobs", async () => {
   await withIsolatedRepo(async (cwd) => {
     const registered = await initState(cwd, { noVcs: true });
