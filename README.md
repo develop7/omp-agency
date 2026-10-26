@@ -225,6 +225,11 @@ Cachix integration caches them; there is no separate GitHub Spago workspace
 cache. `just build` also regenerates the checkout's vocabulary for TypeScript
 consumers. After changing Spago dependencies, commit the updated lockfile.
 
+On Linux, the compiler package sets RPATH before the ELF interpreter in separate
+`patchelf` invocations. This avoids the
+[patchelf 0.19.2 overlapping-segment regression](https://github.com/NixOS/patchelf/issues/674)
+without rolling back nixpkgs or skipping compiler completion generation.
+
 CI builds and verifies the artifacts on every PR, and on pushes to `main`
 publishes the installable runtime: it stages the minimal runtime package
 (`scripts/package-runtime.mjs`), commits it to an orphan distribution commit,
