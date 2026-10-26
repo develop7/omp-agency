@@ -43,6 +43,34 @@
         overlays = [
           rust-overlay.overlays.default
           mk-spago-derivation.overlays.default
+          (
+            _final: prev:
+              prev.lib.optionalAttrs prev.stdenv.hostPlatform.isLinux {
+                purescript = prev.purescript.overrideAttrs (old: {
+                  # Combined interpreter/RPATH rewriting makes patchelf 0.19.2
+                  # overlap writable .dynamic with a read-only LOAD segment.
+                  # Set RPATH first, preserving the compiler and completion check.
+                  # https://github.com/NixOS/patchelf/issues/674
+                  installPhase = let
+                    patched =
+                      builtins.replaceStrings
+                      [
+                        "patchelf --interpreter ${prev.stdenv.cc.bintools.dynamicLinker} --set-rpath ${old.libPath} $PURS"
+                      ]
+                      [
+                        ''
+                          patchelf --set-rpath ${old.libPath} $PURS
+                          patchelf --interpreter ${prev.stdenv.cc.bintools.dynamicLinker} $PURS
+                        ''
+                      ]
+                      old.installPhase;
+                  in
+                    assert patched
+                    != old.installPhase
+                    || throw "PureScript install phase changed; review the patchelf command override."; patched;
+                });
+              }
+          )
         ];
       };
 
@@ -83,7 +111,7 @@
     in
       # The failure was in buildRustPackage's double-target hook: it
       # injected the host target before the requested wasm32 target.
-      pkgs.rust-bin.stable."1.98.0".default.override {
+      pkgs.rust-bin.stable."1.99.1".default.override {
         targets = ["wasm32-unknown-unknown"];
       };
     # rustPlatform built on the overlay toolchain so buildRustPackage
@@ -187,7 +215,7 @@
         };
         cargoDeps = rustPlatform.fetchCargoVendor {
           src = nickelVmSrc;
-          hash = "sha256-hY17JHiEHnAjmFMaEcBMtFlG4SZHFX0q4pYlSkG+/vc=";
+          hash = "sha256-kBBZZ7AIiGbWvkJi2oeDEbu1MepRls62ylkRpLpYgrQ=";
         };
         patchedNickelCore = pkgs.stdenvNoCC.mkDerivation {
           pname = "nickel-lang-core";
