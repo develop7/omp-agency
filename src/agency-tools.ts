@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import type { Type } from "@oh-my-pi/omptype";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { evaluateWorkflow } from "../nickel-vm/scripts/workflow-runtime.mjs";
@@ -92,6 +93,92 @@ export default function (pi: ExtensionAPI) {
   const step = z.enum(workflowSteps);
   const status = z.enum(["passed", "failed", "skipped"]);
 
+  // Only traverse the union/object forms emitted by these operation contracts.
+  // Names stay owned by the schemas, including nested body-operation unions.
+  type OperationJson = {
+    properties?: { op?: { const?: string; enum?: string[] } };
+    anyOf?: OperationJson[];
+  };
+  function operationNames(json: OperationJson): string[] {
+    const op = json.properties?.op;
+    return [
+      ...(op?.enum ?? (op?.const === undefined ? [] : [op.const])),
+      ...(json.anyOf ?? []).flatMap(operationNames),
+    ];
+  }
+
+  /** Add rejection guidance without widening the wire contract or repairing input. */
+  function operationSchema<Output>(
+    name: string,
+    schema: Type<Output, unknown>,
+    exampleFields: Record<string, Record<string, unknown>> = {},
+  ) {
+    const json = schema.toJsonSchema();
+    const operations = [...new Set(operationNames(json))];
+    const examples = new Map(
+      operations.map((op) => {
+        const example = { op, ...exampleFields[op] };
+        if (!schema.allows(example))
+          throw new Error(`${name}: invalid diagnostic example for ${op}`);
+        return [op, example] as const;
+      }),
+    );
+    // Narrowing preserves input identity. A pipe/morph would change the contract
+    // and is deliberately forbidden by withJsonSchema.
+    const runtime = pi.arktype("unknown").narrow((input, ctx) => {
+      if (input === null || typeof input !== "object" || Array.isArray(input)) {
+        const result = schema(input);
+        return result instanceof pi.arktype.errors ? result : true;
+      }
+      const request = input as Record<string, unknown>;
+      if (typeof request.op === "string" && operations.includes(request.op)) {
+        const result = schema(input);
+        return result instanceof pi.arktype.errors ? result : true;
+      }
+
+      // Candidate requests are diagnostic evidence only: never return or execute
+      // them. Ignore argv operands entirely; only an exact operation token helps.
+      const { op: _op, args, ...fields } = request;
+      const candidates =
+        Object.keys(fields).length === 0
+          ? []
+          : operations.filter((op) => schema.allows({ ...fields, op }));
+      const hint =
+        Array.isArray(args) && operations.includes(args[0])
+          ? (args[0] as string)
+          : undefined;
+      const conflict =
+        hint !== undefined &&
+        candidates.length > 0 &&
+        !candidates.includes(hint);
+      const choices = conflict
+        ? [hint, ...candidates]
+        : hint !== undefined
+          ? [hint]
+          : candidates;
+      const specific = choices.length > 0;
+      const shown = specific ? choices : [operations[0]];
+      const guidance = shown.map((op) =>
+        JSON.stringify(
+          candidates.includes(op) ? { ...fields, op } : examples.get(op),
+        ),
+      );
+      return ctx.reject({
+        path: ["op"],
+        expected:
+          `a supported explicit "op" for ${name}; use named fields, not raw "args". ` +
+          `Supported ops: ${operations.join(", ")}. ` +
+          (choices.length > 1
+            ? `${conflict ? "Conflicting" : "Ambiguous"} operation hints; choose an op explicitly. Alternatives: `
+            : specific
+              ? "Named-field example: "
+              : "Choose an op explicitly. Illustrative example only: ") +
+          guidance.join(" or "),
+      });
+    });
+    return pi.arktype.withJsonSchema(runtime.as<Output>(), json);
+  }
+
   pi.registerTool({
     name: "vcs_read",
     label: "VCS Read",
@@ -99,36 +186,39 @@ export default function (pi: ExtensionAPI) {
     describeResult,
     description:
       "Read-only VCS operations selected by op. Diff, new-files, and log-range optionally filter paths. dirty reports clean/dirty/no-vcs status, not a file list; these are successful results, while inspection errors fail. working-copy-status reports the working-copy changes for supported Git/jj repositories. head-revision/current-branch return the current branch/bookmark (under jj, on @ or its parent); head-commit-sha returns the feature commit CI will run against. Sync owns fetching. No raw CLI arguments are accepted.",
-    parameters: z.union([
-      z
-        .object({
-          op: z.enum([
-            "detect",
-            "remote-url",
-            "head-revision",
-            "head-commit-sha",
-            "default-branch",
-            "current-branch",
-            "base",
-            "dirty",
-            "working-copy-status",
-            "log-head",
-          ]),
-        })
-        .strict(),
-      z
-        .object({
-          op: z.enum([
-            "diff-range",
-            "diff-names",
-            "diff-stat",
-            "new-files",
-            "log-range",
-          ]),
-          paths: strings.optional(),
-        })
-        .strict(),
-    ]),
+    parameters: operationSchema(
+      "vcs_read",
+      z.union([
+        z
+          .object({
+            op: z.enum([
+              "detect",
+              "remote-url",
+              "head-revision",
+              "head-commit-sha",
+              "default-branch",
+              "current-branch",
+              "base",
+              "dirty",
+              "working-copy-status",
+              "log-head",
+            ]),
+          })
+          .strict(),
+        z
+          .object({
+            op: z.enum([
+              "diff-range",
+              "diff-names",
+              "diff-stat",
+              "new-files",
+              "log-range",
+            ]),
+            paths: strings.optional(),
+          })
+          .strict(),
+      ]),
+    ),
     async execute(_toolCallId, params) {
       return executeApi("vcs_read", [
         params.op,
@@ -136,6 +226,10 @@ export default function (pi: ExtensionAPI) {
       ]);
     },
   });
+  const commitExample = {
+    message: "Describe the change",
+    files: ["src/example.ts"],
+  };
 
   pi.registerTool({
     name: "vcs_write",
@@ -144,17 +238,25 @@ export default function (pi: ExtensionAPI) {
     describeResult,
     description:
       "Mutating VCS operations: branch requires name; commit/fix-commit require message and files; push accepts ref. Only files the caller actually changed may be committed. Fields from other operations are rejected.",
-    parameters: z.union([
-      z.object({ op: z.literal("branch"), name: text }).strict(),
-      z
-        .object({
-          op: z.enum(["commit", "fix-commit"]),
-          message: text,
-          files: strings.min(1),
-        })
-        .strict(),
-      z.object({ op: z.literal("push"), ref: selector.optional() }).strict(),
-    ]),
+    parameters: operationSchema(
+      "vcs_write",
+      z.union([
+        z.object({ op: z.literal("branch"), name: text }).strict(),
+        z
+          .object({
+            op: z.enum(["commit", "fix-commit"]),
+            message: text,
+            files: strings.min(1),
+          })
+          .strict(),
+        z.object({ op: z.literal("push"), ref: selector.optional() }).strict(),
+      ]),
+      {
+        branch: { name: "topic" },
+        commit: commitExample,
+        "fix-commit": commitExample,
+      },
+    ),
     async execute(_toolCallId, params) {
       if (params.op === "branch")
         return executeApi("vcs_write", [params.op, params.name]);
@@ -246,80 +348,87 @@ export default function (pi: ExtensionAPI) {
     describeResult,
     description:
       "Forge operations with named fields, never CLI flags. pr/issue identify a number, URL, or (PR only) branch; absent pr selects the current branch. JSON field names are supplied as a list. body and bodyFile are mutually exclusive. GitHub-only options such as jq, commit-based fill, and editor flows belong in github. Backend capability checks remain authoritative.",
-    parameters: z.union([
-      z.object({ op: z.literal("detect") }).strict(),
-      z.object({ op: z.literal("supports"), operation: text }).strict(),
-      z
-        .object({
-          op: z.literal("pr-view"),
+    parameters: operationSchema(
+      "forge",
+      z.union([
+        z.object({ op: z.literal("detect") }).strict(),
+        z.object({ op: z.literal("supports"), operation: text }).strict(),
+        z
+          .object({
+            op: z.literal("pr-view"),
+            pr: selector.optional(),
+            comments: z.boolean().optional(),
+            ...outputFields,
+          })
+          .strict(),
+        z
+          .object({
+            op: z.literal("issue-view"),
+            issue: selector,
+            comments: z.boolean().optional(),
+            ...outputFields,
+          })
+          .strict(),
+        z
+          .object({
+            op: z.literal("pr-checks"),
+            pr: selector.optional(),
+            ...outputFields,
+            watch: z.boolean().optional(),
+            required: z.boolean().optional(),
+            failFast: z.boolean().optional(),
+            interval: z.number().int().positive().optional(),
+          })
+          .strict(),
+        bodyOperation({
+          op: z.literal("pr-create"),
+          repo: text.optional(),
+          title: text.optional(),
+          ...bodyFields,
+          base: text.optional(),
+          head: text.optional(),
+          draft: z.boolean().optional(),
+          reviewers: strings.optional(),
+          assignees: strings.optional(),
+          labels: strings.optional(),
+          projects: strings.optional(),
+          milestone: text.optional(),
+          github: githubCreate.schema,
+        }),
+        bodyOperation({
+          op: z.literal("pr-edit"),
           pr: selector.optional(),
-          comments: z.boolean().optional(),
-          ...outputFields,
-        })
-        .strict(),
-      z
-        .object({
-          op: z.literal("issue-view"),
-          issue: selector,
-          comments: z.boolean().optional(),
-          ...outputFields,
-        })
-        .strict(),
-      z
-        .object({
-          op: z.literal("pr-checks"),
+          repo: text.optional(),
+          title: text.optional(),
+          ...bodyFields,
+          base: text.optional(),
+          milestone: text.optional(),
+          removeMilestone: z.boolean().optional(),
+          addAssignees: strings.optional(),
+          removeAssignees: strings.optional(),
+          addLabels: strings.optional(),
+          removeLabels: strings.optional(),
+          addProjects: strings.optional(),
+          removeProjects: strings.optional(),
+          addReviewers: strings.optional(),
+          removeReviewers: strings.optional(),
+        }),
+        bodyOperation({
+          op: z.literal("pr-comment"),
           pr: selector.optional(),
-          ...outputFields,
-          watch: z.boolean().optional(),
-          required: z.boolean().optional(),
-          failFast: z.boolean().optional(),
-          interval: z.number().int().positive().optional(),
-        })
-        .strict(),
-      bodyOperation({
-        op: z.literal("pr-create"),
-        repo: text.optional(),
-        title: text.optional(),
-        ...bodyFields,
-        base: text.optional(),
-        head: text.optional(),
-        draft: z.boolean().optional(),
-        reviewers: strings.optional(),
-        assignees: strings.optional(),
-        labels: strings.optional(),
-        projects: strings.optional(),
-        milestone: text.optional(),
-        github: githubCreate.schema,
-      }),
-      bodyOperation({
-        op: z.literal("pr-edit"),
-        pr: selector.optional(),
-        repo: text.optional(),
-        title: text.optional(),
-        ...bodyFields,
-        base: text.optional(),
-        milestone: text.optional(),
-        removeMilestone: z.boolean().optional(),
-        addAssignees: strings.optional(),
-        removeAssignees: strings.optional(),
-        addLabels: strings.optional(),
-        removeLabels: strings.optional(),
-        addProjects: strings.optional(),
-        removeProjects: strings.optional(),
-        addReviewers: strings.optional(),
-        removeReviewers: strings.optional(),
-      }),
-      bodyOperation({
-        op: z.literal("pr-comment"),
-        pr: selector.optional(),
-        repo: text.optional(),
-        ...bodyFields,
-        editLast: z.boolean().optional(),
-        deleteLast: z.boolean().optional(),
-        createIfNone: z.boolean().optional(),
-        github: githubComment.schema,
-      }),
-    ]),
+          repo: text.optional(),
+          ...bodyFields,
+          editLast: z.boolean().optional(),
+          deleteLast: z.boolean().optional(),
+          createIfNone: z.boolean().optional(),
+          github: githubComment.schema,
+        }),
+      ]),
+      {
+        supports: { operation: "pr-view" },
+        "issue-view": { issue: "81" },
+      },
+    ),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const args: string[] = [];
       if (params.op === "detect") return executeApi("forge", [params.op]);
@@ -516,6 +625,8 @@ export default function (pi: ExtensionAPI) {
       { not: {} },
     ),
   };
+  const stepExample = { step: workflowSteps[0] };
+  const completionExample = { status: "passed", verification: "Checks passed" };
 
   pi.registerTool({
     name: "agency_driver",
@@ -524,94 +635,118 @@ export default function (pi: ExtensionAPI) {
     describeResult,
     description:
       "Advance/inspect /do state with operation-specific named fields. init accepts task/review/noVcs/minimal/restart/from; base and stack belong to sync and are mutually exclusive. start/skip use step; end uses status/verification/reason. Two skip spellings: skip records a scheduler-level skip (step not yet started, refuses on an active step); end with status skipped records a node-local skip (step already active) and requires a reason. job-start records a bounded worker job (id/name/step, optional budgetMinutes 1-120, driver-computed timestamps); job-end resolves it with an outcome plus optional verification. set takes typed value: booleans for capability/options, structured values for steps/pendingStep, strings for custom fields; the jobs ledger itself is never set directly. Step names and entry points come from the workflow manifest. No raw CLI args.",
-    parameters: z.union([
-      z
-        .object({
-          op: z.literal("init"),
-          task: text
-            .refine(
-              (value) => !value.startsWith("--"),
-              "Task must not be a CLI flag",
-            )
-            .optional(),
-          review: z.boolean().optional(),
-          noVcs: z.boolean().optional(),
-          minimal: z.boolean().optional(),
-          restart: z.boolean().optional(),
-          from: z.enum(workflowEntryPoints).optional(),
-        })
-        .strict()
-        .refine(
-          (value) =>
-            !value.review ||
-            value.from === undefined ||
-            value.from === "default",
-          "review requires the default entry point",
-        ),
-      z.object({ op: z.enum(["start", "step-start"]), step }).strict(),
-      z.object({ op: z.enum(["end", "step-end"]), ...completion }).strict(),
-      z.object({ op: z.literal("skip"), step, reason: text }).strict(),
-      z
-        .object({
-          op: z.literal("job-start"),
-          id: text,
-          name: text,
-          step,
-          budgetMinutes: z.number().int().min(1).max(120).optional(),
-        })
-        .strict(),
-      z
-        .object({
-          op: z.literal("job-end"),
-          id: text,
-          outcome: z.enum(["completed", "failed", "cancelled", "escalated"]),
-          // The driver maps "" to absent, so an empty reason would fail the
-          // non-completed outcome rule only after passing the schema — the
-          // contract must reject it up front instead.
-          verification: z.string().min(1).optional(),
-        })
-        .strict(),
-      z.object({ op: z.literal("summary") }).strict(),
-      z.object({ op: z.literal("sync"), noVcs: z.boolean() }).strict(),
-      z
-        .object({ op: z.literal("sync"), noVcs: z.literal(false), base: text })
-        .strict(),
-      z
-        .object({
-          op: z.literal("sync"),
-          noVcs: z.literal(false),
-          stack: z.literal(true),
-        })
-        .strict(),
-      ...Object.entries(stateValues).map(([field, value]) =>
+    parameters: operationSchema(
+      "agency_driver",
+      z.union([
         z
-          .object({ op: z.literal("set"), field: z.literal(field), value })
-          .strict(),
-      ),
-      // State intentionally supports additional string fields. Exclude typed
-      // fields here so malformed typed values cannot fall through to this arm.
-      z
-        .object({
-          op: z.literal("set"),
-          field: text.refine(
-            (value) => !Object.hasOwn(stateValues, value),
-            "Use the typed value for this field",
+          .object({
+            op: z.literal("init"),
+            task: text
+              .refine(
+                (value) => !value.startsWith("--"),
+                "Task must not be a CLI flag",
+              )
+              .optional(),
+            review: z.boolean().optional(),
+            noVcs: z.boolean().optional(),
+            minimal: z.boolean().optional(),
+            restart: z.boolean().optional(),
+            from: z.enum(workflowEntryPoints).optional(),
+          })
+          .strict()
+          .refine(
+            (value) =>
+              !value.review ||
+              value.from === undefined ||
+              value.from === "default",
+            "review requires the default entry point",
           ),
-          value: text,
-        })
-        .strict(),
-      z
-        .object({
-          op: z.literal("step"),
-          step,
-          status,
-          verification: z.string(),
-          startedAt: text,
-          completedAt: text,
-          reason: text.optional(),
-        })
-        .strict(),
-    ]),
+        z.object({ op: z.enum(["start", "step-start"]), step }).strict(),
+        z.object({ op: z.enum(["end", "step-end"]), ...completion }).strict(),
+        z.object({ op: z.literal("skip"), step, reason: text }).strict(),
+        z
+          .object({
+            op: z.literal("job-start"),
+            id: text,
+            name: text,
+            step,
+            budgetMinutes: z.number().int().min(1).max(120).optional(),
+          })
+          .strict(),
+        z
+          .object({
+            op: z.literal("job-end"),
+            id: text,
+            outcome: z.enum(["completed", "failed", "cancelled", "escalated"]),
+            // The driver maps "" to absent, so an empty reason would fail the
+            // non-completed outcome rule only after passing the schema — the
+            // contract must reject it up front instead.
+            verification: z.string().min(1).optional(),
+          })
+          .strict(),
+        z.object({ op: z.literal("summary") }).strict(),
+        z.object({ op: z.literal("sync"), noVcs: z.boolean() }).strict(),
+        z
+          .object({
+            op: z.literal("sync"),
+            noVcs: z.literal(false),
+            base: text,
+          })
+          .strict(),
+        z
+          .object({
+            op: z.literal("sync"),
+            noVcs: z.literal(false),
+            stack: z.literal(true),
+          })
+          .strict(),
+        ...Object.entries(stateValues).map(([field, value]) =>
+          z
+            .object({ op: z.literal("set"), field: z.literal(field), value })
+            .strict(),
+        ),
+        // State intentionally supports additional string fields. Exclude typed
+        // fields here so malformed typed values cannot fall through to this arm.
+        z
+          .object({
+            op: z.literal("set"),
+            field: text.refine(
+              (value) => !Object.hasOwn(stateValues, value),
+              "Use the typed value for this field",
+            ),
+            value: text,
+          })
+          .strict(),
+        z
+          .object({
+            op: z.literal("step"),
+            step,
+            status,
+            verification: z.string(),
+            startedAt: text,
+            completedAt: text,
+            reason: text.optional(),
+          })
+          .strict(),
+      ]),
+      {
+        start: stepExample,
+        "step-start": stepExample,
+        end: completionExample,
+        "step-end": completionExample,
+        skip: { ...stepExample, reason: "Not required for this task" },
+        "job-start": { ...stepExample, id: "worker-1", name: "Review changes" },
+        "job-end": { id: "worker-1", outcome: "completed" },
+        sync: { noVcs: true },
+        set: { field: "minimal", value: true },
+        step: {
+          ...stepExample,
+          ...completionExample,
+          startedAt: "2026-01-01T00:00:00Z",
+          completedAt: "2026-01-01T00:00:01Z",
+        },
+      },
+    ),
     async execute(_toolCallId, params) {
       const args: string[] = [params.op];
       switch (params.op) {
