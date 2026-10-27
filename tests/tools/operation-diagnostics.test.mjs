@@ -88,6 +88,10 @@ test("ambiguous and conflicting evidence requires an explicit operation choice",
     assert.deepEqual(example.message, input.message);
     assert.deepEqual(example.files, input.files);
   }
+  const matchingHint = diagnostic("vcs_write", { args: ["commit"], ...input });
+  assert.match(matchingHint, choices);
+  for (const op of ["commit", "fix-commit"])
+    exampleFor("vcs_write", matchingHint, op);
   const conflict = diagnostic("vcs_write", { args: ["branch"], ...input });
   assert.match(conflict, choices);
   assert.match(conflict, /branch/i);
