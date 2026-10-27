@@ -263,6 +263,15 @@ The model-facing contracts use named operands rather than CLI argument arrays:
 common values at the top level; GitHub-specific options are namespaced, such as
 `forge {op: "pr-view", json: ["number"], github: {jq: ".number"}}`.
 
+The four `op`-selected tools require an explicit supported `op`. Missing or invalid
+operations are rejected before execution with supported choices and valid
+named-field examples. For example, `agency_driver {args: ["summary"]}` is rejected
+with guidance to use `{op: "summary"}`; it is never rewritten or executed.
+Ambiguous fields such as `vcs_write {message: "save changes", files: ["src/file.ts"]}`
+require choosing `commit` or `fix-commit` explicitly. Conflicting operation hints
+also require a choice. Raw `args` remain unsupported, including alongside a valid
+`op`; examples do not parse CLI operands or flags.
+
 Tool results retain semantic data instead of only subprocess streams. Objects and
 arrays appear once as fenced JSON in model-facing `content`; scalar strings stay
 bare. `details: { op, value }` carries the same value for hooks, renderers, and

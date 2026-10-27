@@ -113,11 +113,12 @@ test("agency_driver rejects invalid operation fields and generated vocabulary va
   rejects(schema, { op: "set", field: "active", value: "implement" });
   rejects(schema, { op: "set", field: "pendingStep", value: "implement" });
   assert.equal(
-    schema.safeParse({ op: "start", step: manifest.steps[0] }).success,
+    parseInput(schema, { op: "start", step: manifest.steps[0] }).success,
     true,
   );
   assert.equal(
-    schema.safeParse({ op: "set", field: "active", value: "working" }).success,
+    parseInput(schema, { op: "set", field: "active", value: "working" })
+      .success,
     true,
   );
 });
@@ -173,7 +174,7 @@ test("job operation schemas reject out-of-contract operands", () => {
     verification: "",
   });
   assert.equal(
-    schema.safeParse({
+    parseInput(schema, {
       op: "job-start",
       id: "j1",
       name: "Pass 1",
@@ -183,7 +184,7 @@ test("job operation schemas reject out-of-contract operands", () => {
     true,
   );
   assert.equal(
-    schema.safeParse({
+    parseInput(schema, {
       op: "job-end",
       id: "j1",
       outcome: "escalated",
@@ -1166,9 +1167,9 @@ test("forge rejects injected selectors, arbitrary argv, and conflicting bodies",
   rejects(schema, { op: "pr-edit", body: "x", bodyFile: "x.md" });
   rejects(schema, { op: "pr-comment", body: "x", bodyFile: "x.md" });
   rejects(schema, { op: "pr-create", title: "title", args: ["--repo=evil"] });
-  assert.equal(schema.safeParse({ op: "pr-view", pr: "42" }).success, true);
+  assert.equal(parseInput(schema, { op: "pr-view", pr: "42" }).success, true);
   assert.equal(
-    schema.safeParse({ op: "supports", operation: "pull-request" }).success,
+    parseInput(schema, { op: "supports", operation: "pull-request" }).success,
     true,
   );
 });
@@ -1179,11 +1180,12 @@ test("forge keeps provider-only options in a strict GitHub extension", () => {
   rejects(schema, { op: "pr-view", jq: ".number" });
   rejects(schema, { op: "pr-comment", github: { arbitrary: true } });
   assert.equal(
-    schema.safeParse({ op: "pr-create", github: { fillFirst: true } }).success,
+    parseInput(schema, { op: "pr-create", github: { fillFirst: true } })
+      .success,
     true,
   );
   assert.equal(
-    schema.safeParse({
+    parseInput(schema, {
       op: "pr-view",
       json: ["number"],
       github: { jq: ".number" },
