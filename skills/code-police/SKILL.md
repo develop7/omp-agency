@@ -1,0 +1,142 @@
+---
+name: code-police
+description: Review code for quality, simplicity, and common mistakes before declaring work complete.
+argument-hint: "[--no-elegance]"
+---
+
+# Code Police
+
+Review the current changes (scoped to the current branch/PR) against the rules below plus any project rules. The three passes — rule checklist, fact-check, elegance — run on fresh sub-agent contexts: the implementer's main context just wrote the diff and is biased to rationalize it. The orchestrator stitches their findings into one summary.
+
+The **baseline contract** is part of the authoritative rules bundle (see below and **Running the passes**): "The diff's deleted side is the behavioral baseline: preserve deleted behavior unless the task explicitly requests a change. Every finding whose fix would make behavior stricter or semantically different must cite a deleted-side hunk demonstrating that exact behavior (restoring what the baseline had) or an explicit task requirement; otherwise do not raise it as a finding. Restoring a guard the deleted implementation demonstrably had is in scope."
+
+Read `skill://review-handoff` before preparing or consuming delegated review inputs. Its native-URI
+contract applies to every pass, retry, and main-model fallback; the rules and pass semantics below remain
+authoritative.
+
+## Arguments
+
+`--no-elegance` — skip Pass 3 entirely and report `Elegance | – | Skipped (--no-elegance)`. Passes 1–2 still run. Use when the `elegance` skill loop already ran over this same tree; otherwise Pass 3 repeats a near-guaranteed no-op.
+
+## Project rules
+
+Before any reviewer or elegance pass, list the repository root to check for `.agency`. If present, list `.agency` to check for `code-police.md`; only then read the confirmed file. A successful listing without the relevant entry confirms optional absence and selects built-in rules only. A failed listing, read, or permission check is an error to report and stop on, never evidence of absence.
+
+Read the project rule file once. Include its inline rules and discover/read each project-rule file it explicitly points to, also once. Resolve and read every applicable pointer before starting a pass; propagate any discovery, read, or permission error instead of silently dropping that rule. Preserve source paths and rule IDs so project rules appear as separate Pass 1 rows.
+
+Build one complete rules bundle containing the baseline contract (above), the Reviewing principles, all built-in rules and Additional principles below, and all applicable project rules and referenced-file contents. Write it under `local://review-<round>/` and reference it from the brief for every reviewer and elegance call, including every retry. Pass prompts must require reading that complete authoritative bundle: reviewers must not search for, list, open, or rediscover project-rule files. The orchestrator owns discovery and supplies the same complete applicable rules on every attempt. A summary or original rule-file pointers cannot replace resolved rule contents; the native bundle URI is their transport, not a substitute for reading them.
+
+## Reviewing principles
+
+Apply these to every pass and to the orchestrator; push back on any sub-agent prose that violates them rather than laundering its dismissal into the summary:
+
+- **NEVER talk yourself out of a finding.** No "However…", "acceptable tradeoff", or "theoretically X but practically Y" dismissal. These shapes are also consumed as a frozen rubric by the host-level dismissal scan in `skills/do/nodes/hickey-lowy.md` — this file is the canonical site for the code-police shapes.
+- **NEVER issue "no action needed"** on a finding you just described, and never end with reassurance unless you genuinely found zero issues.
+- **Assume the code is wrong until proven right.** Review as a prosecutor, not a defense attorney.
+
+## Rules
+
+### dry-rule-of-three
+
+Two similar instances are fine; three is the threshold for extraction. Identical content that must stay in sync (HTML, version strings, ports, paths) is deduplicated immediately regardless of count.
+
+### prefer-focused-library
+
+Before hand-rolling a tokenizer, parser, date/semver/URL helper, CLI argument parser, tree walker, regex matcher, or path normalizer, search for a focused library and prefer it — even as a new dependency — when scope fit and bundle cost are reasonable. "Zero deps" is an easiness judgment: code you do not own does not bitrot and its edge cases are someone else's problem. Hand-roll only when the library adds capabilities you actively do not want, or the hand-roll is genuinely a few branch-free lines. Neither "already in the tree" nor "only ~40 lines" is a gate; judge scope fit and bundle cost in both directions (left-pad exists).
+
+### invalid-states-unrepresentable
+
+Use discriminated unions, not booleans or stringly-typed fields. If two fields cannot both be `undefined`, model that in the type.
+
+### no-dead-code
+
+Aggressively remove unused code: no commented-out blocks and no "just in case" leftovers.
+
+### no-silent-error-swallowing
+
+Never silently swallow errors. Empty `catch {}` blocks, bare `catch: pass`, and `|| true` hide failures; at minimum, log the error. An intentional best-effort catch must comment why ignoring the error is safe.
+
+### no-unbounded-growth
+
+Collections, buffers, and listeners that grow with usage need a bound or cleanup path: cap or evict arrays pushed from handlers; debounce or throttle high-frequency handlers (`fs.watch`, `resize`, `scroll`, `mousemove`, WebSocket `onmessage`) unless their work is O(1) and allocation-free; stream instead of buffering a whole growing source; and share watchers instead of installing one per caller. LLM-generated code defaults to the simplest correct implementation, often O(n) in session lifetime; fix this at write time with cap, debounce, stream, or share rather than relying on review to catch a functionally correct leak.
+
+### comment-the-non-obvious
+
+At every non-trivial declaration or block, ask whether a reader who did not write it can tell **what it does** and **why it has this shape**. Comment whichever is missing: design intent, control-flow semantics, or a hidden constraint the type system does not carry. "Obvious to me because I just wrote it" is the failure mode.
+
+## Running the passes
+
+Spawn Pass 1 and Pass 2 as two parallel, read-only `task` sub-agents with `agent: "scout"` in one `tasks[]` batch. Before spawning, the orchestrator fetches the diff once with `vcs_read {op: "diff-range"}` and prepares a complete native-URI brief referencing that exact diff and the resolved rules bundle. Keep an existing `artifact://` spill; otherwise write the diff in `local://`. Both scouts read the same complete inputs; neither fetches the diff or discovers rules. The rules bundle carries the baseline contract above verbatim. Pass 3 runs only after both return because it applies fixes and would race their reads. Skip it under `--no-elegance`. Then stitch all outputs into the summary.
+
+Each scout starts without the implementer's context. Put only read-first instructions, native input URIs, and role/output requirements in shared task context and task prompts. The brief and rules bundle supply this skill's complete applicable built-in rules and the orchestrator-resolved project rules as the rules of record. Every `task` spawn in this skill is registered and bounded under **Jobs and bounded liveness** below: resolve each worker's job before stitching the summary.
+
+### Pass 1: Rule checklist
+
+The Pass 1 scout reads and applies the complete rules bundle referenced by the brief; it must not read or discover original rule files. Scope its review to **the supplied diff snapshot**; return one table covering **every** built-in and project rule:
+
+| Rule ID | Violation found? | What was identified | Action taken |
+| ------- | ---------------- | ------------------- | ------------ |
+
+Every "No" requires a **`Checked by:`** field: use a grep-for-absence for purely negative rules (such as `no-dead-code` and `no-silent-error-swallowing`), or enumerate positive candidates and why each was ruled out for bidirectional rules (such as `comment-the-non-obvious` and `prefer-focused-library`). A "No" without `Checked by:` is malformed. Do not skip rows or apply fixes; the orchestrator routes findings.
+
+### Pass 2: Fact-check
+
+The Pass 2 scout reads and applies the Reviewing principles and project rules in the complete bundle referenced by the brief; it must not read or discover original rule files. Scope its review to **the supplied diff snapshot**, and perform a logic review rather than a style review. The baseline contract in the bundle governs every proposal, including stricter-validation suggestions. Find where the code lies to itself:
+
+- silent error swallowing and inaccurate fallbacks that mask misconfiguration;
+- unvalidated boundary inputs, code that can fail despite "can't fail" assumptions, and races papered over with comments;
+- always-true or false conditions, off-by-one errors, wrong operators, and shadowing;
+- slow leaks: unbounded collections, undebounced hot handlers, per-caller watchers, and whole-input buffers where streaming would work.
+
+Fail loud over fail silent; every fallback needs a reason for its failure case; prefer precision over coverage. For each finding return the file, line, one-line risk, and concrete fix. Do not apply fixes.
+
+### Pass 3: Elegance
+
+Skip under `--no-elegance` and report `Elegance | – | Skipped (--no-elegance)`. Otherwise the orchestrator (running this pass in main context after both scouts return) obtains the shortstat itself with `vcs_read {op: "diff-stat"}`. If the diff is under 10 lines, report `Elegance | 0 | Skipped (tiny diff)`; Passes 1–2 still run.
+
+For a larger diff, run the `elegance` skill loop for three iterations. Reference the complete authoritative rules bundle in every elegance brief, including retries; elegance reads it in full and must not rediscover rule files. Each iteration prepares a new native-URI round for the current tree and its diff, retaining the same applicable rules; retries of an unchanged iteration reuse its inputs. Each iteration: understand the changed files and their unnecessary complexity; research simple, elegant, readable patterns with `web_search`; apply a refactor favoring fewer lines, clearer intent, and idiomatic style without adding abstractions; and verify with tests/CI. Simple beats clever, readable beats terse, idiomatic beats generic, and each iteration builds on the last. The Reviewing principles and project rules bind here too.
+
+## Jobs and bounded liveness
+
+Every worker spawned from this skill is a job in the driver's ledger. Budgets come from this step's `pattern_config`, surfaced through `workflow cli`: `worker_budget_minutes` per worker, `worker_retries` fallback attempts per worker, `police_budget_minutes` for the whole step.
+
+- **Register at spawn**: before each `task` call, `agency_driver { op: "job-start", id, name, step: "police", budgetMinutes: worker_budget_minutes }` with a fresh, unique `id` (e.g. `police-pass1-1`). The driver derives `deadline = startedAt + budgetMinutes`.
+- **Resolve on return**: `agency_driver { op: "job-end", id, outcome: "completed" }` for a usable report; `outcome: "failed"` for an errored or empty run. Any non-`completed` outcome must carry the recorded stopping reason in `verification` — the driver rejects `failed`/`cancelled`/`escalated` ends without one.
+- **Bounded waits only**: the complete diff and rules bundle are published at native URIs before spawn and remain unchanged for the round. Wait only while the job's `deadline` is still ahead — re-check `read proc://<id>` after every `wait` return and never start a wait that would outlive the deadline.
+- **On stall or timeout** (deadline passed, no result): cancel the worker with `write proc://<id>/kill` (no `content`), then `job-end` `outcome: "cancelled"`. Make at most `worker_retries` fallback attempt: run that same pass in main context after reading the same fixed native-URI inputs in full, registered as its own job with a fresh id and bounded by `police_budget_minutes`. Resolve it `outcome: "completed"`, or `outcome: "escalated"` if it too fails — then proceed with the findings so far. Never re-spawn a pass.
+- **Scope discipline**: review only the current branch/PR diff snapshot referenced at spawn. If a worker broadens scope, cancel it the same way, `job-end` `outcome: "cancelled"` with `verification` recording the breach, and drop its out-of-scope findings — record them as dropped in the summary.
+- **Honest wrap**: never claim a user-imposed stop or wrap point. Conclude only when every pass reports clean ("All clear") or `police_budget_minutes` is exhausted, and state which of the two ended the review.
+
+## Output
+
+Stitch the pass outputs into one combined summary:
+
+| Pass       | Issues found | Details                  |
+| ---------- | ------------ | ------------------------ |
+| Rules      | N            | Brief summary or "Clean" |
+| Fact-check | N            | Brief summary or "Clean" |
+| Elegance   | N            | Brief summary or "Clean" |
+
+Below the table, reproduce each pass's full findings verbatim — the Pass 1 rule table, Pass 2 findings, and Pass 3 elegance-loop log — so `/do` can commit each violation individually. If any pass found issues, state **"Violations or issues found"**. If all passes are clean, state **"All clear"**.
+
+## Additional principles
+
+### Simple, not easy (Rich Hickey)
+
+Simple means not interleaved: each module does one thing, and data flows through arguments and return values rather than shared mutable state or indirection. Avoid unnecessary abstractions and "for future use" code; prefer plain data over objects with behavior.
+
+### Completeness
+
+Implement the full spec. Read the plan or requirements and check every deliverable. Run CI locally and run tests before declaring done.
+
+### Justfile
+
+Every recipe must have a doc comment (a line starting with `#` above the recipe name).
+
+### Module structure — volatility-based decomposition
+
+Group code by rate of change, not technical layer: things that change together belong together, while independently changing things belong in separate modules. Each module owns one volatility zone; shared constants used by multiple modules get their own file.
+
+### Readability
+
+Every exported type and every component needs a doc comment. Avoid deeply nested callbacks; extract named functions.
