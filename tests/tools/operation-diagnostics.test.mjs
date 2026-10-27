@@ -26,12 +26,8 @@ function diagnostic(name, input) {
 // against the actual tool schema rather than relying on particular sample values.
 function examples(name, message) {
   return [...message.matchAll(/\{[^{}]*\}/g)].flatMap(([text]) => {
-    try {
-      const value = JSON.parse(text);
-      return parseInput(schema(name), value).success ? [value] : [];
-    } catch {
-      return [];
-    }
+    const value = JSON.parse(text);
+    return parseInput(schema(name), value).success ? [value] : [];
   });
 }
 
