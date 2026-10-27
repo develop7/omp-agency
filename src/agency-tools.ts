@@ -126,11 +126,12 @@ export default function (pi: ExtensionAPI) {
     // Narrowing preserves input identity. A pipe/morph would change the contract
     // and is deliberately forbidden by withJsonSchema.
     const runtime = pi.arktype("unknown").narrow((input, ctx) => {
-      if (input === null || typeof input !== "object" || Array.isArray(input)) {
-        const result = schema(input);
-        return result instanceof pi.arktype.errors ? result : true;
-      }
-      const request = input as Record<string, unknown>;
+      // Non-object requests have no operation evidence, but still need guidance.
+      // This empty record is only for diagnostics; input itself is never changed.
+      const request: Record<string, unknown> =
+        input !== null && typeof input === "object" && !Array.isArray(input)
+          ? (input as Record<string, unknown>)
+          : {};
       if (typeof request.op === "string" && operations.includes(request.op)) {
         const result = schema(input);
         return result instanceof pi.arktype.errors ? result : true;

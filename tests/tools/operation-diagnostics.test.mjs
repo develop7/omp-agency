@@ -50,7 +50,14 @@ test("missing and invalid op diagnostics provide supported operations and usable
     ["forge", "pr-view"],
     ["agency_driver", "summary"],
   ]) {
-    for (const input of [{}, { op: "not-an-operation" }]) {
+    for (const input of [
+      null,
+      [],
+      "summary",
+      {},
+      { op: null },
+      { op: "not-an-operation" },
+    ]) {
       const message = diagnostic(name, input);
       assert.match(message, /op/i);
       assert.ok(message.includes(supported), `${name}: ${message}`);
