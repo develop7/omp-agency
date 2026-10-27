@@ -7,6 +7,7 @@ import { runInNewContext } from "node:vm";
 import {
   initState,
   invoke,
+  parseInput,
   readState,
   registerTools,
   snapshot,
@@ -21,10 +22,15 @@ async function recoveryChoices(cwd, registered, op = "diff-range") {
     message = error.message;
     return true;
   });
-  return [...message.matchAll(/agency_driver\((\{[^\n]*?\})\)/g)].map((match) =>
-    tool(registered, "agency_driver").parameters.parse(
-      runInNewContext(`(${match[1]})`, {}, { timeout: 1000 }),
-    ),
+  return [...message.matchAll(/agency_driver\((\{[^\n]*?\})\)/g)].map(
+    (match) => {
+      const parsed = parseInput(
+        tool(registered, "agency_driver").parameters,
+        runInNewContext(`(${match[1]})`, {}, { timeout: 1000 }),
+      );
+      assert.equal(parsed.success, true, parsed.error?.message);
+      return parsed.data;
+    },
   );
 }
 
