@@ -153,9 +153,11 @@ export default function (pi: ExtensionAPI) {
         !candidates.includes(hint);
       const choices = conflict
         ? [hint, ...candidates]
-        : hint !== undefined
-          ? [hint]
-          : candidates;
+        : candidates.length > 1
+          ? candidates
+          : hint !== undefined
+            ? [hint]
+            : candidates;
       const specific = choices.length > 0;
       const shown = specific ? choices : [operations[0]];
       const guidance = shown.map((op) =>
