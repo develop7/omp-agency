@@ -13,7 +13,7 @@
     ]
   },
   "devDependencies": {
-    "@oh-my-pi/omptype": "18.12.6",
+    "@oh-my-pi/omptype": "18.13.3",
     "purs-tidy": "0.11.1"
   },
   "dependencies": {
