@@ -18,3 +18,5 @@ dist/agency-tools.mjs
 # Generated runtime artifacts (build outputs, never merge inputs)
 pure/dist/
 nickel-vm/dist/
+pure/.state-store-*
+pure/.other-worktree-*

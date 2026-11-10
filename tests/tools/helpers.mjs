@@ -1,8 +1,8 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { type } from "@oh-my-pi/omptype";
 import * as zod from "@oh-my-pi/omptype/zod";
@@ -49,19 +49,13 @@ export async function invoke(tools, name, input, cwd = process.cwd()) {
   const definition = tool(tools, name);
   const params = parseInput(definition.parameters, input);
   if (!params.success) throw new Error(params.error.message);
-  const previous = process.cwd();
-  process.chdir(cwd);
-  try {
-    return await definition.execute(
-      "boundary-test",
-      params.data,
-      undefined,
-      undefined,
-      { cwd },
-    );
-  } finally {
-    process.chdir(previous);
-  }
+  return definition.execute(
+    "boundary-test",
+    params.data,
+    undefined,
+    undefined,
+    { cwd },
+  );
 }
 
 export async function withIsolatedRepo(run) {
@@ -101,29 +95,27 @@ export async function readState(cwd = process.cwd()) {
 
 export const snapshot = async (cwd) => JSON.stringify(await readState(cwd));
 
-export function readStoredState(cwd) {
-  const root = process.env.AGENCY_STATE_DIR;
-  if (!root) throw new Error("AGENCY_STATE_DIR is required for state fixtures");
+async function stateDbPath(cwd) {
   const workspacePath = realpathSync.native(cwd);
-  const filename = `${createHash("sha256").update(workspacePath).digest("hex")}.db`;
-  const db = new DatabaseSync(join(root, filename), { readOnly: true });
+  const digest = createHash("sha256").update(workspacePath).digest("hex");
+  return join(process.env.AGENCY_STATE_DIR, `${digest}.db`);
+}
+
+export async function readStoredState(cwd) {
+  const db = new DatabaseSync(await stateDbPath(cwd), { readOnly: true });
   const value = db
     .prepare("SELECT state_json FROM run WHERE workspace_path = ?")
-    .get(workspacePath)?.state_json;
+    .get(realpathSync.native(cwd))?.state_json;
   db.close();
   return value;
 }
 
 // Test-only anomaly injection. Production and ordinary assertions use `state`.
-export function writeStoredState(cwd, state) {
-  const root = process.env.AGENCY_STATE_DIR;
-  if (!root) throw new Error("AGENCY_STATE_DIR is required for state fixtures");
-  const workspacePath = realpathSync.native(cwd);
-  const filename = `${createHash("sha256").update(workspacePath).digest("hex")}.db`;
-  const db = new DatabaseSync(join(root, filename));
+export async function writeStoredState(cwd, state) {
+  const db = new DatabaseSync(await stateDbPath(cwd));
   db.prepare("UPDATE run SET state_json = ? WHERE workspace_path = ?").run(
     typeof state === "string" ? state : JSON.stringify(state),
-    workspacePath,
+    realpathSync.native(cwd),
   );
   db.close();
 }

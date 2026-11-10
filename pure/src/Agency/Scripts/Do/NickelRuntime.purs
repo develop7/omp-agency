@@ -46,7 +46,7 @@ run context seed = do
             , Tuple "state_source" stateSource
             ]
         request = Json.stringify (fromObject (Obj.fromFoldable requestFields))
-      result <- Sys.execInput "node" [ bridge ] request
+      result <- Sys.execInputAt (Just context.stateDir) "node" [ bridge ] request
       pure (bridgeOutcome result)
 
 bridgeOutcome :: Sys.ExecResult -> Outcome.OpOutcome

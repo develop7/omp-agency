@@ -36,24 +36,38 @@ function openState(location, create) {
   if (create)
     mkdirSync(dirname(location.dbPath), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(location.dbPath, { readOnly: !create });
-  if (!create) return db;
   db.exec("PRAGMA busy_timeout = 5000");
+  const version = db.prepare("PRAGMA user_version").get().user_version;
+  if (version !== 1 && (version > 1 || !create))
+    throw new Error(
+      `state: unsupported schema version ${version} at ${location.dbPath}`,
+    );
+  if (!create) return db;
   const journalMode = db
     .prepare("PRAGMA journal_mode = WAL")
     .get().journal_mode;
   if (journalMode.toLowerCase() !== "wal")
     throw new Error(`state: SQLite WAL mode unavailable at ${location.dbPath}`);
   db.exec("PRAGMA synchronous = FULL");
-  const version = db.prepare("PRAGMA user_version").get().user_version;
-  if (version > 1)
-    throw new Error(
-      `state: unsupported schema version ${version} at ${location.dbPath}`,
-    );
   if (version < 1) {
-    db.exec(
-      "CREATE TABLE IF NOT EXISTS run (workspace_path TEXT PRIMARY KEY, state_json TEXT NOT NULL) STRICT",
-    );
-    db.exec("PRAGMA user_version = 1");
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.exec(
+        "CREATE TABLE run (workspace_path TEXT PRIMARY KEY, state_json TEXT NOT NULL) STRICT",
+      );
+      db.exec("PRAGMA user_version = 1");
+      db.exec("COMMIT");
+    } catch (error) {
+      try {
+        db.exec("ROLLBACK");
+      } catch (rollbackError) {
+        throw new Error(
+          `state: schema initialization failed at ${location.dbPath}: ${error?.message ?? error}; rollback failed: ${rollbackError?.message ?? rollbackError}`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
   }
   return db;
 }
@@ -70,16 +84,16 @@ export function stateDbPath(root) {
   return (workspace) => () => stateLocation(root, workspace).dbPath;
 }
 
-export function readStateJson(root) {
-  return (workspace) => () => {
-    const location = stateLocation(root, workspace);
+export function readStateJson(dbPath) {
+  return (workspacePath) => () => {
+    const location = { dbPath, workspacePath };
     const active = transactions.get(location.dbPath);
-    if (active) return readState(active, location.workspacePath);
+    if (active) return readState(active, workspacePath);
     let db;
     try {
       if (!existsSync(location.dbPath)) return null;
       db = openState(location, false);
-      return readState(db, location.workspacePath);
+      return readState(db, workspacePath);
     } catch (error) {
       throw new Error(
         `state: cannot read ${location.dbPath}: ${error?.message ?? error}`,
@@ -91,9 +105,9 @@ export function readStateJson(root) {
   };
 }
 
-export function writeStateJson(root) {
-  return (workspace) => (json) => () => {
-    const location = stateLocation(root, workspace);
+export function writeStateJson(dbPath) {
+  return (workspacePath) => (json) => () => {
+    const location = { dbPath, workspacePath };
     const active = transactions.get(location.dbPath);
     if (active) {
       active
@@ -114,9 +128,9 @@ export function writeStateJson(root) {
   };
 }
 
-export function withStateTransaction(root) {
-  return (workspace) => (action) => () => {
-    const location = stateLocation(root, workspace);
+export function withStateTransaction(dbPath) {
+  return (workspacePath) => (action) => () => {
+    const location = { dbPath, workspacePath };
     if (transactions.has(location.dbPath))
       throw new Error(`state: nested transaction at ${location.dbPath}`);
     const db = openState(location, true);
@@ -130,7 +144,12 @@ export function withStateTransaction(root) {
       } catch (error) {
         try {
           db.exec("ROLLBACK");
-        } catch {}
+        } catch (rollbackError) {
+          throw new Error(
+            `state: transaction failed at ${location.dbPath}: ${error?.message ?? error}; rollback failed: ${rollbackError?.message ?? rollbackError}`,
+            { cause: error },
+          );
+        }
         throw error;
       } finally {
         transactions.delete(location.dbPath);
@@ -155,15 +174,6 @@ export function formatEpochIso(epoch) {
 
 export function bundleDir() {
   return import.meta.dirname ?? new URL(".", import.meta.url).pathname;
-}
-
-let tempSequence = 0;
-
-export function uniqueTempPath(path) {
-  return function () {
-    tempSequence += 1;
-    return `${path}.tmp.${process.pid}.${tempSequence}`;
-  };
 }
 
 export function isCanonicalIso(value) {

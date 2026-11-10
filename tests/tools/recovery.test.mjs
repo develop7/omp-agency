@@ -199,9 +199,9 @@ test("inactive runs and invalid state offer no executable sync or reset recommen
       "{",
       JSON.stringify({ status: "running", noVcs: "invalid" }),
     ]) {
-      writeStoredState(cwd, contents);
+      await writeStoredState(cwd, contents);
       assert.deepEqual(await recoveryChoices(cwd, registered), []);
-      assert.equal(readStoredState(cwd), contents);
+      assert.equal(await readStoredState(cwd), contents);
     }
   });
 });

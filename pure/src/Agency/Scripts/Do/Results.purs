@@ -267,8 +267,8 @@ runMigrate context = do
           pure case verified of
             Right (Just imported) | State.stringifyState imported == State.stringifyState state ->
               Outcome.withValue
-                (objectValue [ Tuple "state" (State.encodeState state), Tuple "legacyPath" (fromString (State.legacyStatePath context.stateDir)) ])
-                (Outcome.withStdout ("migrated workflow state; legacy source left unchanged at " <> State.legacyStatePath context.stateDir <> "\n"))
+                (objectValue [ Tuple "state" (State.encodeState state), Tuple "legacyPath" (fromString (State.legacyStatePath context.stateDir)), Tuple "storePath" (fromString (State.storePath context)) ])
+                (Outcome.withStdout ("migrated workflow state to " <> State.storePath context <> "; legacy source left unchanged at " <> State.legacyStatePath context.stateDir <> "\n"))
             Right _ -> failText "do-driver: migration verification did not return the imported state"
             Left error -> failText (Context.stateCorruptError "do-driver" error "verify the imported snapshot before continuing")
 

@@ -1,5 +1,6 @@
 module Agency.Scripts.Do.Context
   ( WorkflowContext
+  , StoreIdentity
   , stateCorruptError
   ) where
 
@@ -14,9 +15,14 @@ import Agency.Scripts.Do.VcsKind as VcsKind
 -- | Resolution happens in the adapter; providers only consume this value.
 -- | captureOutput controls subprocess providers; the Nickel bridge always
 -- | captures its subprocess output because it communicates over stdin/stdout.
+type StoreIdentity =
+  { dbPath :: String
+  , workspacePath :: String
+  }
+
 type WorkflowContext =
   { stateDir :: String
-  , stateRoot :: Maybe String
+  , store :: StoreIdentity
   , vcs :: VcsKind.VcsKind
   , forge :: ForgeKind.ForgeKind
   , base :: Maybe String

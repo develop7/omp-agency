@@ -97,6 +97,7 @@ test("push treats backend refs as operands without changing the remote", async (
       args: ["push", "--force"],
       captureOutput: true,
       stateRoot: null,
+      workspaceDir: null,
     })();
     assert.notEqual(result.exit, 0);
     assert.equal(remoteHead(), before);

@@ -5,9 +5,13 @@ module Agency.Scripts.Do.Sys
   ( ExecResult
   , InheritResult
   , exec
+  , execAt
   , execInput
+  , execInputAt
   , execInherit
+  , execInheritAt
   , execInheritInput
+  , execInheritInputAt
   , readUtf8
   , exists
   , isDir
@@ -27,7 +31,6 @@ module Agency.Scripts.Do.Sys
   , withStateTransaction
   , isoToEpoch
   , isCanonicalIso
-  , uniqueTempPath
   ) where
 
 import Prelude
@@ -73,13 +76,31 @@ exec command args = do
     { encoding: "utf8"
     , maxBuffer: 64.0 * 1024.0 * 1024.0
     }
+  pure (execResult result)
+
+execAt :: Maybe String -> String -> Array String -> Effect ExecResult
+execAt workspaceDir command args = do
+  result <- case workspaceDir of
+    Nothing -> Child.spawnSync' command args
+      { encoding: "utf8"
+      , maxBuffer: 64.0 * 1024.0 * 1024.0
+      }
+    Just path -> Child.spawnSync' command args
+      { cwd: path
+      , encoding: "utf8"
+      , maxBuffer: 64.0 * 1024.0 * 1024.0
+      }
+  pure (execResult result)
+
+execResult :: Child.JsSpawnSyncResult -> ExecResult
+execResult result = do
   let
     stdout = Child.unsafeSOBToString result.stdout
     stderr = Child.unsafeSOBToString result.stderr
     code = fromMaybe 1 (toMaybe result.status)
   case toMaybe result.error of
-    Nothing -> pure { code, stdout, stderr }
-    Just error -> pure
+    Nothing -> { code, stdout, stderr }
+    Just error ->
       { code: 1
       , stdout
       , stderr: if stderr == "" then SystemError.message error else stderr
@@ -87,31 +108,40 @@ exec command args = do
 
 -- | Run a command with supplied text on stdin and captured output.
 execInput :: String -> Array String -> String -> Effect ExecResult
-execInput command args input = do
+execInput = execInputAt Nothing
+
+execInputAt :: Maybe String -> String -> Array String -> String -> Effect ExecResult
+execInputAt workspaceDir command args input = do
   inputBuffer <- Buffer.fromString input UTF8
-  result <- Child.spawnSync' command args
-    { input: inputBuffer
-    , encoding: "utf8"
-    , maxBuffer: 64.0 * 1024.0 * 1024.0
-    }
-  let
-    stdout = Child.unsafeSOBToString result.stdout
-    stderr = Child.unsafeSOBToString result.stderr
-    code = fromMaybe 1 (toMaybe result.status)
-  case toMaybe result.error of
-    Nothing -> pure { code, stdout, stderr }
-    Just error -> pure
-      { code: 1
-      , stdout
-      , stderr: if stderr == "" then SystemError.message error else stderr
+  result <- case workspaceDir of
+    Nothing -> Child.spawnSync' command args
+      { input: inputBuffer
+      , encoding: "utf8"
+      , maxBuffer: 64.0 * 1024.0 * 1024.0
       }
+    Just path -> Child.spawnSync' command args
+      { cwd: path
+      , input: inputBuffer
+      , encoding: "utf8"
+      , maxBuffer: 64.0 * 1024.0 * 1024.0
+      }
+  pure (execResult result)
 
 -- | Run a command with all child streams inherited. A spawn failure is
 -- | returned separately because Node does not write it to inherited stderr.
 execInherit :: String -> Array String -> Effect InheritResult
-execInherit command args = do
-  result <- Child.spawnSync' command args
-    { stdio: [ inherit, inherit, inherit ] }
+execInherit = execInheritAt Nothing
+
+execInheritAt :: Maybe String -> String -> Array String -> Effect InheritResult
+execInheritAt workspaceDir command args = do
+  result <- case workspaceDir of
+    Nothing -> Child.spawnSync' command args
+      { stdio: [ inherit, inherit, inherit ]
+      }
+    Just path -> Child.spawnSync' command args
+      { cwd: path
+      , stdio: [ inherit, inherit, inherit ]
+      }
   pure
     { code: fromMaybe 1 (toMaybe result.status)
     , error: SystemError.message <$> toMaybe result.error
@@ -119,12 +149,21 @@ execInherit command args = do
 
 -- | Run a command with supplied text on stdin and inherited output streams.
 execInheritInput :: String -> Array String -> String -> Effect InheritResult
-execInheritInput command args input = do
+execInheritInput = execInheritInputAt Nothing
+
+execInheritInputAt :: Maybe String -> String -> Array String -> String -> Effect InheritResult
+execInheritInputAt workspaceDir command args input = do
   inputBuffer <- Buffer.fromString input UTF8
-  result <- Child.spawnSync' command args
-    { input: inputBuffer
-    , stdio: [ pipe, inherit, inherit ]
-    }
+  result <- case workspaceDir of
+    Nothing -> Child.spawnSync' command args
+      { input: inputBuffer
+      , stdio: [ pipe, inherit, inherit ]
+      }
+    Just path -> Child.spawnSync' command args
+      { cwd: path
+      , input: inputBuffer
+      , stdio: [ pipe, inherit, inherit ]
+      }
   pure
     { code: fromMaybe 1 (toMaybe result.status)
     , error: SystemError.message <$> toMaybe result.error
@@ -183,16 +222,13 @@ foreign import bundleDir :: Effect String
 foreign import stateDbPath :: Nullable String -> String -> Effect String
 
 -- | Read the current JSON snapshot, or null when no snapshot exists.
-foreign import readStateJson :: Nullable String -> String -> Effect (Nullable String)
+foreign import readStateJson :: String -> String -> Effect (Nullable String)
 
 -- | Atomically replace the current JSON snapshot inside an optional outer transaction.
-foreign import writeStateJson :: Nullable String -> String -> String -> Effect Unit
+foreign import writeStateJson :: String -> String -> String -> Effect Unit
 
 -- | Run a state mutation under one SQLite immediate transaction.
-foreign import withStateTransaction :: forall a. Nullable String -> String -> Effect a -> Effect a
-
--- | Produce a unique staging path for isolated test fixtures.
-foreign import uniqueTempPath :: String -> Effect String
+foreign import withStateTransaction :: forall a. String -> String -> Effect a -> Effect a
 
 -- | Convert an exact UTC-second ISO timestamp to epoch seconds.
 isoToEpoch :: String -> Effect (Either String Int)

@@ -12,6 +12,7 @@ type ApiRequest = {
   args: string[];
   captureOutput: boolean;
   stateRoot?: string;
+  workspaceDir?: string;
 };
 
 type ApiResult = {
@@ -38,18 +39,44 @@ async function loadApi(): Promise<AgencyApi> {
 }
 
 function agencyStateRoot(pi: ExtensionAPI): string | undefined {
-  const agentDir = pi.pi?.settings?.getAgentDir?.();
-  return agentDir === undefined ? undefined : join(agentDir, "agency");
+  if (typeof pi.getAgentDir !== "function") {
+    if (process.env.AGENCY_STATE_DIR) return undefined;
+    throw new Error(
+      "agency: host does not expose getAgentDir(); cannot resolve the workflow state root",
+    );
+  }
+  const agentDir = pi.getAgentDir();
+  if (typeof agentDir !== "string" || agentDir.trim() === "") {
+    throw new Error(
+      "agency: host returned an empty agent directory; cannot resolve the workflow state root",
+    );
+  }
+  return join(agentDir, "agency");
 }
 
-async function executeApi(tool: string, args: string[], pi: ExtensionAPI) {
+async function runApi(
+  tool: string,
+  args: string[],
+  pi: ExtensionAPI,
+  cwd?: string,
+) {
   const api = await loadApi();
-  const result = await api.runTool({
+  return api.runTool({
     tool,
     args,
     captureOutput: true,
     stateRoot: agencyStateRoot(pi),
+    workspaceDir: cwd,
   })();
+}
+
+async function executeApi(
+  tool: string,
+  args: string[],
+  pi: ExtensionAPI,
+  cwd?: string,
+) {
+  const result = await runApi(tool, args, pi, cwd);
   if (result.exit !== 0) {
     throw new Error(
       result.stderr ||
@@ -89,7 +116,7 @@ async function executeForge(
       await writeFile(bodyPath, body, "utf8");
       args.push("--body-file", bodyPath);
     }
-    return await executeApi("forge", [op, ...args], pi);
+    return await executeApi("forge", [op, ...args], pi, ctx.cwd);
   } finally {
     if (tempDir !== undefined)
       await rm(tempDir, { recursive: true, force: true });
@@ -234,11 +261,12 @@ export default function (pi: ExtensionAPI) {
           .strict(),
       ]),
     ),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       return executeApi(
         "vcs_read",
         [params.op, ...("paths" in params ? (params.paths ?? []) : [])],
         pi,
+        ctx.cwd,
       );
     },
   });
@@ -273,19 +301,21 @@ export default function (pi: ExtensionAPI) {
         "fix-commit": commitExample,
       },
     ),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (params.op === "branch")
-        return executeApi("vcs_write", [params.op, params.name], pi);
+        return executeApi("vcs_write", [params.op, params.name], pi, ctx.cwd);
       if (params.op === "push")
         return executeApi(
           "vcs_write",
           [params.op, ...(params.ref === undefined ? [] : [params.ref])],
           pi,
+          ctx.cwd,
         );
       return executeApi(
         "vcs_write",
         [params.op, params.message, ...params.files],
         pi,
+        ctx.cwd,
       );
     },
   });
@@ -448,9 +478,10 @@ export default function (pi: ExtensionAPI) {
     ),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const args: string[] = [];
-      if (params.op === "detect") return executeApi("forge", [params.op], pi);
+      if (params.op === "detect")
+        return executeApi("forge", [params.op], pi, ctx.cwd);
       if (params.op === "supports")
-        return executeApi("forge", [params.op, params.operation], pi);
+        return executeApi("forge", [params.op, params.operation], pi, ctx.cwd);
       if ("pr" in params && params.pr !== undefined) args.push(params.pr);
       if (params.op === "issue-view") args.push(params.issue);
       option(args, "--repo", params.repo);
@@ -467,7 +498,7 @@ export default function (pi: ExtensionAPI) {
             option(args, "--fail-fast", params.failFast);
             option(args, "--interval", params.interval);
           } else option(args, "--comments", params.comments);
-          return executeApi("forge", [params.op, ...args], pi);
+          return executeApi("forge", [params.op, ...args], pi, ctx.cwd);
         case "pr-create":
           option(args, "--title", params.title);
           option(args, "--base", params.base);
@@ -580,13 +611,7 @@ export default function (pi: ExtensionAPI) {
       },
     ),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const api = await loadApi();
-      const state = await api.runTool({
-        tool: "agency_driver",
-        args: ["state"],
-        captureOutput: true,
-        stateRoot: agencyStateRoot(pi),
-      })();
+      const state = await runApi("agency_driver", ["state"], pi, ctx.cwd);
       if (state.exit !== 0) {
         throw new Error(
           state.stderr || "workflow: unable to load workflow state",
@@ -788,7 +813,7 @@ export default function (pi: ExtensionAPI) {
         },
       },
     ),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const args: string[] = [params.op];
       switch (params.op) {
         case "init":
@@ -848,7 +873,7 @@ export default function (pi: ExtensionAPI) {
           if (params.reason !== undefined) args.push(params.reason);
           break;
       }
-      return executeApi("agency_driver", args, pi);
+      return executeApi("agency_driver", args, pi, ctx.cwd);
     },
   });
 }

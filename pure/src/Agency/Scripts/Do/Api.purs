@@ -27,7 +27,7 @@ type ToolResult =
 -- | Run one model-facing tool through the same parsers and runners as the CLI.
 -- | The adapter chooses whether pass-through subprocesses inherit or capture
 -- | their streams through the request's captureOutput flag.
-runTool :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String } -> Effect ToolResult
+runTool :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String } -> Effect ToolResult
 runTool request = case request.tool of
   "vcs_read" -> runVcsRead request
   "vcs_write" -> runVcsWrite request
@@ -35,17 +35,17 @@ runTool request = case request.tool of
   "agency_driver" -> runAgencyDriver request
   _ -> pure (failureResult 1 ("agency: unknown tool '" <> request.tool <> "'"))
 
-runVcsRead :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String } -> Effect ToolResult
+runVcsRead :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String } -> Effect ToolResult
 runVcsRead request = case parseVcsRead request.args of
   Left message -> pure (failureResult 1 message)
   Right operation -> runOperation request.captureOutput false Vcs.runVcsOp operation request
 
-runVcsWrite :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String } -> Effect ToolResult
+runVcsWrite :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String } -> Effect ToolResult
 runVcsWrite request = case parseVcsWrite request.args of
   Left message -> pure (failureResult 1 message)
   Right operation -> runOperation request.captureOutput false Vcs.runVcsOp operation request
 
-runForge :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String } -> Effect ToolResult
+runForge :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String } -> Effect ToolResult
 runForge request =
   runParsed request (parseMessageError (Forge.parseForgeOp request.args)) \context operation ->
     case operation of
@@ -55,7 +55,7 @@ runForge request =
         pure (Outcome.withValue (fromBoolean (Forge.supports context.forge name)) Outcome.success)
       _ -> Forge.runForgeOp context operation
 
-runAgencyDriver :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String } -> Effect ToolResult
+runAgencyDriver :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String } -> Effect ToolResult
 runAgencyDriver request = case Array.uncons request.args of
   -- The tool contract is {op, args}: op selects the subcommand and args
   -- carries only its operands. Re-add the op for the legacy results and
@@ -147,10 +147,10 @@ isWriteOperation operation = case operation of
   Vcs.RefreshDefaultBranch -> false
   Vcs.FastForwardIfSafe -> false
 
-runParsed :: forall a r. { captureOutput :: Boolean, stateRoot :: Nullable String | r } -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect ToolResult
+runParsed :: forall a r. { captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String | r } -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect ToolResult
 runParsed request parsed runner = runParsedWith request.captureOutput (const false) parsed runner request
 
-runParsedWith :: forall a r. Boolean -> (a -> Boolean) -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> { captureOutput :: Boolean, stateRoot :: Nullable String | r } -> Effect ToolResult
+runParsedWith :: forall a r. Boolean -> (a -> Boolean) -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> { captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String | r } -> Effect ToolResult
 runParsedWith captureOutput allowCorruptState parsed runner request = case parsed of
   Left error -> pure (failureResult error.code error.message)
   Right operation -> runOperation captureOutput (allowCorruptState operation) runner operation request
@@ -163,9 +163,9 @@ parseMessageError parsed = case parsed of
 messageParseError :: String -> Ops.ParseError
 messageParseError message = { code: 1, message }
 
-runOperation :: forall a r. Boolean -> Boolean -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> { stateRoot :: Nullable String | r } -> Effect ToolResult
+runOperation :: forall a r. Boolean -> Boolean -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> { stateRoot :: Nullable String, workspaceDir :: Nullable String | r } -> Effect ToolResult
 runOperation captureOutput allowCorruptState runner operation request = do
-  resolved <- Ops.resolveWorkflowContext captureOutput allowCorruptState (toMaybe request.stateRoot)
+  resolved <- Ops.resolveWorkflowContext captureOutput allowCorruptState (toMaybe request.stateRoot) (toMaybe request.workspaceDir)
   case resolved of
     Left message -> pure (failureResult 1 message)
     Right context -> outcomeResult <$> runner context operation

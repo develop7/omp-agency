@@ -13,12 +13,10 @@ import Effect (Effect)
 import Effect.Exception (throw)
 import Effect.Console as Console
 
-import Agency.Scripts.Do.ForgeKind as ForgeKind
 import Agency.Scripts.Do.Ops as Ops
 import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
-import Agency.Scripts.Do.VcsKind as VcsKind
 import Node.FS.Sync as FSSync
 
 assert :: String -> Boolean -> Effect Unit
@@ -68,8 +66,8 @@ run = do
                       Sys.exit 1
                     Right finalState -> assert "set unknown field survives load/save" ((State.stateGetJson "newFlag" finalState >>= toBoolean) == Just true)
   cwd <- Sys.cwd
-  storageRoot <- Sys.uniqueTempPath (cwd <> "/.state-store")
-  FSSync.mkdir storageRoot
+  storageRoot <- FSSync.mkdtemp (cwd <> "/.state-store-")
+  otherWorkspace <- FSSync.mkdtemp (cwd <> "/.other-worktree-")
   case State.parseState "{\"active\":\"finished\"}" of
     Left error -> assert "unknown active status is rejected" (error == "state: invalid active 'finished'")
     Right _ -> assert "unknown active status is rejected" false
@@ -193,17 +191,9 @@ run = do
       Console.error ("FAIL: parse accepts a skipped step with a reason: " <> error)
       Sys.exit 1
     Right parsed -> assert "parse accepts a skipped step with a reason" (parsed.steps /= [])
+  store <- State.resolveStore { stateDir: cwd, stateRoot: Just storageRoot }
   let
-    workspace =
-      { stateDir: cwd
-      , stateRoot: Just storageRoot
-      , vcs: VcsKind.Unknown
-      , forge: ForgeKind.Unknown
-      , base: Nothing
-      , vcsOverride: Nothing
-      , forgeOverride: Nothing
-      , captureOutput: true
-      }
+    workspace = { store }
     rmOptions = { force: true, maxRetries: 0, recursive: true, retryDelay: 0 }
   absent <- State.readState workspace
   assert "absent state reads as no snapshot" (absent == Right Nothing)
@@ -225,12 +215,12 @@ run = do
             throw "rollback"
       unchanged <- State.readState workspace
       assert "failed transaction rolls back its write" (map (map State.stringifyState) unchanged == Right (Just (State.stringifyState original)))
-      let other = workspace { stateDir = cwd <> "/other" }
-      FSSync.mkdir (cwd <> "/other")
-      State.writeState other (State.initState "2026-01-01T00:00:00Z")
+      otherStore <- State.resolveStore { stateDir: otherWorkspace, stateRoot: Just storageRoot }
+      State.writeState { store: otherStore } (State.initState "2026-01-01T00:00:00Z")
       firstAfterOther <- State.readState workspace
       assert "another worktree does not replace current state" (map (map State.stringifyState) firstAfterOther == Right (Just (State.stringifyState original)))
       FSSync.rm' storageRoot rmOptions
+      FSSync.rm' otherWorkspace rmOptions
       pure unit
   let
     fullJob =

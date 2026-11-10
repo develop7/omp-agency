@@ -20,7 +20,7 @@ run_driver() {
 run_api_driver() {
   run env AGENCY_API_BUNDLE="${AGENCY_API_BUNDLE:-$REPO_ROOT/pure/dist/agency-api.js}" \
     node --input-type=module --eval \
-    'const { runTool } = await import(process.env.AGENCY_API_BUNDLE); const result = await runTool({ tool: "agency_driver", args: JSON.parse(process.env.AGENCY_DRIVER_ARGS), captureOutput: true, stateRoot: null })(); process.stdout.write(JSON.stringify(result)); process.exitCode = result.exit'
+    'const { runTool } = await import(process.env.AGENCY_API_BUNDLE); const result = await runTool({ tool: "agency_driver", args: JSON.parse(process.env.AGENCY_DRIVER_ARGS), captureOutput: true, stateRoot: null, workspaceDir: null })(); process.stdout.write(JSON.stringify(result)); process.exitCode = result.exit'
 }
 
 @test "init creates a worktree snapshot with default flags" {

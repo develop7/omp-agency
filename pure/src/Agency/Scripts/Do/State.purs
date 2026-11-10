@@ -29,6 +29,7 @@ module Agency.Scripts.Do.State
   , readState
   , withStateTransaction
   , writeState
+  , resolveStore
   , storePath
   , legacyStatePath
   , readLegacyState
@@ -75,6 +76,7 @@ import Node.Errors.SystemError as SystemError
 import Unsafe.Coerce (unsafeCoerce)
 
 import Agency.Scripts.Do.WorkflowVocabulary as Vocabulary
+import Agency.Scripts.Do.Context as Context
 import Agency.Scripts.Do.Sys as Sys
 
 -- | Activity values accepted by the persisted workflow protocol.
@@ -822,13 +824,16 @@ root workspace = case workspace.stateRoot of
   Nothing -> null
   Just value -> notNull value
 
-storePath :: forall r. Workspace r -> Effect String
-storePath workspace = Sys.stateDbPath (root workspace) workspace.stateDir
+resolveStore :: forall r. Workspace r -> Effect Context.StoreIdentity
+resolveStore workspace = do
+  dbPath <- Sys.stateDbPath (root workspace) workspace.stateDir
+  workspacePath <- Sys.realpath workspace.stateDir
+  pure { dbPath, workspacePath }
 
 -- | Read the one current snapshot without creating a database or schema.
-readState :: forall r. Workspace r -> Effect (Either String (Maybe State))
+readState :: forall r. { store :: Context.StoreIdentity | r } -> Effect (Either String (Maybe State))
 readState workspace = do
-  readResult <- try (Sys.readStateJson (root workspace) workspace.stateDir)
+  readResult <- try (Sys.readStateJson workspace.store.dbPath workspace.store.workspacePath)
   pure case readResult of
     Left error -> Left (Exception.message error)
     Right source -> case toMaybe source of
@@ -840,15 +845,18 @@ readState workspace = do
 -- | Run the existing PureScript mutation inside one SQLite transaction.
 -- Reads and writes in `action` reuse its connection. A thrown action rolls
 -- back; an ordinary outcome, including a failure outcome, commits.
-withStateTransaction :: forall a r. Workspace r -> Effect a -> Effect (Either String a)
+withStateTransaction :: forall a r. { store :: Context.StoreIdentity | r } -> Effect a -> Effect (Either String a)
 withStateTransaction workspace action = do
-  result <- try (Sys.withStateTransaction (root workspace) workspace.stateDir action)
+  result <- try (Sys.withStateTransaction workspace.store.dbPath workspace.store.workspacePath action)
   pure case result of
     Left error -> Left (Exception.message error)
     Right value -> Right value
 
-writeState :: forall r. Workspace r -> State -> Effect Unit
-writeState workspace state = Sys.writeStateJson (root workspace) workspace.stateDir (stringifyState state)
+writeState :: forall r. { store :: Context.StoreIdentity | r } -> State -> Effect Unit
+writeState workspace state = Sys.writeStateJson workspace.store.dbPath workspace.store.workspacePath (stringifyState state)
+
+storePath :: forall r. { store :: Context.StoreIdentity | r } -> String
+storePath workspace = workspace.store.dbPath
 
 -- | Legacy JSON remains a read-only migration input, never a second authority.
 legacyStatePath :: String -> String
