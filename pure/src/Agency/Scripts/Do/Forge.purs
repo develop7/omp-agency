@@ -123,14 +123,14 @@ runForgeOp context operation = case operation of
           && not (Array.elem "--jq" args)
           && not (Array.elem "--template" args)
       if ctx.captureOutput then do
-        result <- Sys.exec Binaries.gh ([ command, subcommand ] <> args)
+        result <- Sys.execAt (Just ctx.stateDir) Binaries.gh ([ command, subcommand ] <> args)
         if result.code /= 0 then pure (Outcome.captured result)
         else if jsonProjection then case jsonParser result.stdout of
           Left _ -> pure (Outcome.failure 1 ("forge-op: gh returned invalid JSON for '" <> opName <> "'\n"))
           Right value -> pure (Outcome.withValue value (Outcome.captured result))
         else pure (Outcome.captured result)
       else do
-        result <- Sys.execInherit Binaries.gh ([ command, subcommand ] <> args)
+        result <- Sys.execInheritAt (Just ctx.stateDir) Binaries.gh ([ command, subcommand ] <> args)
         case result.error of
           Just error -> pure (Outcome.failure 1 ("forge-op: gh failed to spawn: " <> error <> "\n"))
           Nothing -> pure (Outcome.passthrough result.code)

@@ -8,11 +8,13 @@ and the `OpOutcome` output seam.
 
 - `Agency.Scripts.Do.Sys` / `Sys.js` is the only FFI boundary. It owns Node
   subprocesses, inherited subprocess I/O, filesystem operations, environment,
-  time, paths, argv, and process exit.
+  time, paths, argv, process exit, and the per-worktree SQLite primitives.
 - `Agency.Scripts.Do.Binaries` names the external executables used by the
   runners, leaving one indirection point for future path overrides,
   instrumentation, or test fakes.
-- `State` is the Argonaut JSON codec for `.do-results.json`. Known workflow
+- `State` is the Argonaut JSON codec for the workflow state document and the
+  transactional persistence seam. Each canonical worktree owns one external
+  SQLite snapshot; no state file is written to the checkout. Known workflow
   fields are typed; every unknown field is retained as JSON in `extras` and is
   emitted again on save.
 - `Vcs` implements the git and jj semantic operation strategies and context

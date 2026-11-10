@@ -23,7 +23,7 @@ The autonomous loop is only as good as the feedback signal it gets. If the agent
 
 ### State, within and across PRs
 
-**Within a PR**, `/do` writes per-step lifecycle, status, and timing to `.do-results.json` at the repo root, along with an owned-jobs ledger for spawned review workers — unfinished jobs block step-end and the final summary, so a run cannot yield while work it started is still live.
+**Within a PR**, `/do` stores per-step lifecycle, status, timing, and its owned-jobs ledger in a per-worktree SQLite database outside the checkout. Inspect the canonical JSON snapshot with `agency_driver { op: "state" }`. Unfinished jobs block step-end and the final summary, so a run cannot yield while work it started is still live.
 
 Skipped steps have two spellings, distinguished by when the skip is decided: a **scheduler skip**
 (`workflow cli` reports `skip: true` before the step starts) records
@@ -31,6 +31,8 @@ Skipped steps have two spellings, distinguished by when the skip is decided: a *
 discovers it has nothing to do) closes with
 `agency_driver { op: "end", status: "skipped", reason }` — the reason is required, so a skipped
 summary line always names why.
+
+Each database is named by the canonical worktree path and contains one current JSON snapshot, not a relational rewrite or cross-PR history. OMP supplies its profile-derived state root; the CLI uses `AGENCY_STATE_DIR`, then the platform state directory. Set `AGENCY_STATE_DIR` per test fixture. To import an old working-tree `.do-results.json` once, run `do-driver migrate`; it preserves the legacy bytes for manual cleanup and refuses to overwrite an existing snapshot.
 
 **Across PRs**, there is no built-in memory, by design. Scope each PR small enough to land end-to-end in a day or two; branches that linger longer are a smell. When a piece of work genuinely doesn't fit in one PR, have `/talk` produce a GitHub issue with explicit phases, then run `/do` against each phase as its own PR — the issue is the cross-PR memory. See [juspay/kolu#514](https://github.com/juspay/kolu/issues/514) for the shape.
 

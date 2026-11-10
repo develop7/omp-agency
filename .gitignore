@@ -15,8 +15,10 @@ nickel-vm/target/
 node_modules/
 dist/agency-tools.mjs
 
-# Agency
 # Generated runtime artifacts (build outputs, never merge inputs)
 pure/dist/
 nickel-vm/dist/
+# Legacy migration residue (never merge inputs)
 .do-results.json
+pure/.state-store-*
+pure/.other-worktree-*

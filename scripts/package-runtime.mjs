@@ -350,7 +350,6 @@ async function verifyManifest(outDir) {
 
 /** Evaluate a `cli` workflow request through the staged Nickel runtime. */
 async function verifyNickel(outDir) {
-  const statePath = join(outDir, ".do-results.json");
   const state = {
     vcs: "git",
     forge: "github",
@@ -364,28 +363,24 @@ async function verifyNickel(outDir) {
     from: "default",
     task: "runtime-package-verify",
   };
-  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
-  try {
-    const runtimeUrl = pathToFileURL(
-      join(outDir, "nickel-vm/scripts/workflow-runtime.mjs"),
-    ).href;
-    const runtime = await import(runtimeUrl);
-    const result = await runtime.evaluateWorkflow({
-      operation: "cli",
-      cwd: outDir,
-    });
-    if (result.exit !== 0) {
-      fail(
-        `staged Nickel runtime evaluation failed (exit ${result.exit}): ${(result.stderr || result.stdout).slice(0, 300)}`,
-      );
-    }
-    if (result.value?.step !== "research" || result.value.skip !== false) {
-      fail(
-        `staged Nickel runtime produced an unexpected decision: ${JSON.stringify(result.value)}`,
-      );
-    }
-  } finally {
-    await rm(statePath, { force: true });
+  const runtimeUrl = pathToFileURL(
+    join(outDir, "nickel-vm/scripts/workflow-runtime.mjs"),
+  ).href;
+  const runtime = await import(runtimeUrl);
+  const result = await runtime.evaluateWorkflow({
+    operation: "cli",
+    cwd: outDir,
+    state_source: `${JSON.stringify(state, null, 2)}\n`,
+  });
+  if (result.exit !== 0) {
+    fail(
+      `staged Nickel runtime evaluation failed (exit ${result.exit}): ${(result.stderr || result.stdout).slice(0, 300)}`,
+    );
+  }
+  if (result.value?.step !== "research" || result.value.skip !== false) {
+    fail(
+      `staged Nickel runtime produced an unexpected decision: ${JSON.stringify(result.value)}`,
+    );
   }
 }
 

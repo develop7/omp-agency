@@ -9,10 +9,12 @@ import {
   invoke,
   parseInput,
   readState,
+  readStoredState,
   registerTools,
   snapshot,
   tool,
   withIsolatedRepo,
+  writeStoredState,
 } from "./helpers.mjs";
 
 // Execute the suggested calls rather than pinning the surrounding error prose.
@@ -70,7 +72,7 @@ test("absent-run recovery offers runnable init choices without creating state", 
     await withIsolatedRepo(async (cwd) => {
       const registered = registerTools();
       const choices = await recoveryChoices(cwd, registered);
-      await assert.rejects(readState(cwd), { code: "ENOENT" });
+      await assert.rejects(readState(cwd), /workflow state not found/);
       assert.deepEqual(
         choices.map(({ op, noVcs }) => ({ op, noVcs })),
         [
@@ -192,13 +194,14 @@ test("inactive runs and invalid state offer no executable sync or reset recommen
   }
   await withIsolatedRepo(async (cwd) => {
     const registered = registerTools();
+    await invoke(registered, "agency_driver", { op: "init", noVcs: true }, cwd);
     for (const contents of [
       "{",
       JSON.stringify({ status: "running", noVcs: "invalid" }),
     ]) {
-      await writeFile(join(cwd, ".do-results.json"), contents);
+      await writeStoredState(cwd, contents);
       assert.deepEqual(await recoveryChoices(cwd, registered), []);
-      assert.equal(await snapshot(cwd), contents);
+      assert.equal(await readStoredState(cwd), contents);
     }
   });
 });

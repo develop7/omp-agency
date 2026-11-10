@@ -57,13 +57,10 @@
           tmp="$(mktemp)"
           trap 'rm -f "$tmp"' EXIT
           ${pkgs.nodejs}/bin/npx purs-tidy format < "$file" > "$tmp"
-          cmp -s "$file" "$tmp"
-          status=$?
-          if [ "$status" -eq 1 ]; then
+          if cmp -s "$file" "$tmp"; then
+            :
+          else
             cp "$tmp" "$file"
-          elif [ "$status" -ne 0 ]; then
-            echo "cmp failed with status $status for $file" >&2
-            exit "$status"
           fi
           rm -f "$tmp"
           trap - EXIT
@@ -88,13 +85,10 @@
           tmp="$(mktemp)"
           trap 'rm -f "$tmp"' EXIT
           ${pkgs.nickel}/bin/nickel format < "$file" > "$tmp"
-          cmp -s "$file" "$tmp"
-          status=$?
-          if [ "$status" -eq 1 ]; then
+          if cmp -s "$file" "$tmp"; then
+            :
+          else
             cp "$tmp" "$file"
-          elif [ "$status" -ne 0 ]; then
-            echo "cmp failed with status $status for $file" >&2
-            exit "$status"
           fi
           rm -f "$tmp"
           trap - EXIT

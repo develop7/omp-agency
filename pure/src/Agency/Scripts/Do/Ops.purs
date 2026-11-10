@@ -52,6 +52,8 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (joinWith)
 import Data.String.CodeUnits (drop)
 import Effect (Effect)
+import Effect.Exception (try)
+import Effect.Exception as Exception
 
 -- | Parse failures carry the legacy script's exit status and stderr text.
 type ParseError =
@@ -82,6 +84,8 @@ data DriverOp
   | DriverSkip String String
   | DriverSet String String
   | DriverSummary
+  | DriverState
+  | DriverMigrate
   | DriverJobStart { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int }
   | DriverJobEnd { id :: String, outcome :: State.JobOutcome, verification :: Maybe String }
 
@@ -105,7 +109,7 @@ resultsUsage = "Usage: do-results <" <> resultsCommandNames <> "> ..."
 -- | Every do-driver subcommand, single-sourced for the usage strings here
 -- | and the agency_driver dispatch check in Api.
 driverOperationNames :: Array String
-driverOperationNames = [ "init", "start", "end", "skip", "set", "summary", "job-start", "job-end" ]
+driverOperationNames = [ "init", "start", "end", "skip", "set", "summary", "state", "migrate", "job-start", "job-end" ]
 
 doDriverUsage :: String
 doDriverUsage = "Usage: do-driver <" <> joinWith "|" driverOperationNames <> "> ..."
@@ -180,6 +184,8 @@ parseDriverOp args =
           Nothing -> Left (parseError 1 "value required")
           Just { value } -> Right (DriverSet field value)
       "summary" -> Right DriverSummary
+      "state" -> Right DriverState
+      "migrate" -> Right DriverMigrate
       "job-start" -> parseJobStart rest
       "job-end" -> parseJobEnd rest
       _ -> Left (parseError 1 ("Unknown command: " <> command <> "\n" <> doDriverUsage))
@@ -365,36 +371,48 @@ parseError code message = { code, message }
 
 -- | Resolve execution context. Only a parsed restarting driver init may discard
 -- | unreadable persisted state; all other operations fail before dispatch.
-resolveWorkflowContext :: Boolean -> Boolean -> Effect (Either String WorkflowContext)
-resolveWorkflowContext captureOutput allowCorruptState = do
-  root <- Sys.cwd
-  vcsOverrideText <- Sys.getEnv "VCS_OVERRIDE"
-  forgeOverrideText <- Sys.getEnv "FORGE_OVERRIDE"
-  stateResult <- State.readState (root <> "/" <> Context.stateFile)
-  case stateResult of
-    Left error | not allowCorruptState ->
-      pure (Left (Context.stateCorruptError "workflow" error "resolve the reported state-read error before choosing a run or base"))
-    _ -> do
-      jjPresent <- Sys.isDir (root <> "/.jj")
-      gitPresent <- Sys.isDir (root <> "/.git")
-      let
-        state = case stateResult of
-          Left _ -> Nothing
-          Right value -> value
-        stateVcs = state >>= Args.nonEmpty <<< State.stateGet "vcs"
-        stateForge = state >>= Args.nonEmpty <<< State.stateGet "forge"
-        vcsOverride = case stateVcs of
-          Just _ -> Nothing
-          Nothing -> Args.nonEmpty vcsOverrideText
-        forgeOverride = case stateForge of
-          Just _ -> Nothing
-          Nothing -> Args.nonEmpty forgeOverrideText
-        base = state >>= Args.nonEmpty <<< State.stateGet "base"
-        vcs = Vcs.detectVcs vcsOverride stateVcs jjPresent gitPresent
-        partial = { stateDir: root, vcs, forge: Forge.Unknown, base, vcsOverride, forgeOverride, captureOutput }
-      remote <- Vcs.remoteUrlValue partial
-      let forge = Forge.detectForge forgeOverride stateForge remote
-      pure (Right (partial { forge = forge }))
+resolveWorkflowContext :: Boolean -> Boolean -> Maybe String -> Maybe String -> Effect (Either String WorkflowContext)
+resolveWorkflowContext captureOutput allowCorruptState stateRoot workspaceDir = do
+  rootResult <- case workspaceDir of
+    Nothing -> Right <$> Sys.cwd
+    Just workspace -> do
+      result <- try (Sys.realpath workspace)
+      pure case result of
+        Left error -> Left ("workflow: workspace directory '" <> workspace <> "' does not exist or is unreadable: " <> Exception.message error)
+        Right root -> Right root
+  case rootResult of
+    Left error -> pure (Left error)
+    Right root -> resolveAtRoot root
+  where
+  resolveAtRoot root = do
+    vcsOverrideText <- Sys.getEnv "VCS_OVERRIDE"
+    forgeOverrideText <- Sys.getEnv "FORGE_OVERRIDE"
+    store <- State.resolveStore { stateDir: root, stateRoot }
+    stateResult <- State.readState { store }
+    case stateResult of
+      Left error | not allowCorruptState ->
+        pure (Left (Context.stateCorruptError "workflow" error "resolve the reported state-read error before choosing a run or base"))
+      _ -> do
+        jjPresent <- Sys.isDir (root <> "/.jj")
+        gitPresent <- Sys.isDir (root <> "/.git")
+        let
+          state = case stateResult of
+            Left _ -> Nothing
+            Right value -> value
+          stateVcs = state >>= Args.nonEmpty <<< State.stateGet "vcs"
+          stateForge = state >>= Args.nonEmpty <<< State.stateGet "forge"
+          vcsOverride = case stateVcs of
+            Just _ -> Nothing
+            Nothing -> Args.nonEmpty vcsOverrideText
+          forgeOverride = case stateForge of
+            Just _ -> Nothing
+            Nothing -> Args.nonEmpty forgeOverrideText
+          base = state >>= Args.nonEmpty <<< State.stateGet "base"
+          vcs = Vcs.detectVcs vcsOverride stateVcs jjPresent gitPresent
+          partial = { stateDir: root, store, vcs, forge: Forge.Unknown, base, vcsOverride, forgeOverride, captureOutput }
+        remote <- Vcs.remoteUrlValue partial
+        let forge = Forge.detectForge forgeOverride stateForge remote
+        pure (Right (partial { forge = forge }))
 
 -- | Recovery is deliberately limited to the parsed restart form of init.
 allowsCorruptState :: DriverOp -> Boolean
@@ -405,7 +423,7 @@ allowsCorruptState operation = case operation of
 -- | Dispatch parsed result commands under one exclusive state transition.
 runResultsOp :: WorkflowContext -> ResultsOp -> Effect Outcome.OpOutcome
 runResultsOp context operation =
-  withMutationLock context
+  withStateMutation context
     ( case operation of
         ResultsInit -> Results.runInit context
         ResultsStepStart name -> Results.runStepStart context name
@@ -418,22 +436,24 @@ runResultsOp context operation =
 -- | Dispatch driver lifecycle commands; reporting does not mutate state.
 runDriverOp :: WorkflowContext -> DriverOp -> Effect Outcome.OpOutcome
 runDriverOp context operation = case operation of
-  DriverInit options -> withMutationLock context (Results.runDriverInit context options)
-  DriverStart step -> withMutationLock context (Results.runStepStart context step)
-  DriverEnd status verification reason -> withMutationLock context (Results.runStepEnd context status verification reason)
-  DriverSkip step reason -> withMutationLock context (Results.runDriverSkip context step reason)
-  DriverSet field value -> withMutationLock context (Results.runSet context field value)
+  DriverInit options -> withStateMutation context (Results.runDriverInit context options)
+  DriverStart step -> withStateMutation context (Results.runStepStart context step)
+  DriverEnd status verification reason -> withStateMutation context (Results.runStepEnd context status verification reason)
+  DriverSkip step reason -> withStateMutation context (Results.runDriverSkip context step reason)
+  DriverSet field value -> withStateMutation context (Results.runSet context field value)
   DriverSummary -> DoneReport.run context
-  DriverJobStart options -> withMutationLock context (Results.runJobStart context options)
-  DriverJobEnd options -> withMutationLock context (Results.runJobEnd context options)
+  DriverState -> Results.runState context
+  DriverMigrate -> withStateMutation context (Results.runMigrate context)
+  DriverJobStart options -> withStateMutation context (Results.runJobStart context options)
+  DriverJobEnd options -> withStateMutation context (Results.runJobEnd context options)
 
--- | Delegate the ordered sync transaction under the same exclusive lock.
+-- | Delegate the ordered sync transaction under the same state transaction.
 runSyncOp :: WorkflowContext -> SyncOp -> Effect Outcome.OpOutcome
-runSyncOp context (Sync options) = withMutationLock context (SyncWorkflow.run context options)
+runSyncOp context (Sync options) = withStateMutation context (SyncWorkflow.run context options)
 
-withMutationLock :: WorkflowContext -> Effect Outcome.OpOutcome -> Effect Outcome.OpOutcome
-withMutationLock context action = do
-  result <- State.withStateLock (Context.statePath context) action
+withStateMutation :: WorkflowContext -> Effect Outcome.OpOutcome -> Effect Outcome.OpOutcome
+withStateMutation context action = do
+  result <- State.withStateTransaction context action
   pure case result of
     Left error -> Outcome.failure 1 (error <> "\n")
     Right outcome -> outcome

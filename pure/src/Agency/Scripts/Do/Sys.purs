@@ -4,14 +4,11 @@
 module Agency.Scripts.Do.Sys
   ( ExecResult
   , InheritResult
-  , exec
-  , execInput
-  , execInherit
-  , execInheritInput
+  , execAt
+  , execInputAt
+  , execInheritAt
+  , execInheritInputAt
   , readUtf8
-  , writeUtf8
-  , rename
-  , exists
   , isDir
   , nowIso
   , formatEpochIso
@@ -23,9 +20,12 @@ module Agency.Scripts.Do.Sys
   , stderrWrite
   , realpath
   , bundleDir
+  , stateDbPath
+  , readStateJson
+  , writeStateJson
+  , withStateTransaction
   , isoToEpoch
   , isCanonicalIso
-  , uniqueTempPath
   ) where
 
 import Prelude
@@ -36,7 +36,7 @@ import Data.Either (Either(..))
 import Data.Int (floor)
 import Data.JSDate as JSDate
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Nullable (toMaybe)
+import Data.Nullable (Nullable, toMaybe)
 import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Exception (try)
@@ -65,64 +65,83 @@ type InheritResult =
 
 -- | Run a command with UTF-8 captured output. A missing executable is a
 -- | normal command failure, represented as status 1 and its system message.
-exec :: String -> Array String -> Effect ExecResult
-exec command args = do
-  result <- Child.spawnSync' command args
-    { encoding: "utf8"
-    , maxBuffer: 64.0 * 1024.0 * 1024.0
-    }
+execAt :: Maybe String -> String -> Array String -> Effect ExecResult
+execAt workspaceDir command args = do
+  result <- case workspaceDir of
+    Nothing -> Child.spawnSync' command args
+      { encoding: "utf8"
+      , maxBuffer: 64.0 * 1024.0 * 1024.0
+      }
+    Just path -> Child.spawnSync' command args
+      { cwd: path
+      , encoding: "utf8"
+      , maxBuffer: 64.0 * 1024.0 * 1024.0
+      }
+  pure (execResult result)
+
+execResult :: Child.JsSpawnSyncResult -> ExecResult
+execResult result = do
   let
     stdout = Child.unsafeSOBToString result.stdout
     stderr = Child.unsafeSOBToString result.stderr
     code = fromMaybe 1 (toMaybe result.status)
   case toMaybe result.error of
-    Nothing -> pure { code, stdout, stderr }
-    Just error -> pure
+    Nothing -> { code, stdout, stderr }
+    Just error ->
       { code: 1
       , stdout
       , stderr: if stderr == "" then SystemError.message error else stderr
       }
 
 -- | Run a command with supplied text on stdin and captured output.
-execInput :: String -> Array String -> String -> Effect ExecResult
-execInput command args input = do
+execInputAt :: Maybe String -> String -> Array String -> String -> Effect ExecResult
+execInputAt workspaceDir command args input = do
   inputBuffer <- Buffer.fromString input UTF8
-  result <- Child.spawnSync' command args
-    { input: inputBuffer
-    , encoding: "utf8"
-    , maxBuffer: 64.0 * 1024.0 * 1024.0
-    }
-  let
-    stdout = Child.unsafeSOBToString result.stdout
-    stderr = Child.unsafeSOBToString result.stderr
-    code = fromMaybe 1 (toMaybe result.status)
-  case toMaybe result.error of
-    Nothing -> pure { code, stdout, stderr }
-    Just error -> pure
-      { code: 1
-      , stdout
-      , stderr: if stderr == "" then SystemError.message error else stderr
+  result <- case workspaceDir of
+    Nothing -> Child.spawnSync' command args
+      { input: inputBuffer
+      , encoding: "utf8"
+      , maxBuffer: 64.0 * 1024.0 * 1024.0
       }
+    Just path -> Child.spawnSync' command args
+      { cwd: path
+      , input: inputBuffer
+      , encoding: "utf8"
+      , maxBuffer: 64.0 * 1024.0 * 1024.0
+      }
+  pure (execResult result)
 
 -- | Run a command with all child streams inherited. A spawn failure is
 -- | returned separately because Node does not write it to inherited stderr.
-execInherit :: String -> Array String -> Effect InheritResult
-execInherit command args = do
-  result <- Child.spawnSync' command args
-    { stdio: [ inherit, inherit, inherit ] }
+execInheritAt :: Maybe String -> String -> Array String -> Effect InheritResult
+execInheritAt workspaceDir command args = do
+  result <- case workspaceDir of
+    Nothing -> Child.spawnSync' command args
+      { stdio: [ inherit, inherit, inherit ]
+      }
+    Just path -> Child.spawnSync' command args
+      { cwd: path
+      , stdio: [ inherit, inherit, inherit ]
+      }
   pure
     { code: fromMaybe 1 (toMaybe result.status)
     , error: SystemError.message <$> toMaybe result.error
     }
 
 -- | Run a command with supplied text on stdin and inherited output streams.
-execInheritInput :: String -> Array String -> String -> Effect InheritResult
-execInheritInput command args input = do
+execInheritInputAt :: Maybe String -> String -> Array String -> String -> Effect InheritResult
+execInheritInputAt workspaceDir command args input = do
   inputBuffer <- Buffer.fromString input UTF8
-  result <- Child.spawnSync' command args
-    { input: inputBuffer
-    , stdio: [ pipe, inherit, inherit ]
-    }
+  result <- case workspaceDir of
+    Nothing -> Child.spawnSync' command args
+      { input: inputBuffer
+      , stdio: [ pipe, inherit, inherit ]
+      }
+    Just path -> Child.spawnSync' command args
+      { cwd: path
+      , input: inputBuffer
+      , stdio: [ pipe, inherit, inherit ]
+      }
   pure
     { code: fromMaybe 1 (toMaybe result.status)
     , error: SystemError.message <$> toMaybe result.error
@@ -130,15 +149,6 @@ execInheritInput command args input = do
 
 readUtf8 :: String -> Effect String
 readUtf8 = FSSync.readTextFile UTF8
-
-writeUtf8 :: String -> String -> Effect Unit
-writeUtf8 path value = FSSync.writeTextFile UTF8 path value
-
-rename :: String -> String -> Effect Unit
-rename = FSSync.rename
-
-exists :: String -> Effect Boolean
-exists = FSSync.exists
 
 -- | Missing or unreadable paths are not directories. Detection deliberately
 -- | treats those paths as absent so the VCS precedence can continue.
@@ -183,8 +193,17 @@ realpath = FSSync.realpath
 -- | Directory containing the executing bundle, independent of process cwd.
 foreign import bundleDir :: Effect String
 
--- | Produce a same-directory private staging name for an atomic rename.
-foreign import uniqueTempPath :: String -> Effect String
+-- | Resolve one worktree's private SQLite database path.
+foreign import stateDbPath :: Nullable String -> String -> Effect String
+
+-- | Read the current JSON snapshot, or null when no snapshot exists.
+foreign import readStateJson :: String -> String -> Effect (Nullable String)
+
+-- | Atomically replace the current JSON snapshot inside an optional outer transaction.
+foreign import writeStateJson :: String -> String -> String -> Effect Unit
+
+-- | Run a state mutation under one SQLite immediate transaction.
+foreign import withStateTransaction :: forall a. String -> String -> Effect a -> Effect a
 
 -- | Convert an exact UTC-second ISO timestamp to epoch seconds.
 isoToEpoch :: String -> Effect (Either String Int)

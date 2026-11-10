@@ -34,9 +34,9 @@ teardown() {
   [ "$output" = "bitbucket" ]
 }
 
-@test "detect reads forge from .do-results.json when present" {
-  mkdir -p .do-results.json.d 2>/dev/null || true
-  printf '{"forge":"bitbucket"}' >.do-results.json
+@test "detect reads the persisted forge when present" {
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init "forge fixture"
+  node "$REPO_ROOT/pure/dist/agency-do.js" do-driver set forge bitbucket
   run node "$REPO_ROOT/pure/dist/agency-do.js" forge-op detect
   [ "$status" -eq 0 ]
   [ "$output" = "bitbucket" ]

@@ -1,6 +1,9 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { type } from "@oh-my-pi/omptype";
 import * as zod from "@oh-my-pi/omptype/zod";
 import agencyTools from "../../dist/agency-tools.mjs";
@@ -61,6 +64,7 @@ export async function withIsolatedRepo(run) {
   const cwd = await mkdtemp(join(tmpdir(), "agency-tool-contract-"));
   try {
     process.chdir(cwd);
+    process.env.AGENCY_STATE_DIR = join(cwd, "agency-state");
     await run(cwd);
   } finally {
     process.chdir(oldCwd);
@@ -79,8 +83,39 @@ export async function initState(cwd = process.cwd(), options = {}) {
 }
 
 export async function readState(cwd = process.cwd()) {
-  return JSON.parse(await readFile(join(cwd, ".do-results.json"), "utf8"));
+  const registered = registerTools();
+  const result = await invoke(
+    registered,
+    "agency_driver",
+    { op: "state" },
+    cwd,
+  );
+  return result.details.value;
 }
 
-export const snapshot = (cwd) =>
-  readFile(join(cwd, ".do-results.json"), "utf8");
+export const snapshot = async (cwd) => JSON.stringify(await readState(cwd));
+
+async function stateDbPath(cwd) {
+  const workspacePath = realpathSync.native(cwd);
+  const digest = createHash("sha256").update(workspacePath).digest("hex");
+  return join(process.env.AGENCY_STATE_DIR, `${digest}.db`);
+}
+
+export async function readStoredState(cwd) {
+  const db = new DatabaseSync(await stateDbPath(cwd), { readOnly: true });
+  const value = db
+    .prepare("SELECT state_json FROM run WHERE workspace_path = ?")
+    .get(realpathSync.native(cwd))?.state_json;
+  db.close();
+  return value;
+}
+
+// Test-only anomaly injection. Production and ordinary assertions use `state`.
+export async function writeStoredState(cwd, state) {
+  const db = new DatabaseSync(await stateDbPath(cwd));
+  db.prepare("UPDATE run SET state_json = ? WHERE workspace_path = ?").run(
+    typeof state === "string" ? state : JSON.stringify(state),
+    realpathSync.native(cwd),
+  );
+  db.close();
+}

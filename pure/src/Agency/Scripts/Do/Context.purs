@@ -1,8 +1,7 @@
 module Agency.Scripts.Do.Context
   ( WorkflowContext
+  , StoreIdentity
   , stateCorruptError
-  , stateFile
-  , statePath
   ) where
 
 import Prelude
@@ -16,8 +15,15 @@ import Agency.Scripts.Do.VcsKind as VcsKind
 -- | Resolution happens in the adapter; providers only consume this value.
 -- | captureOutput controls subprocess providers; the Nickel bridge always
 -- | captures its subprocess output because it communicates over stdin/stdout.
+-- | One resolved worktree database and the canonical path that owns it.
+type StoreIdentity =
+  { dbPath :: String
+  , workspacePath :: String
+  }
+
 type WorkflowContext =
   { stateDir :: String
+  , store :: StoreIdentity
   , vcs :: VcsKind.VcsKind
   , forge :: ForgeKind.ForgeKind
   , base :: Maybe String
@@ -26,16 +32,8 @@ type WorkflowContext =
   , captureOutput :: Boolean
   }
 
--- | The workflow state file's name, owned here so every construction site
--- agrees on which artifact is state rather than repo work.
-stateFile :: String
-stateFile = ".do-results.json"
-
 -- | The shared corrupt-state error shape: which reader failed, the underlying
--- read error, and what to do about it.
+-- read error, and what to do about it. The subject names the actual store,
+-- never a working-tree file that the current backend does not write.
 stateCorruptError :: String -> String -> String -> String
-stateCorruptError label error remedy = label <> ": " <> stateFile <> " is corrupt or unreadable — " <> error <> "; " <> remedy
-
--- | Resolve the state file below the run's working directory.
-statePath :: WorkflowContext -> String
-statePath context = context.stateDir <> "/" <> stateFile
+stateCorruptError label error remedy = label <> ": workflow state store is corrupt or unreadable — " <> error <> "; " <> remedy

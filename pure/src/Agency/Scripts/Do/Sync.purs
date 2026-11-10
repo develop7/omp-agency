@@ -5,7 +5,6 @@ module Agency.Scripts.Do.Sync
 import Prelude
 
 import Agency.Scripts.Do.Context (WorkflowContext)
-import Agency.Scripts.Do.Context as Context
 import Agency.Scripts.Do.Forge as Forge
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Results as Results
@@ -75,7 +74,7 @@ phaseOutput phase = Outcome.append (Outcome.append phase.quietFetch phase.quietR
 
 failSync :: WorkflowContext -> Outcome.OpOutcome -> Effect Outcome.OpOutcome
 failSync context outcome = do
-  existing <- State.readState (Context.statePath context)
+  existing <- State.readState context
   case existing of
     Left error ->
       pure (Outcome.append outcome (failText ("sync: unable to read state while recording failure: " <> error)))
@@ -83,7 +82,7 @@ failSync context outcome = do
       -- Sync can fail before it creates state, leaving nothing to mark failed.
       pure outcome
     Right (Just state) -> do
-      written <- try (State.writeState (Context.statePath context) (State.finishWorkflow State.WorkflowFailed state))
+      written <- try (State.writeState context (State.finishWorkflow State.WorkflowFailed state))
       pure case written of
         Left error ->
           Outcome.append outcome (failText ("sync: unable to mark workflow as failed: " <> SystemError.message (unsafeCoerce error)))
@@ -91,7 +90,7 @@ failSync context outcome = do
 
 resolveContext :: WorkflowContext -> { noVcs :: Boolean, base :: Maybe String, stack :: Boolean } -> String -> Effect (Either Outcome.OpOutcome State.State)
 resolveContext context options startedAt = do
-  initial <- State.readState (Context.statePath context)
+  initial <- State.readState context
   case initial of
     Left error -> pure (Left (failText ("sync: " <> error)))
     Right maybeState ->
@@ -149,7 +148,7 @@ recordPhase context options startedAt resolved = do
   case State.appendStep step resolved.state of
     Left error -> pure (failText error)
     Right updated -> do
-      State.writeState (Context.statePath context) updated
+      State.writeState context updated
       pure
         ( Outcome.withStdout
             ( "vcs=" <> Vcs.vcsName contextWithBase.vcs <> "\n"

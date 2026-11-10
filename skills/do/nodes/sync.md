@@ -29,7 +29,7 @@ base selector is requested. This single model-facing call performs all context r
 shared PureScript core — it resolves the VCS and forge, fetches the default remote, pins `origin/HEAD`
 (git), fast-forwards when clean (preserving the tree under `--no-vcs`), prints the dirty-tree hint to
 stderr (no pause) when the tree is dirty and `--no-vcs` is not set, computes the forge capability
-booleans, resolves `base`, writes all resolved fields to `.do-results.json`, records the sync step,
+booleans, resolves `base`, writes all resolved fields to the external worktree snapshot, records the sync step,
 and prints `vcs=`, `forge=`, `branch=`, `defaultBranch=`, `base=` on stdout for downstream steps. It
 does not recursively re-enter the model-facing tools.
 

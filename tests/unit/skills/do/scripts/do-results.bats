@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-# Unit tests for do-results — the .do-results.json state machine.
-# Black-box: drives the script as a subprocess, asserts on stdout + the JSON file.
+# Unit tests for do-results — the workflow state-machine primitives.
+# Black-box: drives the script as a subprocess, asserts on stdout plus the
+# canonical state returned by `do-driver state`.
 
 setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
@@ -16,24 +17,23 @@ run_dr() {
   run node "$REPO_ROOT/pure/dist/agency-do.js" do-results "$@"
 }
 
-@test "init creates skeleton JSON with correct fields" {
+@test "init creates a snapshot with correct fields" {
   run_dr init
   [ "$status" -eq 0 ]
-  [ -f ".do-results.json" ]
 
-  run jq -r '.workflow' .do-results.json
+  run state_jq -r '.workflow'
   [ "$output" = "do" ]
 
-  run jq -r '.active' .do-results.json
+  run state_jq -r '.active'
   [ "$output" = "working" ]
 
-  run jq -r '.status' .do-results.json
+  run state_jq -r '.status'
   [ "$output" = "running" ]
 
-  run jq '.steps | length' .do-results.json
+  run state_jq '.steps | length'
   [ "$output" = "0" ]
 
-  run jq -r '.startedAt | type' .do-results.json
+  run state_jq -r '.startedAt | type'
   [ "$output" = "string" ]
 }
 
@@ -54,13 +54,13 @@ run_dd() {
   [ "$status" -eq 0 ]
   run_dd job-start j1 "Pass 1" police
   [ "$status" -eq 0 ]
-  cp .do-results.json before-init.json
+  before="$(driver_state)"
 
   run_dr init
   [ "$status" -ne 0 ]
   [[ $output == *"unfinished job(s) block init"* ]]
   [[ $output == *"'j1'"* ]]
-  cmp .do-results.json before-init.json
+  [ "$(driver_state)" = "$before" ]
 }
 
 @test "step-start sets pendingStep" {
@@ -68,7 +68,7 @@ run_dd() {
   run_dr step-start research
   [ "$status" -eq 0 ]
 
-  run jq -r '.pendingStep.name' .do-results.json
+  run state_jq -r '.pendingStep.name'
   [ "$output" = "research" ]
 }
 
@@ -93,19 +93,19 @@ run_dd() {
   run_dr step-end passed "verified via reading"
   [ "$status" -eq 0 ]
 
-  run jq '.steps | length' .do-results.json
+  run state_jq '.steps | length'
   [ "$output" = "1" ]
 
-  run jq -r '.steps[0].name' .do-results.json
+  run state_jq -r '.steps[0].name'
   [ "$output" = "research" ]
 
-  run jq -r '.steps[0].status' .do-results.json
+  run state_jq -r '.steps[0].status'
   [ "$output" = "passed" ]
 
-  run jq -r '.steps[0].verification' .do-results.json
+  run state_jq -r '.steps[0].verification'
   [ "$output" = "verified via reading" ]
 
-  run jq -r '.pendingStep' .do-results.json
+  run state_jq -r '.pendingStep'
   [ "$output" = "null" ]
 }
 
@@ -123,7 +123,7 @@ run_dd() {
   run_dr step-end skipped "" "--no-vcs"
   [ "$status" -eq 0 ]
 
-  run jq -r '.steps[0].reason' .do-results.json
+  run state_jq -r '.steps[0].reason'
   [ "$output" = "--no-vcs" ]
 }
 
@@ -132,14 +132,14 @@ run_dd() {
   # summary's skippedSteps line never reports "unspecified".
   run_dr init
   run_dr step-start evidence
-  cp .do-results.json before.json
+  before="$(driver_state)"
 
   run_dr step-end skipped ""
   [ "$status" -ne 0 ]
   [[ $output =~ "reason required for skipped" ]]
 
-  cmp .do-results.json before.json
-  run jq -e '.pendingStep.name == "evidence"' .do-results.json
+  [ "$(driver_state)" = "$before" ]
+  run state_jq -e '.pendingStep.name == "evidence"'
   [ "$status" -eq 0 ]
 }
 
@@ -152,11 +152,11 @@ run_dd() {
   run_dr step-end skipped "" "no PR evidence section in .agency/do.md"
   [ "$status" -eq 0 ]
 
-  run jq -r '.steps[0].status' .do-results.json
+  run state_jq -r '.steps[0].status'
   [ "$output" = "skipped" ]
-  run jq -r '.steps[0].reason' .do-results.json
+  run state_jq -r '.steps[0].reason'
   [ "$output" = "no PR evidence section in .agency/do.md" ]
-  run jq -e '.pendingStep == null' .do-results.json
+  run state_jq -e '.pendingStep == null'
   [ "$status" -eq 0 ]
 }
 
@@ -166,7 +166,7 @@ run_dd() {
   run_dr step-end passed "ok"
   [ "$status" -eq 0 ]
 
-  run jq -r '.steps[0] | has("reason")' .do-results.json
+  run state_jq -r '.steps[0] | has("reason")'
   [ "$output" = "false" ]
 }
 
@@ -182,10 +182,10 @@ run_dd() {
   run_dr step research passed "ok" "2024-01-01T00:00:00Z" "2024-01-01T00:01:00Z"
   [ "$status" -eq 0 ]
 
-  run jq -r '.steps[0].startedAt' .do-results.json
+  run state_jq -r '.steps[0].startedAt'
   [ "$output" = "2024-01-01T00:00:00Z" ]
 
-  run jq -r '.steps[0].completedAt' .do-results.json
+  run state_jq -r '.steps[0].completedAt'
   [ "$output" = "2024-01-01T00:01:00Z" ]
 }
 
@@ -200,11 +200,11 @@ run_dd() {
   run_dr step sync passed "ok" "now" "now"
   [ "$status" -eq 0 ]
 
-  run jq -r '.steps[0].startedAt | type' .do-results.json
+  run state_jq -r '.steps[0].startedAt | type'
   [ "$output" = "string" ]
 
   # Should match ISO 8601 UTC format
-  run jq -r '.steps[0].startedAt' .do-results.json
+  run state_jq -r '.steps[0].startedAt'
   [[ $output =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
@@ -213,7 +213,7 @@ run_dd() {
   run_dr set task "my task"
   [ "$status" -eq 0 ]
 
-  run jq -r '.task' .do-results.json
+  run state_jq -r '.task'
   [ "$output" = "my task" ]
 }
 
@@ -222,7 +222,7 @@ run_dd() {
   run_dr set review true
   [ "$status" -eq 0 ]
 
-  run jq -r '.review' .do-results.json
+  run state_jq -r '.review'
   [ "$output" = "true" ]
 }
 
@@ -231,7 +231,7 @@ run_dd() {
   run_dr set noVcs false
   [ "$status" -eq 0 ]
 
-  run jq -r '.noVcs' .do-results.json
+  run state_jq -r '.noVcs'
   [ "$output" = "false" ]
 }
 
@@ -257,12 +257,12 @@ run_dd() {
   run_dr step-start implement
   run_dr step-end passed "ok"
 
-  run jq -r '.steps | length' .do-results.json
+  run state_jq -r '.steps | length'
   [ "$output" = "3" ]
 
-  run jq -r '.steps[0].name' .do-results.json
+  run state_jq -r '.steps[0].name'
   [ "$output" = "sync" ]
 
-  run jq -r '.steps[2].name' .do-results.json
+  run state_jq -r '.steps[2].name'
   [ "$output" = "implement" ]
 }
