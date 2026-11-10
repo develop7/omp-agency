@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-# Unit tests for do-driver — the thin state wrapper around do-results.
+# Unit tests for do-driver — the state-machine command surface.
 # Tests delegation: init flags, start/end/skip/set pass through, summary calls done.
+# State is read back through `do-driver state`, never from a worktree file.
 
 setup() {
   load "$REPO_ROOT/tests/helpers/setup.bash"
@@ -19,10 +20,10 @@ run_driver() {
 run_api_driver() {
   run env AGENCY_API_BUNDLE="${AGENCY_API_BUNDLE:-$REPO_ROOT/pure/dist/agency-api.js}" \
     node --input-type=module --eval \
-    'const { runTool } = await import(process.env.AGENCY_API_BUNDLE); const result = await runTool({ tool: "agency_driver", args: JSON.parse(process.env.AGENCY_DRIVER_ARGS), captureOutput: true })(); process.stdout.write(JSON.stringify(result)); process.exitCode = result.exit'
+    'const { runTool } = await import(process.env.AGENCY_API_BUNDLE); const result = await runTool({ tool: "agency_driver", args: JSON.parse(process.env.AGENCY_DRIVER_ARGS), captureOutput: true, stateRoot: null })(); process.stdout.write(JSON.stringify(result)); process.exitCode = result.exit'
 }
 
-@test "init creates .do-results.json with default flags" {
+@test "init creates a worktree snapshot with default flags" {
   run_driver init "my task"
   [ "$status" -eq 0 ]
   [[ $output == *"review=false"* ]]
@@ -30,51 +31,59 @@ run_api_driver() {
   [[ $output == *"minimal=false"* ]]
   [[ $output == *"from=default"* ]]
 
-  [ -f ".do-results.json" ]
-  run jq -r '.task' .do-results.json
+  run state_jq -r '.task'
+  [ "$status" -eq 0 ]
   [ "$output" = "my task" ]
 }
 
 @test "init refuses corrupt state without replacing it" {
-  printf 'not json' >.do-results.json
-  cp .do-results.json corrupt-before.json
+  run_driver init "first task"
+  [ "$status" -eq 0 ]
+  corrupt_state_store 'not json'
 
   run_driver init "recovered task"
 
   [ "$status" -eq 1 ]
-  cmp .do-results.json corrupt-before.json
+  [[ $output == *"corrupt or unreadable"* ]]
+  # The stored payload is untouched: it still fails to parse.
+  run driver_state
+  [ "$status" -ne 0 ]
 }
 
 @test "init --restart replaces corrupt state with clean initialization" {
-  printf 'not json' >.do-results.json
+  run_driver init "first task"
+  [ "$status" -eq 0 ]
+  corrupt_state_store 'not json'
 
   run_driver init --restart "recovered task"
 
   [ "$status" -eq 0 ]
-  run jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []' .do-results.json
+  run state_jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []'
   [ "$status" -eq 0 ]
 }
 
 @test "API init --restart replaces corrupt state but summary remains strict" {
-  printf 'not json' >.do-results.json
+  run_driver init "first task"
+  [ "$status" -eq 0 ]
+  corrupt_state_store 'not json'
 
   AGENCY_DRIVER_ARGS='["init","--restart","recovered task"]' run_api_driver
   [ "$status" -eq 0 ]
-  run jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []' .do-results.json
+  run state_jq -e '.task == "recovered task" and .active == "working" and .status == "running" and .steps == []'
   [ "$status" -eq 0 ]
 
-  printf 'not json' >.do-results.json
-  cp .do-results.json corrupt-before.json
+  corrupt_state_store 'not json'
   AGENCY_DRIVER_ARGS='["summary"]' run_api_driver
   [ "$status" -eq 1 ]
-  cmp .do-results.json corrupt-before.json
+  run driver_state
+  [ "$status" -ne 0 ]
 }
 
 @test "init --review sets review=true" {
   run_driver init --review "my task"
   [ "$status" -eq 0 ]
   [[ $output == *"review=true"* ]]
-  run jq -r '.review' .do-results.json
+  run state_jq -r '.review'
   [ "$output" = "true" ]
 }
 
@@ -82,7 +91,7 @@ run_api_driver() {
   run_driver init --no-vcs "my task"
   [ "$status" -eq 0 ]
   [[ $output == *"noVcs=true"* ]]
-  run jq -r '.noVcs' .do-results.json
+  run state_jq -r '.noVcs'
   [ "$output" = "true" ]
 }
 
@@ -90,7 +99,7 @@ run_api_driver() {
   run_driver init --minimal "my task"
   [ "$status" -eq 0 ]
   [[ $output == *"minimal=true"* ]]
-  run jq -r '.minimal' .do-results.json
+  run state_jq -r '.minimal'
   [ "$output" = "true" ]
 }
 
@@ -98,7 +107,7 @@ run_api_driver() {
   run_driver init --from=ci-only "my task"
   [ "$status" -eq 0 ]
   [[ $output == *"from=ci-only"* ]]
-  run jq -r '.from' .do-results.json
+  run state_jq -r '.from'
   [ "$output" = "ci-only" ]
 }
 
@@ -117,9 +126,9 @@ run_api_driver() {
 
   run_driver init --from=followup "follow-up task"
   [ "$status" -eq 0 ]
-  run jq -r '.base' .do-results.json
+  run state_jq -r '.base'
   [ "$output" = "main" ]
-  run jq -r '.from' .do-results.json
+  run state_jq -r '.from'
   [ "$output" = "followup" ]
 }
 
@@ -132,11 +141,13 @@ run_api_driver() {
   AGENCY_DRIVER_ARGS='["set","base","main"]' run_api_driver
   [ "$status" -eq 0 ]
   AGENCY_DRIVER_ARGS='["start","done"]' run_api_driver
+  [ "$status" -eq 0 ]
   AGENCY_DRIVER_ARGS='["end","passed","verified"]' run_api_driver
+  [ "$status" -eq 0 ]
 
   AGENCY_DRIVER_ARGS='["init","--from=followup","follow-up task"]' run_api_driver
   [ "$status" -eq 0 ]
-  run jq -r '.base' .do-results.json
+  run state_jq -r '.base'
   [ "$output" = "main" ]
 }
 
@@ -152,7 +163,7 @@ run_api_driver() {
 
   run_driver init --from=followup "vcs task"
   [ "$status" -eq 0 ]
-  run jq -r 'has("base")' .do-results.json
+  run state_jq -r 'has("base")'
   [ "$output" = "false" ]
 }
 
@@ -171,14 +182,14 @@ run_api_driver() {
 
   run_driver init "default entry"
   [ "$status" -eq 0 ]
-  run jq -r 'has("base")' .do-results.json
+  run state_jq -r 'has("base")'
   [ "$output" = "false" ]
 
   run_driver start done
   run_driver end passed "verified"
   run_driver init --from=default "explicit default entry"
   [ "$status" -eq 0 ]
-  run jq -r 'has("base")' .do-results.json
+  run state_jq -r 'has("base")'
   [ "$output" = "false" ]
 }
 
@@ -194,7 +205,7 @@ run_api_driver() {
 
   run_driver init --no-vcs --from=followup "no-vcs follow-up"
   [ "$status" -eq 0 ]
-  run jq -r 'has("base")' .do-results.json
+  run state_jq -r 'has("base")'
   [ "$output" = "false" ]
 }
 
@@ -252,7 +263,7 @@ run_api_driver() {
   run_driver start done
   run_driver end passed "verified"
   [ "$status" -eq 0 ]
-  run jq -e '.active == "idle" and .status == "completed"' .do-results.json
+  run state_jq -e '.active == "idle" and .status == "completed"'
   [ "$status" -eq 0 ]
 }
 
@@ -261,7 +272,7 @@ run_api_driver() {
   run_driver start sync
   run_driver end skipped "" "--no-vcs"
   [ "$status" -eq 0 ]
-  run jq -r '.steps[0].reason' .do-results.json
+  run state_jq -r '.steps[0].reason'
   [ "$output" = "--no-vcs" ]
 }
 
@@ -270,9 +281,9 @@ run_api_driver() {
   run_driver skip docs "--minimal"
   [ "$status" -eq 0 ]
 
-  run jq -r '.steps[0].status' .do-results.json
+  run state_jq -r '.steps[0].status'
   [ "$output" = "skipped" ]
-  run jq -r '.steps[0].reason' .do-results.json
+  run state_jq -r '.steps[0].reason'
   [ "$output" = "--minimal" ]
 }
 
@@ -282,13 +293,13 @@ run_api_driver() {
   # with `end skipped <reason>`, not retry `skip`.
   run_driver init "test"
   run_driver start evidence
-  cp .do-results.json before.json
+  before="$(driver_state)"
 
   run_driver skip evidence "no PR evidence section"
   [ "$status" -ne 0 ]
   [[ $output =~ "already active" ]]
 
-  cmp .do-results.json before.json
+  [ "$(driver_state)" = "$before" ]
 }
 
 @test "end skipped with reason closes an active step (node-local skip)" {
@@ -298,11 +309,11 @@ run_api_driver() {
   run_driver end skipped "" "no PR evidence section in .agency/do.md"
   [ "$status" -eq 0 ]
 
-  run jq -r '.steps[0].status' .do-results.json
+  run state_jq -r '.steps[0].status'
   [ "$output" = "skipped" ]
-  run jq -r '.steps[0].reason' .do-results.json
+  run state_jq -r '.steps[0].reason'
   [ "$output" = "no PR evidence section in .agency/do.md" ]
-  run jq -e '.pendingStep == null' .do-results.json
+  run state_jq -e '.pendingStep == null'
   [ "$status" -eq 0 ]
 }
 
@@ -310,13 +321,13 @@ run_api_driver() {
   # Regression (#61): the driver refuses a reasonless skipped completion.
   run_driver init "test"
   run_driver start evidence
-  cp .do-results.json before.json
+  before="$(driver_state)"
 
   run_driver end skipped
   [ "$status" -ne 0 ]
   [[ $output =~ "reason required for skipped" ]]
 
-  cmp .do-results.json before.json
+  [ "$(driver_state)" = "$before" ]
 }
 
 @test "set delegates to do-results set" {
@@ -345,4 +356,46 @@ run_api_driver() {
   run_driver frobnicate
   [ "$status" -ne 0 ]
   [[ $output == *"Unknown command: frobnicate"* ]]
+}
+
+@test "state reports no snapshot before init and creates none" {
+  run driver_state
+  [ "$status" -ne 0 ]
+  [[ $output == *"workflow state not found"* ]]
+  [ ! -d "$AGENCY_STATE_DIR" ]
+}
+
+@test "migrate imports legacy JSON once without touching the source" {
+  legacy='{"workflow":"do","startedAt":"2024-01-01T00:00:00Z","active":"working","status":"running","steps":[],"task":"legacy run"}'
+  printf '%s' "$legacy" >.do-results.json
+
+  run_driver migrate
+  [ "$status" -eq 0 ]
+  [[ $output == *"migrated workflow state"* ]]
+
+  run state_jq -r '.task'
+  [ "$output" = "legacy run" ]
+  [ "$(cat .do-results.json)" = "$legacy" ]
+
+  run_driver migrate
+  [ "$status" -ne 0 ]
+  [[ $output == *"already has a SQLite state snapshot"* ]]
+}
+
+@test "migrate refuses corrupt legacy JSON without creating a snapshot" {
+  printf 'not json' >.do-results.json
+
+  run_driver migrate
+  [ "$status" -ne 0 ]
+  [[ $output == *"cannot read legacy workflow state"* ]]
+
+  run driver_state
+  [ "$status" -ne 0 ]
+  [[ $output == *"workflow state not found"* ]]
+}
+
+@test "migrate without legacy JSON names the missing source" {
+  run_driver migrate
+  [ "$status" -ne 0 ]
+  [[ $output == *"no legacy workflow state"* ]]
 }

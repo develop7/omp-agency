@@ -12,6 +12,7 @@ import {
   snapshot,
   tool,
   withIsolatedRepo,
+  writeStoredState,
 } from "./helpers.mjs";
 
 const tools = registerTools();
@@ -95,6 +96,7 @@ test("push treats backend refs as operands without changing the remote", async (
       tool: "vcs_write",
       args: ["push", "--force"],
       captureOutput: true,
+      stateRoot: null,
     })();
     assert.notEqual(result.exit, 0);
     assert.equal(remoteHead(), before);
@@ -351,7 +353,7 @@ test("unfinished jobs block step-end and summary until job-end resolves them", a
     // A job past its deadline is additionally reported as stalled.
     state = await readState(cwd);
     state.jobs[0].deadline = "2020-01-01T00:00:00Z";
-    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+    await writeStoredState(cwd, state);
     const beforeStalled = await snapshot(cwd);
     await assert.rejects(
       invoke(registered, "agency_driver", { op: "summary" }, cwd),
@@ -772,7 +774,7 @@ test("summary surfaces an unparsable job deadline instead of silently unstalling
     );
     const state = await readState(cwd);
     state.jobs[0].deadline = "not-a-time";
-    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+    await writeStoredState(cwd, state);
     const before = await snapshot(cwd);
     await assert.rejects(
       invoke(registered, "agency_driver", { op: "summary" }, cwd),
@@ -839,7 +841,7 @@ test("summary preserves delimiter-containing job fields as data", async () => {
     );
     const state = await readState(cwd);
     state.jobs[0].deadline = "a|b";
-    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+    await writeStoredState(cwd, state);
 
     // The rejection path never builds the table and still names the job.
     await assert.rejects(
@@ -925,7 +927,7 @@ test("restart init carries unfinished jobs forward; plain init discards them", a
     const terminal = await readState(cwd);
     terminal.status = "completed";
     terminal.active = "idle";
-    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(terminal));
+    await writeStoredState(cwd, terminal);
     await invoke(
       registered,
       "agency_driver",
@@ -1001,7 +1003,7 @@ test("job-end clamps a finish that precedes the job start", async () => {
     // driver-computed finish would land before it.
     const state = await readState(cwd);
     state.jobs[0].startedAt = "2030-01-01T00:00:00Z";
-    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+    await writeStoredState(cwd, state);
 
     const ended = await invoke(
       registered,
@@ -1044,7 +1046,7 @@ test("the jobs ledger is bounded at 32 entries end to end", async () => {
       finishedAt: "2026-10-16T12:01:00Z",
       outcome: "completed",
     }));
-    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+    await writeStoredState(cwd, state);
 
     // Finished history yields: the oldest finished entry is pruned so the
     // append succeeds and the ledger stays at the bound.
@@ -1081,7 +1083,7 @@ test("the jobs ledger is bounded at 32 entries end to end", async () => {
       step: "police",
       startedAt: "2026-10-16T12:00:00Z",
     }));
-    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+    await writeStoredState(cwd, state);
     await assert.rejects(
       invoke(
         registered,
@@ -1101,7 +1103,7 @@ test("the jobs ledger is bounded at 32 entries end to end", async () => {
       finishedAt: "2026-10-16T12:01:00Z",
       outcome: "completed",
     });
-    await writeFile(join(cwd, ".do-results.json"), JSON.stringify(state));
+    await writeStoredState(cwd, state);
     await assert.rejects(
       invoke(registered, "agency_driver", { op: "summary" }, cwd),
       /job ledger limit \(32\) exceeded/,
@@ -1113,6 +1115,68 @@ test("workflow rejects legacy argv and unknown entry-point selectors", () => {
   const schema = tool(tools, "workflow").parameters;
   rejects(schema, { args: ["cli"] });
   rejects(schema, { field: "cli_seed", from: "not-an-entry-point" });
+});
+
+test("state read is absent without creating a database and migrates legacy JSON once", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const registered = registerTools();
+    const legacy = {
+      workflow: "do",
+      startedAt: "2026-01-01T00:00:00Z",
+      active: "working",
+      status: "running",
+      steps: [],
+      task: "legacy run",
+      customField: { retained: true },
+    };
+    const legacyPath = join(cwd, ".do-results.json");
+    await writeFile(legacyPath, JSON.stringify(legacy));
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "state" }, cwd),
+      /workflow state not found/,
+    );
+    assert.equal(
+      await readFile(join(cwd, "agency-state"), "utf8").then(
+        () => false,
+        (error) => error.code === "ENOENT",
+      ),
+      true,
+    );
+
+    const migrated = await invoke(
+      registered,
+      "agency_driver",
+      { op: "migrate" },
+      cwd,
+    );
+    assert.equal(migrated.details.value.legacyPath, legacyPath);
+    assert.deepEqual(migrated.details.value.state, legacy);
+    assert.deepEqual(await readState(cwd), legacy);
+    assert.equal(await readFile(legacyPath, "utf8"), JSON.stringify(legacy));
+    await assert.rejects(
+      invoke(registered, "agency_driver", { op: "migrate" }, cwd),
+      /already has a SQLite state snapshot/,
+    );
+  });
+});
+
+test("independent worktrees keep independent snapshots and state feeds workflow evaluation", async () => {
+  await withIsolatedRepo(async (cwd) => {
+    const other = join(cwd, "other-worktree");
+    await mkdir(other);
+    const registered = await initState(cwd, { noVcs: true, task: "first" });
+    const second = await initState(other, { noVcs: true, task: "second" });
+    assert.equal((await readState(cwd)).task, "first");
+    assert.equal((await readState(other)).task, "second");
+    const decision = await invoke(
+      registered,
+      "workflow",
+      { field: "cli" },
+      cwd,
+    );
+    assert.equal(decision.details.value.step, "sync");
+    await invoke(second, "workflow", { field: "cli" }, other);
+  });
 });
 
 test("workflow cli + from rejection names the sibling cli_seed arm", () => {

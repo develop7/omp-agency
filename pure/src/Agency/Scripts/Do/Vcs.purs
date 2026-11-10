@@ -23,7 +23,7 @@ import Prelude
 
 import Agency.Scripts.Do.Args as Args
 import Agency.Scripts.Do.Binaries as Binaries
-import Agency.Scripts.Do.Context (WorkflowContext, stateFile, statePath)
+import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.State as State
@@ -275,7 +275,7 @@ resolveBase :: WorkflowContext -> Effect Outcome.OpOutcome
 resolveBase context = case context.base of
   Just value -> pure (Outcome.withValue (Json.fromString value) (Outcome.withStdout (value <> "\n")))
   Nothing -> do
-    stateResult <- State.readState (statePath context)
+    stateResult <- State.readState context
     pure case stateResult of
       Left error -> failureLines
         [ "vcs-op: base is not set and workflow state could not be read: " <> error
@@ -644,7 +644,7 @@ branch context name = case validateBranchName name of
         case base of
           Left error -> pure (failureLine error)
           Right ref -> passthroughCommand context Binaries.git [ "checkout", "-b", name, ref ]
-      Jj -> preserveState context do
+      Jj -> do
         parent <- jjResolveBase context value
         case parent of
           Left error -> pure (failureLine error)
@@ -685,7 +685,7 @@ commit context message files =
       Left error -> pure (Outcome.failure 1 (error <> "\n"))
       Right _ -> case context.vcs of
         Git -> stageThenCommit context message files
-        Jj -> preserveState context (jjCommit context message files)
+        Jj -> jjCommit context message files
         Unknown -> pure noVcsOutcome
 
 stageThenCommit :: WorkflowContext -> String -> Array String -> Effect Outcome.OpOutcome
@@ -1101,12 +1101,10 @@ sameGitRevision left right = do
     if leftResult.code /= 0 || rightResult.code /= 0 then Left "vcs-op: unable to compare current branch with default"
     else Right (trim leftResult.stdout == trim rightResult.stdout)
 
--- | Whether @ carries picked-up work: an undescribed change with content
--- beyond the workflow state file (owned by Context.stateFile, carried by
--- preserveState — not repo work). `jj new` would strand exactly such a change
--- behind an empty bookmarked one, so the feature branch must attach to it
--- instead. Described changes are commits — they stay where their author put
--- them.
+-- | Whether @ carries picked-up work: an undescribed change with content.
+-- | `jj new` would strand exactly such a change behind an empty bookmarked one,
+-- | so the feature branch must attach to it instead. Described changes are
+-- | commits — they stay where their author put them.
 jjPickedUpWork :: Effect (Either String Boolean)
 jjPickedUpWork = do
   let inspectFallback = "vcs-op: unable to inspect jj working copy for branch"
@@ -1116,7 +1114,7 @@ jjPickedUpWork = do
   else do
     probe <- Sys.exec Binaries.jj [ "diff", "--revisions", "@", "--name-only" ]
     if probe.code /= 0 then pure (Left (commandError inspectFallback probe))
-    else pure (Right (Array.any (\path -> path /= stateFile) (lines probe.stdout)))
+    else pure (Right (not (Array.null (lines probe.stdout))))
 
 -- | Whether a revision is the pinned commit. Only the left side is queried:
 -- | the right side arrives already pinned by jjResolveBase, so resolving it
@@ -1143,17 +1141,6 @@ validateBranchName name =
   if name == "" || Args.startsWith "-" name || Args.startsWith "." name || contains (Pattern "..") name || contains (Pattern "@{") name || Array.any (\invalid -> contains (Pattern invalid) name) [ " ", "~", "^", ":", "?", "*", "[", "\\", ";" ] then
     Left ("vcs-op branch: invalid branch name '" <> name <> "'")
   else Right unit
-
-preserveState :: WorkflowContext -> Effect Outcome.OpOutcome -> Effect Outcome.OpOutcome
-preserveState context action = do
-  let path = statePath context
-  present <- Sys.exists path
-  saved <- if present then Just <$> Sys.readUtf8 path else pure Nothing
-  outcome <- action
-  case saved of
-    Nothing -> pure unit
-    Just contents -> Sys.writeUtf8 path contents
-  pure outcome
 
 failureValue :: String -> VcsValue
 failureValue message = { code: 1, value: "", stdout: "", stderr: message <> "\n" }

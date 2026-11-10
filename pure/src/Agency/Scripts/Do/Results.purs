@@ -8,6 +8,8 @@ module Agency.Scripts.Do.Results
   , runSet
   , runDriverInit
   , runDriverSkip
+  , runState
+  , runMigrate
   , validInterval
   , loadState
   , jsonValueFor
@@ -42,7 +44,7 @@ import Foreign.Object as Obj
 -- | jobs block init with the same blocker shape the other gates use.
 runInit :: WorkflowContext -> Effect Outcome.OpOutcome
 runInit context = do
-  existing <- State.readState (Context.statePath context)
+  existing <- State.readState context
   let
     blocking = case existing of
       Right (Just state) -> State.unfinishedJobs state
@@ -51,7 +53,7 @@ runInit context = do
     [] -> do
       timestamp <- Sys.nowIso
       let state = State.initState timestamp
-      State.writeState (Context.statePath context) state
+      State.writeState context state
       pure (Outcome.withValue (State.encodeState state) (Outcome.withStdout ("init: startedAt=" <> timestamp <> "\n")))
     open -> pure (failText ("do-results: unfinished job(s) block init: " <> State.jobIdList open <> " — resolve with job-end first"))
 
@@ -63,7 +65,7 @@ runStepStart context name = withLoadedState context \state -> case state.pending
     let
       pending = { name, startedAt: timestamp }
       updated = State.startPending pending state
-    State.writeState (Context.statePath context) updated
+    State.writeState context updated
     pure
       ( Outcome.withValue (objectValue [ Tuple "pendingStep" (fromMaybeJson (State.stateGetJson "pendingStep" updated)) ]) $
           Outcome.withStdout ("pending: " <> name <> "\n")
@@ -123,7 +125,7 @@ runStepEnd context status verification reason = withLoadedState context \state -
           Left error -> pure (failText error)
           Right appended -> do
             let updated = terminalize pending.name status (State.finishPending appended)
-            State.writeState (Context.statePath context) updated
+            State.writeState context updated
             pure
               ( Outcome.withValue (recordedStepValue updated) $
                   Outcome.withStdout ("recorded: " <> pending.name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ", pending=none)\n")
@@ -147,7 +149,7 @@ runStep context name status verification startedAt completedAt reason = withLoad
               Left error -> pure (failText error)
               Right appended -> do
                 let updated = terminalize name status appended
-                State.writeState (Context.statePath context) updated
+                State.writeState context updated
                 pure
                   ( Outcome.withValue (recordedStepValue updated) $
                       Outcome.withStdout ("recorded: " <> name <> " " <> status <> " (steps=" <> show (Array.length updated.steps) <> ")\n")
@@ -178,7 +180,7 @@ runJobStart context input = withLoadedState context \state -> do
       case State.appendJob job state of
         Left error -> pure (failText error)
         Right appended -> do
-          State.writeState (Context.statePath context) appended
+          State.writeState context appended
           pure
             ( Outcome.withValue (State.jobJson job) $
                 Outcome.withStdout ("job-start: " <> input.id <> " step=" <> input.step <> deadlineText <> "\n")
@@ -205,7 +207,7 @@ runJobEnd context input = withLoadedState context \state -> do
   case State.resolveJob input.id input.outcome input.verification completed state of
     Left error -> pure (failText error)
     Right resolved -> do
-      State.writeState (Context.statePath context) resolved
+      State.writeState context resolved
       let
         finishedJob = Array.find (\job -> job.id == input.id) resolved.jobs
         clampNote = case Array.find (State.unfinishedJobWithId input.id) state.jobs of
@@ -233,11 +235,42 @@ runSet context field value = withLoadedState context \state -> do
   case updated of
     Left error -> pure (failText error)
     Right final -> do
-      State.writeState (Context.statePath context) final
+      State.writeState context final
       pure
         ( Outcome.withValue (objectValue [ Tuple "field" (fromString field), Tuple "value" (fromMaybeJson (State.stateGetJson field final)) ]) $
             Outcome.withStdout ("set: " <> field <> "=" <> value <> "\n")
         )
+
+runState :: WorkflowContext -> Effect Outcome.OpOutcome
+runState context = do
+  loaded <- loadState context
+  pure case loaded of
+    Left error -> failText error
+    Right state -> Outcome.withValue (State.encodeState state) (Outcome.withStdout (State.stringifyState state <> "\n"))
+
+-- | Import a legacy JSON snapshot exactly once. The source stays untouched;
+-- the new store, not a shadow file, becomes authoritative immediately.
+runMigrate :: WorkflowContext -> Effect Outcome.OpOutcome
+runMigrate context = do
+  existing <- State.readState context
+  case existing of
+    Left error -> pure (failText (Context.stateCorruptError "do-driver" error "resolve the store error before migrating"))
+    Right (Just _) -> pure (failText "do-driver: cannot migrate because this worktree already has a SQLite state snapshot")
+    Right Nothing -> do
+      legacy <- State.readLegacyState context.stateDir
+      case legacy of
+        Left error -> pure (failText ("do-driver: cannot read legacy workflow state: " <> error))
+        Right Nothing -> pure (failText ("do-driver: no legacy workflow state at " <> State.legacyStatePath context.stateDir))
+        Right (Just state) -> do
+          State.writeState context state
+          verified <- State.readState context
+          pure case verified of
+            Right (Just imported) | State.stringifyState imported == State.stringifyState state ->
+              Outcome.withValue
+                (objectValue [ Tuple "state" (State.encodeState state), Tuple "legacyPath" (fromString (State.legacyStatePath context.stateDir)) ])
+                (Outcome.withStdout ("migrated workflow state; legacy source left unchanged at " <> State.legacyStatePath context.stateDir <> "\n"))
+            Right _ -> failText "do-driver: migration verification did not return the imported state"
+            Left error -> failText (Context.stateCorruptError "do-driver" error "verify the imported snapshot before continuing")
 
 -- | `base` names the PR-target ref every later diff op resolves and the
 -- | trunk guards compare against; a value that names no ref is rejected here,
@@ -250,7 +283,7 @@ validateSetValue context field value
 
 runDriverInit :: WorkflowContext -> { review :: Boolean, noVcs :: Boolean, minimal :: Boolean, restart :: Boolean, from :: String, task :: String } -> Effect Outcome.OpOutcome
 runDriverInit context options = do
-  existing <- State.readState (Context.statePath context)
+  existing <- State.readState context
   case existing of
     Left error | not options.restart -> pure (failText (Context.stateCorruptError "do-driver" error "restore it or run init --restart"))
     Right (Just state) | isActiveRun state && not options.restart ->
@@ -295,7 +328,7 @@ runDriverInit context options = do
       case initialized of
         Left error -> pure (failText error)
         Right final -> do
-          State.writeState (Context.statePath context) final
+          State.writeState context final
           let
             fromText = if isDefaultEntry then "default" else options.from
             carriedText =
@@ -363,10 +396,10 @@ withLoadedState context action = do
 
 loadState :: WorkflowContext -> Effect (Either String State.State)
 loadState context = do
-  result <- State.readState (Context.statePath context)
+  result <- State.readState context
   pure case result of
     Left error -> Left (Context.stateCorruptError "do-results" error "restore it or run do-results init --restart")
-    Right Nothing -> Left ("do-results: " <> Context.stateFile <> " not found — run do-results init first")
+    Right Nothing -> Left "do-results: workflow state not found — run do-results init first"
     Right (Just state) -> Right state
 
 resolveNow :: String -> Effect String

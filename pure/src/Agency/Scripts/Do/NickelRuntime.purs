@@ -6,6 +6,7 @@ import Prelude
 
 import Agency.Scripts.Do.Context (WorkflowContext)
 import Agency.Scripts.Do.Outcome as Outcome
+import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Data.Argonaut.Core (Json, fromObject, fromString)
 import Data.Argonaut.Core as Json
@@ -24,21 +25,29 @@ import Effect (Effect)
 run :: WorkflowContext -> Maybe String -> Effect Outcome.OpOutcome
 run context seed = do
   bundle <- Sys.bundleDir
-  let
-    bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
-    requestFields = case seed of
-      Nothing ->
-        [ Tuple "operation" (fromString "cli")
-        , Tuple "cwd" (fromString context.stateDir)
-        ]
-      Just from ->
-        [ Tuple "operation" (fromString "cli_seed")
-        , Tuple "seed" (fromString from)
-        , Tuple "cwd" (fromString context.stateDir)
-        ]
-    request = Json.stringify (fromObject (Obj.fromFoldable requestFields))
-  result <- Sys.execInput "node" [ bridge ] request
-  pure (bridgeOutcome result)
+  loaded <- State.readState context
+  case loaded of
+    Left error -> pure (Outcome.failure 1 ("nickel-cli: unable to read workflow state: " <> error <> "\n"))
+    Right Nothing -> pure (Outcome.failure 1 "nickel-cli: workflow state not found — run do-driver init first\n")
+    Right (Just state) -> do
+      let
+        bridge = bundle <> "/../../nickel-vm/scripts/cli-bridge.mjs"
+        stateSource = fromString (State.stringifyState state)
+        requestFields = case seed of
+          Nothing ->
+            [ Tuple "operation" (fromString "cli")
+            , Tuple "cwd" (fromString context.stateDir)
+            , Tuple "state_source" stateSource
+            ]
+          Just from ->
+            [ Tuple "operation" (fromString "cli_seed")
+            , Tuple "seed" (fromString from)
+            , Tuple "cwd" (fromString context.stateDir)
+            , Tuple "state_source" stateSource
+            ]
+        request = Json.stringify (fromObject (Obj.fromFoldable requestFields))
+      result <- Sys.execInput "node" [ bridge ] request
+      pure (bridgeOutcome result)
 
 bridgeOutcome :: Sys.ExecResult -> Outcome.OpOutcome
 bridgeOutcome result =

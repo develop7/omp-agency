@@ -402,7 +402,7 @@ SH
 
 @test "branch propagates fatal git ref probe errors" {
   mk_initial_commit
-  echo '{"base":"master"}' >.do-results.json
+  seed_base master
   real_git="$(command -v git)"
   mkdir -p "$TEST_DIR/bin"
   cat >"$TEST_DIR/bin/git" <<'SH'
@@ -426,8 +426,8 @@ SH
   mk_initial_commit
   mk_remote_fixture
 
-  # base is read from .do-results.json (set by sync); branch takes only <name>.
-  echo '{"base":"master"}' >.do-results.json
+  # base is persisted workflow state (set by sync); branch takes only <name>.
+  seed_base master
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feat-test
   [ "$status" -eq 0 ]
 
@@ -438,7 +438,7 @@ SH
 
 @test "branch can start from a verified local base without a remote-tracking ref" {
   mk_initial_commit
-  echo '{"base":"master"}' >.do-results.json
+  seed_base master
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch local-base-feature
   [ "$status" -eq 0 ]
@@ -473,14 +473,14 @@ SH
 
 @test "commit rejects an invalid file list without changing workflow state" {
   mk_initial_commit
-  echo '{"base":"base","workflow":"sentinel"}' >.do-results.json
-  state_before="$(cat .do-results.json)"
+  seed_base master
+  state_before="$(driver_state)"
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: invalid file" nonexistent.txt
   [ "$status" -eq 1 ]
   [[ $output == *"not dirty"* ]]
   [[ $output == *"nonexistent.txt"* ]]
-  [ "$(cat .do-results.json)" = "$state_before" ]
+  [ "$(driver_state)" = "$state_before" ]
 }
 
 @test "commit errors when a given file is not dirty" {
@@ -574,8 +574,8 @@ SH
   git add file2.txt
   git commit -q -m "add file2"
 
-  # base (master) is read from .do-results.json, not a positional arg.
-  echo '{"base":"master"}' >.do-results.json
+  # base (master) comes from persisted workflow state, not a positional arg.
+  seed_base master
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op log-range
   [ "$status" -eq 0 ]
   [[ $output == *"add file2"* ]]
@@ -593,7 +593,7 @@ SH
   git add file2.txt
   git commit -q -m "add file2"
 
-  echo '{"base":"master"}' >.do-results.json
+  seed_base master
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-names
   [ "$status" -eq 0 ]
   [[ $output == *"file2.txt"* ]]
@@ -601,9 +601,10 @@ SH
 
 # ─── base / get_base_branch ───────────────────────────────────────────
 
-@test "base op prints the resolved base from .do-results.json" {
+@test "base op prints the resolved base from workflow state" {
   mk_initial_commit
-  echo '{"base":"feat-x"}' >.do-results.json
+  git branch feat-x
+  seed_base feat-x
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op base
   [ "$status" -eq 0 ]
@@ -659,7 +660,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   # Working copy has feature files + an unrelated file
   jj new main
@@ -691,7 +692,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   jj new main
   jj bookmark create feature -r @
@@ -746,7 +747,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   jj new main
   jj bookmark create feature -r @
@@ -769,7 +770,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   jj new main
   jj bookmark create feature -r @
@@ -790,7 +791,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   jj new main
   jj bookmark create feature -r @
@@ -822,7 +823,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   jj new main
   echo feature >feature.txt
@@ -857,7 +858,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   # Create a feature bookmark (as the branch step would) so commit moves
   # the feature bookmark, not main.
@@ -885,9 +886,12 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"nonexistent-ref"}' >.do-results.json
-
+  seed_base main
+  # The stored base outlives the ref it named: the bookmark is gone by the
+  # time the diff resolves it.
   jj new main
+  jj bookmark delete main
+
   echo feature >feature.txt
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
@@ -899,7 +903,7 @@ SH
 @test "branch rejects unsafe names before invoking git" {
   mk_initial_commit
   mk_remote_fixture
-  echo '{"base":"master"}' >.do-results.json
+  seed_base master
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch '-lead-dash'
   [ "$status" -eq 1 ]
@@ -929,7 +933,7 @@ SH
   jj git push --remote origin --bookmark main
   jj bookmark delete main
   jj git fetch --remote origin
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-remote-base
   [ "$status" -eq 0 ]
@@ -956,7 +960,7 @@ SH
   jj git push --remote origin --bookmark main
   jj bookmark delete main
   jj git fetch --remote origin
-  echo '{"base":"main@origin"}' >.do-results.json
+  seed_base main@origin
 
   jj new
   echo feature >feature.txt
@@ -973,7 +977,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   jj new main
   echo feature >feature.txt
@@ -999,7 +1003,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   jj new main
   echo side >side.txt
@@ -1022,7 +1026,7 @@ SH
   # picked-up work sitting on the base revision itself.
   echo base >README.md
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-at-base
   [ "$status" -ne 0 ]
@@ -1038,17 +1042,17 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main","workflow":"state"}' >.do-results.json
+  seed_base main
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-safe-bookmark
   [ "$status" -eq 0 ]
+  state_before="$(driver_state)"
   main_before="$(jj log --revision main --no-graph --template commit_id)"
 
   echo feature >feature.txt
   echo unrelated >unrelated.txt
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op commit "feat: keep trunk" feature.txt
   [ "$status" -eq 0 ]
-  [ -f .do-results.json ]
-  [ "$(cat .do-results.json)" = '{"base":"main","workflow":"state"}' ]
+  [ "$(driver_state)" = "$state_before" ]
   [ "$(jj log --revision main --no-graph --template commit_id)" = "$main_before" ]
   run jj bookmark list --revision @- --template 'name ++ "\n"'
   [ "$output" = "feature-safe-bookmark" ]
@@ -1061,7 +1065,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op branch feature-dash-arguments
   [ "$status" -eq 0 ]
 
@@ -1086,7 +1090,7 @@ SH
   echo base >README.md
   jj describe -m "base"
   jj bookmark create main -r @
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
   main_before="$(jj log --revision main --no-graph --template commit_id)"
   jj new main
   echo feature >feature.txt
@@ -1140,7 +1144,7 @@ SH
   node "$REPO_ROOT/pure/dist/agency-do.js" do-driver end passed "verified"
   node "$REPO_ROOT/pure/dist/agency-do.js" do-driver init --from=followup "follow-up run"
 
-  run jq -r '.base' .do-results.json
+  run state_jq -r '.base'
   [ "$output" = "main" ]
 
   echo feature >feature.txt
@@ -1161,7 +1165,7 @@ SH
   jj bookmark create main -r @
   jj git push --remote origin --bookmark main
   jj git fetch --remote origin
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op push main
   [ "$status" -eq 1 ]
   [[ $output == *"refusing jj trunk push"* ]]
@@ -1213,7 +1217,7 @@ SH
   jj describe -m "base-v2" @- >/dev/null 2>&1
   jj --at-op "$op" describe -m "base-v3" @- >/dev/null 2>&1
   jj bookmark create main -r @- >/dev/null 2>&1
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   echo feature >feature.txt
 
@@ -1243,6 +1247,9 @@ SH
   jj describe -m "base"
   jj new -m "feature"
   jj bookmark create main -r @- >/dev/null 2>&1
+  # The base is persisted while the bookmark still names one revision; the
+  # divergence below then makes the stored name unresolvable.
+  seed_base main
 
   # Rewrite the bookmarked change twice from one operation point: the change
   # goes divergent, its bookmark becomes conflicted, and the name now resolves
@@ -1250,7 +1257,6 @@ SH
   op="$(jj op log --limit 1 --no-graph --template 'id')"
   jj describe -m "base-v2" @- >/dev/null 2>&1
   jj --at-op "$op" describe -m "base-v3" @- >/dev/null 2>&1
-  echo '{"base":"main"}' >.do-results.json
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
   [ "$status" -ne 0 ]
@@ -1286,7 +1292,7 @@ SH
   jj new sx sy -m "m1"
   jj bookmark create main -r @
   jj new sx sy -m "m2"
-  echo '{"base":"main"}' >.do-results.json
+  seed_base main
 
   run node "$REPO_ROOT/pure/dist/agency-do.js" vcs-op diff-range
   [ "$status" -ne 0 ]

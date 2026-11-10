@@ -10,19 +10,16 @@ import Data.Maybe (Maybe(..))
 import Data.String (Pattern(..), joinWith)
 import Data.String.CodeUnits (contains)
 import Effect (Effect)
-import Effect.Exception (try)
+import Effect.Exception (throw)
 import Effect.Console as Console
 
 import Agency.Scripts.Do.ForgeKind as ForgeKind
-import Agency.Scripts.Do.Outcome as Outcome
 import Agency.Scripts.Do.Ops as Ops
 import Agency.Scripts.Do.Results as Results
 import Agency.Scripts.Do.State as State
 import Agency.Scripts.Do.Sys as Sys
 import Agency.Scripts.Do.VcsKind as VcsKind
-import Node.Errors.SystemError as SystemError
 import Node.FS.Sync as FSSync
-import Unsafe.Coerce (unsafeCoerce)
 
 assert :: String -> Boolean -> Effect Unit
 assert label condition =
@@ -71,20 +68,8 @@ run = do
                       Sys.exit 1
                     Right finalState -> assert "set unknown field survives load/save" ((State.stateGetJson "newFlag" finalState >>= toBoolean) == Just true)
   cwd <- Sys.cwd
-  writeFailureDirectory <- Sys.uniqueTempPath (cwd <> "/.state-write-failure")
-  let
-    writeFailurePath = writeFailureDirectory <> "/.do-results.json"
-    rmOptions = { force: true, maxRetries: 0, recursive: true, retryDelay: 0 }
-  FSSync.mkdir writeFailureDirectory
-  FSSync.mkdir writeFailurePath
-  writeFailure <- try (State.writeState writeFailurePath State.emptyState)
-  writeFailureEntries <- FSSync.readdir writeFailureDirectory
-  FSSync.rm' writeFailureDirectory rmOptions
-  case writeFailure of
-    Left error -> do
-      assert "write state preserves the rename failure" (SystemError.code (unsafeCoerce error) == "EISDIR")
-      assert "write state removes its temporary file after rename failure" (writeFailureEntries == [ ".do-results.json" ])
-    Right _ -> assert "write state rejects a directory destination" false
+  storageRoot <- Sys.uniqueTempPath (cwd <> "/.state-store")
+  FSSync.mkdir storageRoot
   case State.parseState "{\"active\":\"finished\"}" of
     Left error -> assert "unknown active status is rejected" (error == "state: invalid active 'finished'")
     Right _ -> assert "unknown active status is rejected" false
@@ -208,12 +193,10 @@ run = do
       Console.error ("FAIL: parse accepts a skipped step with a reason: " <> error)
       Sys.exit 1
     Right parsed -> assert "parse accepts a skipped step with a reason" (parsed.steps /= [])
-  lockDirectory <- Sys.uniqueTempPath (cwd <> "/.state-lock")
   let
-    lockStatePath = lockDirectory <> "/.do-results.json"
-    lockPath = lockStatePath <> ".lock"
-    lockContext =
-      { stateDir: lockDirectory
+    workspace =
+      { stateDir: cwd
+      , stateRoot: Just storageRoot
       , vcs: VcsKind.Unknown
       , forge: ForgeKind.Unknown
       , base: Nothing
@@ -221,35 +204,34 @@ run = do
       , forgeOverride: Nothing
       , captureOutput: true
       }
-  FSSync.mkdir lockDirectory
+    rmOptions = { force: true, maxRetries: 0, recursive: true, retryDelay: 0 }
+  absent <- State.readState workspace
+  assert "absent state reads as no snapshot" (absent == Right Nothing)
   case State.setField "task" (fromString "original") State.emptyState of
     Left error -> do
-      Console.error ("FAIL: prepare locked state: " <> error)
+      Console.error ("FAIL: prepare state: " <> error)
       Sys.exit 1
     Right original -> do
-      State.writeState lockStatePath original
-      FSSync.mkdir lockPath
-      blocked <- Ops.runResultsOp lockContext (Ops.ResultsSet "task" "replacement")
-      unchanged <- State.readState lockStatePath
-      lockRemains <- FSSync.exists lockPath
-      FSSync.rmdir lockPath
-      normalRelease <- State.withStateLock lockStatePath (pure "done")
-      releasedAfterSuccess <- FSSync.exists lockPath
-      failedRelease <- try (State.withStateLock lockStatePath (FSSync.rmdir (lockDirectory <> "/missing")))
-      releasedAfterFailure <- FSSync.exists lockPath
-      FSSync.rm' lockDirectory rmOptions
-      let conflict = "state: lock '" <> lockPath <> "' already exists; another state mutation is running, or it is stale after a crash — remove the lock explicitly after confirming no mutation is active\n"
-      case blocked.output of
-        Outcome.Captured output ->
-          assert "locked mutation fails with a stale-lock recovery instruction" (blocked.exit == 1 && output.stderr == conflict)
-        Outcome.Passthrough -> assert "locked mutation reports a captured conflict" false
-      case unchanged of
-        Right (Just state) -> assert "locked mutation leaves persisted state unchanged" (State.stateGet "task" state == "original" && lockRemains)
-        _ -> assert "locked mutation leaves persisted state unchanged" false
-      assert "state lock releases after a successful action" (normalRelease == Right "done" && not releasedAfterSuccess)
-      case failedRelease of
-        Left _ -> assert "state lock releases after a failing action" (not releasedAfterFailure)
-        Right _ -> assert "state lock rethrows a failing action" false
+      State.writeState workspace original
+      loaded <- State.readState workspace
+      assert "state round-trips through SQLite" (map (map State.stringifyState) loaded == Right (Just (State.stringifyState original)))
+      _ <- State.withStateTransaction workspace do
+        case State.setField "task" (fromString "discarded") original of
+          Left error -> do
+            Console.error ("FAIL: prepare rolled-back state: " <> error)
+            Sys.exit 1
+          Right changed -> do
+            State.writeState workspace changed
+            throw "rollback"
+      unchanged <- State.readState workspace
+      assert "failed transaction rolls back its write" (map (map State.stringifyState) unchanged == Right (Just (State.stringifyState original)))
+      let other = workspace { stateDir = cwd <> "/other" }
+      FSSync.mkdir (cwd <> "/other")
+      State.writeState other (State.initState "2026-01-01T00:00:00Z")
+      firstAfterOther <- State.readState workspace
+      assert "another worktree does not replace current state" (map (map State.stringifyState) firstAfterOther == Right (Just (State.stringifyState original)))
+      FSSync.rm' storageRoot rmOptions
+      pure unit
   let
     fullJob =
       { id: "police-pass1"

@@ -40,7 +40,7 @@ run_sync() {
   [[ $output == *"branch=no-vcs"* ]]
   [[ $output == *"defaultBranch=no-vcs"* ]]
   [[ $output == *"base=no-vcs"* ]]
-  run jq -r '.base' .do-results.json
+  run state_jq -r '.base'
   [ "$output" = "no-vcs" ]
 }
 
@@ -52,39 +52,38 @@ run_sync() {
   [[ $output == *"forge=unknown"* ]]
 }
 
-@test "sync creates .do-results.json with vcs field" {
+@test "sync persists the vcs field" {
   run_sync true
   [ "$status" -eq 0 ]
 
-  [ -f ".do-results.json" ]
-  run jq -r '.vcs' .do-results.json
+  run state_jq -r '.vcs'
   [ "$output" = "git" ]
 }
 
-@test "sync creates .do-results.json with forge field" {
+@test "sync persists the forge field" {
   run_sync true
   [ "$status" -eq 0 ]
 
-  run jq -r '.forge' .do-results.json
+  run state_jq -r '.forge'
   [ "$output" = "unknown" ]
 }
 
-@test "sync creates .do-results.json with noVcs field" {
+@test "sync persists the noVcs field" {
   run_sync true
   [ "$status" -eq 0 ]
 
-  run jq -r '.noVcs' .do-results.json
+  run state_jq -r '.noVcs'
   [ "$output" = "true" ]
 }
 
-@test "sync records a sync step in .do-results.json" {
+@test "sync records a sync step" {
   run_sync true
   [ "$status" -eq 0 ]
 
-  run jq -r '.steps[0].name' .do-results.json
+  run state_jq -r '.steps[0].name'
   [ "$output" = "sync" ]
 
-  run jq -r '.steps[0].status' .do-results.json
+  run state_jq -r '.steps[0].status'
   [ "$output" = "passed" ]
 }
 
@@ -111,7 +110,7 @@ run_sync() {
   run_sync --base feat-parent false
   [ "$status" -eq 0 ]
   [[ $output == *"base=feat-parent"* ]]
-  run jq -r '.base' .do-results.json
+  run state_jq -r '.base'
   [ "$output" = "feat-parent" ]
 }
 
@@ -164,12 +163,12 @@ SH
   run env REAL_JJ="$real_jj" JJ_FETCH_LOG="$TEST_DIR/fetch-argv.log" PATH="$TEST_DIR/bin:$PATH" node "$REPO_ROOT/pure/dist/agency-do.js" sync false
   [ "$status" -eq 0 ]
   [[ $output == *"vcs=jj"* ]]
-  run jq -r '.steps[0].verification' .do-results.json
+  run state_jq -r '.steps[0].verification'
   [[ $output == "fetch ok; vcs=jj;"* ]]
   [ "$(cat "$TEST_DIR/fetch-argv.log")" = "git fetch --remote origin" ]
-  run jq -r '.vcs' .do-results.json
+  run state_jq -r '.vcs'
   [ "$output" = "jj" ]
-  run jq -r '.steps[0].status' .do-results.json
+  run state_jq -r '.steps[0].status'
   [ "$output" = "passed" ]
 }
 

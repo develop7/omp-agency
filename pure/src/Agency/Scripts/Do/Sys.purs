@@ -9,8 +9,6 @@ module Agency.Scripts.Do.Sys
   , execInherit
   , execInheritInput
   , readUtf8
-  , writeUtf8
-  , rename
   , exists
   , isDir
   , nowIso
@@ -23,6 +21,10 @@ module Agency.Scripts.Do.Sys
   , stderrWrite
   , realpath
   , bundleDir
+  , stateDbPath
+  , readStateJson
+  , writeStateJson
+  , withStateTransaction
   , isoToEpoch
   , isCanonicalIso
   , uniqueTempPath
@@ -36,7 +38,7 @@ import Data.Either (Either(..))
 import Data.Int (floor)
 import Data.JSDate as JSDate
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Nullable (toMaybe)
+import Data.Nullable (Nullable, toMaybe)
 import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Exception (try)
@@ -131,12 +133,6 @@ execInheritInput command args input = do
 readUtf8 :: String -> Effect String
 readUtf8 = FSSync.readTextFile UTF8
 
-writeUtf8 :: String -> String -> Effect Unit
-writeUtf8 path value = FSSync.writeTextFile UTF8 path value
-
-rename :: String -> String -> Effect Unit
-rename = FSSync.rename
-
 exists :: String -> Effect Boolean
 exists = FSSync.exists
 
@@ -183,7 +179,19 @@ realpath = FSSync.realpath
 -- | Directory containing the executing bundle, independent of process cwd.
 foreign import bundleDir :: Effect String
 
--- | Produce a same-directory private staging name for an atomic rename.
+-- | Resolve one worktree's private SQLite database path.
+foreign import stateDbPath :: Nullable String -> String -> Effect String
+
+-- | Read the current JSON snapshot, or null when no snapshot exists.
+foreign import readStateJson :: Nullable String -> String -> Effect (Nullable String)
+
+-- | Atomically replace the current JSON snapshot inside an optional outer transaction.
+foreign import writeStateJson :: Nullable String -> String -> String -> Effect Unit
+
+-- | Run a state mutation under one SQLite immediate transaction.
+foreign import withStateTransaction :: forall a. Nullable String -> String -> Effect a -> Effect a
+
+-- | Produce a unique staging path for isolated test fixtures.
 foreign import uniqueTempPath :: String -> Effect String
 
 -- | Convert an exact UTC-second ISO timestamp to epoch seconds.

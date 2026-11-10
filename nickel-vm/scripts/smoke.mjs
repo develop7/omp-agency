@@ -24,27 +24,26 @@ function stateSource(state) {
   return JSON.stringify(state);
 }
 
+function request(operation, cwd, state_source, seed) {
+  return operation === "cli"
+    ? { operation, cwd, state_source }
+    : { operation, seed, cwd, state_source };
+}
+
 async function workflowResult(operation, state, seed) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "agency-workflow-"));
   try {
-    fs.writeFileSync(
-      path.join(cwd, ".do-results.json"),
-      stateSource(state),
-      "utf8",
+    return await evaluateWorkflow(
+      request(operation, cwd, stateSource(state), seed),
     );
-    const request =
-      operation === "cli" ? { operation, cwd } : { operation, seed, cwd };
-    return await evaluateWorkflow(request);
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 }
-function bridgeWorkflow(operation, cwd, seed) {
-  const request =
-    operation === "cli" ? { operation, cwd } : { operation, seed, cwd };
+function bridgeWorkflow(operation, cwd, seed, state_source) {
   const bridge = fileURLToPath(new URL("./cli-bridge.mjs", import.meta.url));
   const result = spawnSync(process.execPath, [bridge], {
-    input: JSON.stringify(request),
+    input: JSON.stringify(request(operation, cwd, state_source, seed)),
     encoding: "utf8",
   });
   if (result.status !== 0) {
@@ -57,16 +56,12 @@ function bridgeWorkflow(operation, cwd, seed) {
 async function workflowParity(operation, state, seed) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "agency-workflow-"));
   try {
-    fs.writeFileSync(
-      path.join(cwd, ".do-results.json"),
-      stateSource(state),
-      "utf8",
-    );
-    const request =
-      operation === "cli" ? { operation, cwd } : { operation, seed, cwd };
+    const state_source = stateSource(state);
     return {
-      direct: await evaluateWorkflow(request),
-      bridged: bridgeWorkflow(operation, cwd, seed),
+      direct: await evaluateWorkflow(
+        request(operation, cwd, state_source, seed),
+      ),
+      bridged: bridgeWorkflow(operation, cwd, seed, state_source),
     };
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
@@ -76,7 +71,14 @@ async function workflowParity(operation, state, seed) {
 async function missingStateResult() {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "agency-workflow-"));
   try {
-    return await evaluateWorkflow({ operation: "cli", cwd });
+    return {
+      missing: await evaluateWorkflow({ operation: "cli", cwd }),
+      empty: await evaluateWorkflow({
+        operation: "cli",
+        cwd,
+        state_source: "",
+      }),
+    };
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
@@ -108,17 +110,57 @@ function assertResult(name, result) {
 async function run() {
   console.log("Running Nickel VM smoke tests...");
   const missingState = await missingStateResult();
-  assert("shared runtime reports missing state", missingState.exit, 1);
-  assert("shared runtime failure carries null value", missingState.value, null);
+  assert("shared runtime requires state_source", missingState.missing.exit, 1);
   assert(
-    "shared runtime makes missing state actionable",
-    missingState.stderr.includes("run do-driver init first"),
+    "shared runtime failure carries null value",
+    missingState.missing.value,
+    null,
+  );
+  assert(
+    "shared runtime makes a missing state_source actionable",
+    missingState.missing.stderr.includes(
+      "state_source must be a non-empty JSON text string",
+    ),
+    true,
+  );
+  assert(
+    "shared runtime no longer reads .do-results.json",
+    missingState.missing.stderr.includes(".do-results.json"),
+    false,
+  );
+  assert(
+    "shared runtime rejects empty state_source",
+    missingState.empty.exit,
+    1,
+  );
+  assert(
+    "empty state_source rejection is actionable",
+    missingState.empty.stderr.includes(
+      "state_source must be a non-empty JSON text string",
+    ),
+    true,
+  );
+  assert(
+    "empty state_source rejection carries null value",
+    missingState.empty.value,
+    null,
+  );
+
+  const invalidOperation = await evaluateWorkflow({
+    operation: "bogus",
+    state_source: stateSource(TEST_STATE),
+  });
+  assert("rejects an unknown operation", invalidOperation.exit, 1);
+  assert(
+    "unknown operation rejection is actionable",
+    invalidOperation.stderr.includes("operation must be 'cli' or 'cli_seed'"),
     true,
   );
 
   const cliWithSeed = await evaluateWorkflow({
     operation: "cli",
     seed: "default",
+    state_source: stateSource(TEST_STATE),
   });
   assert("cli rejects a seed", cliWithSeed.exit, 1);
   assert(
@@ -128,7 +170,10 @@ async function run() {
   );
   assert("cli rejection carries null value", cliWithSeed.value, null);
 
-  const seedWithoutValue = await evaluateWorkflow({ operation: "cli_seed" });
+  const seedWithoutValue = await evaluateWorkflow({
+    operation: "cli_seed",
+    state_source: stateSource(TEST_STATE),
+  });
   assert("cli_seed rejects a missing seed", seedWithoutValue.exit, 1);
   assert(
     "cli_seed missing seed rejection is actionable",
@@ -138,6 +183,7 @@ async function run() {
   const seedWithNull = await evaluateWorkflow({
     operation: "cli_seed",
     seed: null,
+    state_source: stateSource(TEST_STATE),
   });
   const cliParity = await workflowParity("cli", TEST_STATE);
   assertResult("direct cli", cliParity.direct);

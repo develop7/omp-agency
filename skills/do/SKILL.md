@@ -83,11 +83,9 @@ There are two legal ways to record a skipped step, and which one you use depends
 Rule of thumb: `skip` is for "don't start this." `end skipped` is for "started, but there's nothing to do."
 
 Every node is bookended by calling `agency_driver` with `{ op: "start", step: <name> }` before work and
-`{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }` after verification. The driver records step state in
-`.do-results.json`.
+`{ op: "end", status: "passed" | "failed" | "skipped", verification: <verification>, reason?: <reason> }` after verification. `agency_driver { op: "state" }` returns the complete canonical snapshot from the external per-worktree SQLite store.
 **Trust the driver's result data.** Mutations return their resulting state, step, field, or job as JSON; sync retains its prose protocol.
-The state schema, commands, and field list (`vcs`, `forge`, `noVcs`, `minimal`, `review`, `base`, `active`, `status`) live in `.do-results.json` —
-use `agency_driver` and `vcs_read` rather than re-deriving here. The one field worth calling out is `base`: written
+Use `agency_driver` and `vcs_read` rather than re-deriving state here. The one field worth calling out is `base`: written
 by sync, read by every diff/log/branch op — it is what makes stacked PRs work.
 
 Data results are JSON in model-facing content and available as `details: { op, value }`.

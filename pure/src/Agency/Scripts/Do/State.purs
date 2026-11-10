@@ -27,8 +27,11 @@ module Agency.Scripts.Do.State
   , stepJson
   , jobJson
   , readState
-  , withStateLock
+  , withStateTransaction
   , writeState
+  , storePath
+  , legacyStatePath
+  , readLegacyState
   , stateGet
   , stateGetJson
   , setField
@@ -60,15 +63,15 @@ import Data.Foldable (any, foldl)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Nullable (Nullable, notNull, null, toMaybe)
 import Data.String (joinWith)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
-import Effect.Exception (throwException, try)
+import Effect.Exception (try)
 import Effect.Exception as Exception
 import Foreign.Object as Obj
 import Node.Errors.SystemError as SystemError
-import Node.FS.Sync as FSSync
 import Unsafe.Coerce (unsafeCoerce)
 
 import Agency.Scripts.Do.WorkflowVocabulary as Vocabulary
@@ -808,11 +811,52 @@ finishPending state = state { pendingStep = Nothing }
 finishWorkflow :: WorkflowStatus -> State -> State
 finishWorkflow status state = state { active = ActiveIdle, status = status }
 
--- | Load state if present. ENOENT is the documented detection fallback;
--- | every other read error and every parse error remains visible to callers.
-readState :: String -> Effect (Either String (Maybe State))
-readState path = do
-  readResult <- try (Sys.readUtf8 path)
+type Workspace r =
+  { stateDir :: String
+  , stateRoot :: Maybe String
+  | r
+  }
+
+root :: forall r. Workspace r -> Nullable String
+root workspace = case workspace.stateRoot of
+  Nothing -> null
+  Just value -> notNull value
+
+storePath :: forall r. Workspace r -> Effect String
+storePath workspace = Sys.stateDbPath (root workspace) workspace.stateDir
+
+-- | Read the one current snapshot without creating a database or schema.
+readState :: forall r. Workspace r -> Effect (Either String (Maybe State))
+readState workspace = do
+  readResult <- try (Sys.readStateJson (root workspace) workspace.stateDir)
+  pure case readResult of
+    Left error -> Left (Exception.message error)
+    Right source -> case toMaybe source of
+      Nothing -> Right Nothing
+      Just json -> case parseState json of
+        Left error -> Left error
+        Right value -> Right (Just value)
+
+-- | Run the existing PureScript mutation inside one SQLite transaction.
+-- Reads and writes in `action` reuse its connection. A thrown action rolls
+-- back; an ordinary outcome, including a failure outcome, commits.
+withStateTransaction :: forall a r. Workspace r -> Effect a -> Effect (Either String a)
+withStateTransaction workspace action = do
+  result <- try (Sys.withStateTransaction (root workspace) workspace.stateDir action)
+  pure case result of
+    Left error -> Left (Exception.message error)
+    Right value -> Right value
+
+writeState :: forall r. Workspace r -> State -> Effect Unit
+writeState workspace state = Sys.writeStateJson (root workspace) workspace.stateDir (stringifyState state)
+
+-- | Legacy JSON remains a read-only migration input, never a second authority.
+legacyStatePath :: String -> String
+legacyStatePath workspace = workspace <> "/.do-results.json"
+
+readLegacyState :: String -> Effect (Either String (Maybe State))
+readLegacyState workspace = do
+  readResult <- try (Sys.readUtf8 (legacyStatePath workspace))
   pure case readResult of
     Left error ->
       if SystemError.code (unsafeCoerce error) == "ENOENT" then Right Nothing
@@ -820,54 +864,3 @@ readState path = do
     Right source -> case parseState source of
       Left error -> Left error
       Right value -> Right (Just value)
-
--- | Serialize a complete state transition. Creating the sibling directory is
--- | atomic; a surviving directory may be stale after a crash and must be
--- | explicitly removed only after confirming no mutation is still running.
-withStateLock :: forall a. String -> Effect a -> Effect (Either String a)
-withStateLock path action = do
-  let lockPath = path <> ".lock"
-  acquired <- try (FSSync.mkdir lockPath)
-  case acquired of
-    Left error ->
-      let
-        systemError = unsafeCoerce error
-      in
-        pure
-          ( Left
-              ( if SystemError.code systemError == "EEXIST" then
-                  "state: lock '" <> lockPath <> "' already exists; another state mutation is running, or it is stale after a crash — remove the lock explicitly after confirming no mutation is active"
-                else "state: unable to acquire lock '" <> lockPath <> "': " <> SystemError.message systemError
-              )
-          )
-    Right _ -> do
-      result <- try action
-      released <- try (FSSync.rmdir lockPath)
-      case result, released of
-        Left actionError, Left releaseError ->
-          throwException
-            ( Exception.error
-                ( Exception.message actionError
-                    <> "; additionally failed to release state lock '"
-                    <> lockPath
-                    <> "': "
-                    <> Exception.message releaseError
-                )
-            )
-        Left actionError, Right _ -> throwException actionError
-        Right _, Left releaseError ->
-          pure (Left ("state: unable to release lock '" <> lockPath <> "': " <> Exception.message releaseError))
-        Right value, Right _ -> pure (Right value)
-
-writeState :: String -> State -> Effect Unit
-writeState path state = do
-  temporary <- Sys.uniqueTempPath path
-  result <- try do
-    Sys.writeUtf8 temporary (stringifyState state)
-    Sys.rename temporary path
-  case result of
-    Left error -> do
-      -- The write may have created a partial file; cleanup must not replace its error.
-      _ <- try (FSSync.unlink temporary)
-      throwException error
-    Right _ -> pure unit

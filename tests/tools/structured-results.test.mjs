@@ -47,10 +47,20 @@ test("oversized UTF-8 values remain complete in model content without duplicatin
       { op: "set", field: "note", value },
       cwd,
     );
-    assert.equal(modelValue(result).value, value);
+    const fullState = await invoke(
+      tools,
+      "agency_driver",
+      { op: "state" },
+      cwd,
+    );
+    assert.equal(modelValue(fullState).note, value);
     assert.equal(result.details.value, null);
     assert.equal(result.useless, undefined);
-    assert.equal((await readState(cwd)).note, value);
+    assert.equal(
+      modelValue(await invoke(tools, "agency_driver", { op: "state" }, cwd))
+        .note,
+      value,
+    );
   });
 });
 

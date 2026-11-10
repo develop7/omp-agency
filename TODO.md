@@ -2,7 +2,7 @@
 
 This backlog audits the agency plugin against `@oh-my-pi/pi-coding-agent` **v17.2.12** at commit [`45e12e5`](https://github.com/can1357/oh-my-pi/tree/45e12e5bb758198a920c6070e7e64cb33b21beac). “Feasible” means the OMP API can support the behavior end to end; it does not by itself mean agency should add it.
 
-Agency’s current control plane remains the `/do` skill plus the `agency_driver`, `workflow`, `vcs_read`, `vcs_write`, and `forge` tools over the PureScript core. The extension contributes those tools (`src/agency-tools.ts`); no second TypeScript workflow state machine is needed. The former `session_stop` stop-guard (`src/stop-guard.ts`) was removed: OMP no longer requires an additional stop nudge, and stale `.do-results.json` state caused false continuations.
+Agency’s current control plane remains the `/do` skill plus the `agency_driver`, `workflow`, `vcs_read`, `vcs_write`, and `forge` tools over the PureScript core. The extension contributes those tools (`src/agency-tools.ts`); no second TypeScript workflow state machine is needed. The former `session_stop` stop-guard (`src/stop-guard.ts`) was removed: OMP no longer requires an additional stop nudge, and stale workflow state caused false continuations.
 
 ## Status vocabulary
 
@@ -77,7 +77,7 @@ only if they absorb orchestration, forge behavior, or review policy.
 
 **Sources**
 
-- Agency workflow calls and result persistence: `skills/do/SKILL.md:22-45`, `skills/do/SKILL.md:78-89`, `.do-results.json`, and the `Agency.Scripts.Do.Api` adapter.
+- Agency workflow calls and result persistence: `skills/do/SKILL.md:22-45`, `skills/do/SKILL.md:78-89`, the per-worktree SQLite state store, and the `Agency.Scripts.Do.Api` adapter.
 - OMP tool contract: [`types.ts:547-590`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L547-L590), [`types.ts:1220-1232`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L1220-L1232).
 - Same-tool-only native delegation: [`types.ts:472-490`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/types.ts#L472-L490), [`wrapper.ts:52-81`](https://github.com/can1357/oh-my-pi/blob/45e12e5bb758198a920c6070e7e64cb33b21beac/packages/coding-agent/src/extensibility/extensions/wrapper.ts#L52-L81).
 
@@ -133,7 +133,7 @@ Do not replace `systemPrompt` for ordinary workflow context. In OMP, a `before_a
 
 Do not also inject the same state through `context` or `input`. `context` runs at provider-request frequency; `input` owns deterministic input syntax. Duplicate injection creates two ordering rules and unnecessary context growth.
 
-**UX impact**: Medium. Resume and phase constraints become visible to the model without requiring it to rediscover `.do-results.json`.
+**UX impact**: Medium. Resume and phase constraints become visible to the model without requiring it to rediscover the external worktree snapshot.
 
 **Complexity**: Low once the workflow snapshot has one stable read contract.
 
@@ -159,7 +159,7 @@ Do not also inject the same state through `context` or `input`. `context` runs a
 
 The lifecycle control here has been **removed**:
 
-1. The `session_stop` stop-guard (`src/stop-guard.ts`) shipped and was later **removed**. Rationale: OMP no longer requires an additional stop nudge, and a stale or crash-orphaned `.do-results.json` could block settling indefinitely (false continuations).
+1. The `session_stop` stop-guard (`src/stop-guard.ts`) shipped and was later **removed**. Rationale: OMP no longer requires an additional stop nudge, and a stale or crash-orphaned legacy workflow state snapshot could block settling indefinitely (false continuations).
 2. Do not launch tests, CI, reviewers, or PR operations from `turn_end` or `agent_end`. Those are explicit Nickel workflow nodes with persisted start/end evidence; hidden lifecycle automation would create a second scheduler.
 3. If `agent_end` is later used for observation, ignore events with `willContinue: true` and never mutate workflow state there.
 4. Avoid `turn_end` for progress state: one `/do` step can span many turns, so turn boundaries are not workflow boundaries.

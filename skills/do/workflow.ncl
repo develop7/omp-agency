@@ -2,7 +2,7 @@
 #
 # Three boundaries:
 #   Vocabulary: workflow-manifest.json (step order and entry-point targets)
-#   State:      .do-results.json managed by the agency_driver tool
+#   State:      injected snapshot managed by the agency_driver tool
 #   Activity:   nodes/*.md (what each step does)
 #
 # Agent interaction (via the workflow tool):

@@ -82,7 +82,7 @@ runParsedWith allowCorruptState parsed runner = case parsed of
 
 runWithContext :: forall a. Boolean -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> a -> Effect Int
 runWithContext allowCorruptState runner operation = do
-  resolved <- Ops.resolveWorkflowContext false allowCorruptState
+  resolved <- Ops.resolveWorkflowContext false allowCorruptState Nothing
   case resolved of
     Left error -> do
       Sys.stderrWrite (error <> "\n")

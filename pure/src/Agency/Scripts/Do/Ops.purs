@@ -82,6 +82,8 @@ data DriverOp
   | DriverSkip String String
   | DriverSet String String
   | DriverSummary
+  | DriverState
+  | DriverMigrate
   | DriverJobStart { id :: String, name :: String, step :: String, budgetMinutes :: Maybe Int }
   | DriverJobEnd { id :: String, outcome :: State.JobOutcome, verification :: Maybe String }
 
@@ -105,7 +107,7 @@ resultsUsage = "Usage: do-results <" <> resultsCommandNames <> "> ..."
 -- | Every do-driver subcommand, single-sourced for the usage strings here
 -- | and the agency_driver dispatch check in Api.
 driverOperationNames :: Array String
-driverOperationNames = [ "init", "start", "end", "skip", "set", "summary", "job-start", "job-end" ]
+driverOperationNames = [ "init", "start", "end", "skip", "set", "summary", "state", "migrate", "job-start", "job-end" ]
 
 doDriverUsage :: String
 doDriverUsage = "Usage: do-driver <" <> joinWith "|" driverOperationNames <> "> ..."
@@ -180,6 +182,8 @@ parseDriverOp args =
           Nothing -> Left (parseError 1 "value required")
           Just { value } -> Right (DriverSet field value)
       "summary" -> Right DriverSummary
+      "state" -> Right DriverState
+      "migrate" -> Right DriverMigrate
       "job-start" -> parseJobStart rest
       "job-end" -> parseJobEnd rest
       _ -> Left (parseError 1 ("Unknown command: " <> command <> "\n" <> doDriverUsage))
@@ -365,12 +369,12 @@ parseError code message = { code, message }
 
 -- | Resolve execution context. Only a parsed restarting driver init may discard
 -- | unreadable persisted state; all other operations fail before dispatch.
-resolveWorkflowContext :: Boolean -> Boolean -> Effect (Either String WorkflowContext)
-resolveWorkflowContext captureOutput allowCorruptState = do
+resolveWorkflowContext :: Boolean -> Boolean -> Maybe String -> Effect (Either String WorkflowContext)
+resolveWorkflowContext captureOutput allowCorruptState stateRoot = do
   root <- Sys.cwd
   vcsOverrideText <- Sys.getEnv "VCS_OVERRIDE"
   forgeOverrideText <- Sys.getEnv "FORGE_OVERRIDE"
-  stateResult <- State.readState (root <> "/" <> Context.stateFile)
+  stateResult <- State.readState { stateDir: root, stateRoot }
   case stateResult of
     Left error | not allowCorruptState ->
       pure (Left (Context.stateCorruptError "workflow" error "resolve the reported state-read error before choosing a run or base"))
@@ -391,7 +395,7 @@ resolveWorkflowContext captureOutput allowCorruptState = do
           Nothing -> Args.nonEmpty forgeOverrideText
         base = state >>= Args.nonEmpty <<< State.stateGet "base"
         vcs = Vcs.detectVcs vcsOverride stateVcs jjPresent gitPresent
-        partial = { stateDir: root, vcs, forge: Forge.Unknown, base, vcsOverride, forgeOverride, captureOutput }
+        partial = { stateDir: root, stateRoot, vcs, forge: Forge.Unknown, base, vcsOverride, forgeOverride, captureOutput }
       remote <- Vcs.remoteUrlValue partial
       let forge = Forge.detectForge forgeOverride stateForge remote
       pure (Right (partial { forge = forge }))
@@ -424,6 +428,8 @@ runDriverOp context operation = case operation of
   DriverSkip step reason -> withMutationLock context (Results.runDriverSkip context step reason)
   DriverSet field value -> withMutationLock context (Results.runSet context field value)
   DriverSummary -> DoneReport.run context
+  DriverState -> Results.runState context
+  DriverMigrate -> withMutationLock context (Results.runMigrate context)
   DriverJobStart options -> withMutationLock context (Results.runJobStart context options)
   DriverJobEnd options -> withMutationLock context (Results.runJobEnd context options)
 
@@ -433,7 +439,7 @@ runSyncOp context (Sync options) = withMutationLock context (SyncWorkflow.run co
 
 withMutationLock :: WorkflowContext -> Effect Outcome.OpOutcome -> Effect Outcome.OpOutcome
 withMutationLock context action = do
-  result <- State.withStateLock (Context.statePath context) action
+  result <- State.withStateTransaction context action
   pure case result of
     Left error -> Outcome.failure 1 (error <> "\n")
     Right outcome -> outcome

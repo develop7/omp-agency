@@ -7,13 +7,14 @@ const runtimeRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** @typedef {{ exit: number, stdout: string, stderr: string, value: unknown }} WorkflowResult */
 
 /**
- * @typedef {{ operation: "cli", cwd?: string } | { operation: "cli_seed", seed: string, cwd?: string }} WorkflowRequest
+ * @typedef {{ operation: "cli", state_source: string, cwd?: string } | { operation: "cli_seed", seed: string, state_source: string, cwd?: string }} WorkflowRequest
  */
 
 /**
- * Evaluate a /do workflow using assets and state discovered from the runtime
- * installation and supplied working directory. The request may be the CLI
- * bridge's JSON text or a {@link WorkflowRequest}.
+ * Evaluate a /do workflow using assets discovered from the runtime
+ * installation and supplied working directory, and workflow state supplied as
+ * JSON text by the caller. The request may be the CLI bridge's JSON text or a
+ * {@link WorkflowRequest}.
  *
  * @param {unknown} request
  * @returns {Promise<WorkflowResult>}
@@ -21,13 +22,11 @@ const runtimeRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export async function evaluateWorkflow(request) {
   try {
     const parsed = parseRequest(request);
-    const { cwd, operation } = parsed;
-    const [workflow_source, vocabulary_source, state_source] =
-      await Promise.all([
-        readWorkflowAsset(cwd, "workflow.ncl"),
-        readWorkflowAsset(cwd, "workflow-manifest.json"),
-        readStateSource(cwd),
-      ]);
+    const { cwd, operation, state_source } = parsed;
+    const [workflow_source, vocabulary_source] = await Promise.all([
+      readWorkflowAsset(cwd, "workflow.ncl"),
+      readWorkflowAsset(cwd, "workflow-manifest.json"),
+    ]);
     const nickel = await loadNickel();
     const evaluatorRequest = {
       workflow_source,
@@ -58,7 +57,7 @@ export function workflowFailure(error) {
 
 /**
  * @param {unknown} request
- * @returns {{ cwd: string, operation: "cli" } | { cwd: string, operation: "cli_seed", seed: string }}
+ * @returns {{ cwd: string, operation: "cli", state_source: string } | { cwd: string, operation: "cli_seed", seed: string, state_source: string }}
  */
 function parseRequest(request) {
   const value = typeof request === "string" ? JSON.parse(request) : request;
@@ -69,19 +68,27 @@ function parseRequest(request) {
   if (typeof cwd !== "string" || cwd === "") {
     throw new Error("workflow: cwd must be a non-empty string");
   }
+  let parsed;
   if (operation === "cli") {
     if (Object.hasOwn(value, "seed")) {
       throw new Error("workflow: cli does not accept a seed");
     }
-    return { cwd: resolve(cwd), operation };
-  }
-  if (operation === "cli_seed") {
+    parsed = { cwd: resolve(cwd), operation };
+  } else if (operation === "cli_seed") {
     if (!Object.hasOwn(value, "seed") || typeof value.seed !== "string") {
       throw new Error("workflow: cli_seed requires a string seed");
     }
-    return { cwd: resolve(cwd), operation, seed: value.seed };
+    parsed = { cwd: resolve(cwd), operation, seed: value.seed };
+  } else {
+    throw new Error("workflow: operation must be 'cli' or 'cli_seed'");
   }
-  throw new Error("workflow: operation must be 'cli' or 'cli_seed'");
+  const { state_source } = value;
+  if (typeof state_source !== "string" || state_source === "") {
+    throw new Error(
+      "workflow: state_source must be a non-empty JSON text string",
+    );
+  }
+  return { ...parsed, state_source };
 }
 
 /** @param {string} cwd @param {string} asset */
@@ -99,24 +106,6 @@ async function readWorkflowAsset(cwd, asset) {
     return await readFile(fallbackPath, "utf8");
   } catch (error) {
     throw cannotReadAsset(asset, bundledPath, fallbackPath, error);
-  }
-}
-
-/** @param {string} cwd */
-async function readStateSource(cwd) {
-  const statePath = join(cwd, ".do-results.json");
-  try {
-    return await readFile(statePath, "utf8");
-  } catch (error) {
-    if (isMissingFile(error)) {
-      throw new Error(
-        `workflow: no .do-results.json in ${cwd} — run do-driver init first (from the repository root)`,
-      );
-    }
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `workflow: cannot read state file .do-results.json at ${statePath}: ${detail}`,
-    );
   }
 }
 
