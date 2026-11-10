@@ -824,6 +824,7 @@ root workspace = case workspace.stateRoot of
   Nothing -> null
   Just value -> notNull value
 
+-- | Resolve the external database path and canonical worktree identity once.
 resolveStore :: forall r. Workspace r -> Effect Context.StoreIdentity
 resolveStore workspace = do
   dbPath <- Sys.stateDbPath (root workspace) workspace.stateDir
@@ -839,7 +840,7 @@ readState workspace = do
     Right source -> case toMaybe source of
       Nothing -> Right Nothing
       Just json -> case parseState json of
-        Left error -> Left error
+        Left error -> Left ("state: cannot parse " <> workspace.store.dbPath <> ": " <> error)
         Right value -> Right (Just value)
 
 -- | Run the existing PureScript mutation inside one SQLite transaction.
@@ -855,6 +856,7 @@ withStateTransaction workspace action = do
 writeState :: forall r. { store :: Context.StoreIdentity | r } -> State -> Effect Unit
 writeState workspace state = Sys.writeStateJson workspace.store.dbPath workspace.store.workspacePath (stringifyState state)
 
+-- | Return the external database path for diagnostics and migration output.
 storePath :: forall r. { store :: Context.StoreIdentity | r } -> String
 storePath workspace = workspace.store.dbPath
 
@@ -862,6 +864,8 @@ storePath workspace = workspace.store.dbPath
 legacyStatePath :: String -> String
 legacyStatePath workspace = workspace <> "/.do-results.json"
 
+-- | Read the legacy working-tree document only for explicit migration.
+-- | ENOENT means absent; other read and parse failures remain visible.
 readLegacyState :: String -> Effect (Either String (Maybe State))
 readLegacyState workspace = do
   readResult <- try (Sys.readUtf8 (legacyStatePath workspace))
@@ -870,5 +874,5 @@ readLegacyState workspace = do
       if SystemError.code (unsafeCoerce error) == "ENOENT" then Right Nothing
       else Left (SystemError.message (unsafeCoerce error))
     Right source -> case parseState source of
-      Left error -> Left error
+      Left error -> Left ("state: cannot parse " <> legacyStatePath workspace <> ": " <> error)
       Right value -> Right (Just value)

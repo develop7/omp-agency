@@ -15,6 +15,7 @@ import Agency.Scripts.Do.VcsKind as VcsKind
 -- | Resolution happens in the adapter; providers only consume this value.
 -- | captureOutput controls subprocess providers; the Nickel bridge always
 -- | captures its subprocess output because it communicates over stdin/stdout.
+-- | One resolved worktree database and the canonical path that owns it.
 type StoreIdentity =
   { dbPath :: String
   , workspacePath :: String

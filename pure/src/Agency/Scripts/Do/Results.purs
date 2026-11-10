@@ -34,6 +34,7 @@ import Data.Int as Int
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
+import Effect.Exception as Exception
 import Foreign.Object as Obj
 
 -- | The legacy reset primitive: it still resets whatever it finds — no
@@ -264,13 +265,15 @@ runMigrate context = do
         Right (Just state) -> do
           State.writeState context state
           verified <- State.readState context
-          pure case verified of
+          case verified of
             Right (Just imported) | State.stringifyState imported == State.stringifyState state ->
-              Outcome.withValue
-                (objectValue [ Tuple "state" (State.encodeState state), Tuple "legacyPath" (fromString (State.legacyStatePath context.stateDir)), Tuple "storePath" (fromString (State.storePath context)) ])
-                (Outcome.withStdout ("migrated workflow state to " <> State.storePath context <> "; legacy source left unchanged at " <> State.legacyStatePath context.stateDir <> "\n"))
-            Right _ -> failText "do-driver: migration verification did not return the imported state"
-            Left error -> failText (Context.stateCorruptError "do-driver" error "verify the imported snapshot before continuing")
+              pure
+                ( Outcome.withValue
+                    (objectValue [ Tuple "state" (State.encodeState state), Tuple "legacyPath" (fromString (State.legacyStatePath context.stateDir)), Tuple "storePath" (fromString (State.storePath context)) ])
+                    (Outcome.withStdout ("migrated workflow state to " <> State.storePath context <> "; legacy source left unchanged at " <> State.legacyStatePath context.stateDir <> "\n"))
+                )
+            Right _ -> Exception.throw "do-driver: migration verification did not return the imported state"
+            Left error -> Exception.throw (Context.stateCorruptError "do-driver" error "verify the imported snapshot before continuing")
 
 -- | `base` names the PR-target ref every later diff op resolves and the
 -- | trunk guards compare against; a value that names no ref is rejected here,

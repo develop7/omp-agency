@@ -4,16 +4,11 @@
 module Agency.Scripts.Do.Sys
   ( ExecResult
   , InheritResult
-  , exec
   , execAt
-  , execInput
   , execInputAt
-  , execInherit
   , execInheritAt
-  , execInheritInput
   , execInheritInputAt
   , readUtf8
-  , exists
   , isDir
   , nowIso
   , formatEpochIso
@@ -70,14 +65,6 @@ type InheritResult =
 
 -- | Run a command with UTF-8 captured output. A missing executable is a
 -- | normal command failure, represented as status 1 and its system message.
-exec :: String -> Array String -> Effect ExecResult
-exec command args = do
-  result <- Child.spawnSync' command args
-    { encoding: "utf8"
-    , maxBuffer: 64.0 * 1024.0 * 1024.0
-    }
-  pure (execResult result)
-
 execAt :: Maybe String -> String -> Array String -> Effect ExecResult
 execAt workspaceDir command args = do
   result <- case workspaceDir of
@@ -107,9 +94,6 @@ execResult result = do
       }
 
 -- | Run a command with supplied text on stdin and captured output.
-execInput :: String -> Array String -> String -> Effect ExecResult
-execInput = execInputAt Nothing
-
 execInputAt :: Maybe String -> String -> Array String -> String -> Effect ExecResult
 execInputAt workspaceDir command args input = do
   inputBuffer <- Buffer.fromString input UTF8
@@ -129,9 +113,6 @@ execInputAt workspaceDir command args input = do
 
 -- | Run a command with all child streams inherited. A spawn failure is
 -- | returned separately because Node does not write it to inherited stderr.
-execInherit :: String -> Array String -> Effect InheritResult
-execInherit = execInheritAt Nothing
-
 execInheritAt :: Maybe String -> String -> Array String -> Effect InheritResult
 execInheritAt workspaceDir command args = do
   result <- case workspaceDir of
@@ -148,9 +129,6 @@ execInheritAt workspaceDir command args = do
     }
 
 -- | Run a command with supplied text on stdin and inherited output streams.
-execInheritInput :: String -> Array String -> String -> Effect InheritResult
-execInheritInput = execInheritInputAt Nothing
-
 execInheritInputAt :: Maybe String -> String -> Array String -> String -> Effect InheritResult
 execInheritInputAt workspaceDir command args input = do
   inputBuffer <- Buffer.fromString input UTF8
@@ -171,9 +149,6 @@ execInheritInputAt workspaceDir command args input = do
 
 readUtf8 :: String -> Effect String
 readUtf8 = FSSync.readTextFile UTF8
-
-exists :: String -> Effect Boolean
-exists = FSSync.exists
 
 -- | Missing or unreadable paths are not directories. Detection deliberately
 -- | treats those paths as absent so the VCS precedence can continue.

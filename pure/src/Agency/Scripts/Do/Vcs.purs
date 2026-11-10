@@ -1101,10 +1101,11 @@ sameGitRevision context left right = do
     if leftResult.code /= 0 || rightResult.code /= 0 then Left "vcs-op: unable to compare current branch with default"
     else Right (trim leftResult.stdout == trim rightResult.stdout)
 
--- | Whether @ carries picked-up work: an undescribed change with content.
--- | `jj new` would strand exactly such a change behind an empty bookmarked one,
--- | so the feature branch must attach to it instead. Described changes are
--- | commits — they stay where their author put them.
+-- | Whether @ carries picked-up work: an undescribed change with content
+-- beyond the legacy workflow state document, which migration leaves behind as
+-- recovery residue rather than repository work. `jj new` would strand such a
+-- change behind an empty bookmarked one, so the feature branch must attach to
+-- it instead. Described changes stay where their author put them.
 jjPickedUpWork :: WorkflowContext -> Effect (Either String Boolean)
 jjPickedUpWork context = do
   let inspectFallback = "vcs-op: unable to inspect jj working copy for branch"
@@ -1114,7 +1115,7 @@ jjPickedUpWork context = do
   else do
     probe <- Sys.execAt (Just context.stateDir) Binaries.jj [ "diff", "--revisions", "@", "--name-only" ]
     if probe.code /= 0 then pure (Left (commandError inspectFallback probe))
-    else pure (Right (not (Array.null (lines probe.stdout))))
+    else pure (Right (Array.any (\path -> path /= ".do-results.json") (lines probe.stdout)))
 
 -- | Whether a revision is the pinned commit. Only the left side is queried:
 -- | the right side arrives already pinned by jjResolveBase, so resolving it

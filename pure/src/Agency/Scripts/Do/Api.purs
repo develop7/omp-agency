@@ -47,13 +47,16 @@ runVcsWrite request = case parseVcsWrite request.args of
 
 runForge :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String } -> Effect ToolResult
 runForge request =
-  runParsed request (parseMessageError (Forge.parseForgeOp request.args)) \context operation ->
-    case operation of
-      -- A tool capability query returns data, including false. The CLI's
-      -- separate shell predicate keeps its nonzero exit for unsupported ops.
-      Forge.Supports name ->
-        pure (Outcome.withValue (fromBoolean (Forge.supports context.forge name)) Outcome.success)
-      _ -> Forge.runForgeOp context operation
+  runParsed (parseMessageError (Forge.parseForgeOp request.args))
+    ( \context operation ->
+        case operation of
+          -- A tool capability query returns data, including false. The CLI's
+          -- separate shell predicate keeps its nonzero exit for unsupported ops.
+          Forge.Supports name ->
+            pure (Outcome.withValue (fromBoolean (Forge.supports context.forge name)) Outcome.success)
+          _ -> Forge.runForgeOp context operation
+    )
+    request
 
 runAgencyDriver :: { tool :: String, args :: Array String, captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String } -> Effect ToolResult
 runAgencyDriver request = case Array.uncons request.args of
@@ -147,8 +150,8 @@ isWriteOperation operation = case operation of
   Vcs.RefreshDefaultBranch -> false
   Vcs.FastForwardIfSafe -> false
 
-runParsed :: forall a r. { captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String | r } -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> Effect ToolResult
-runParsed request parsed runner = runParsedWith request.captureOutput (const false) parsed runner request
+runParsed :: forall a r. Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> { captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String | r } -> Effect ToolResult
+runParsed parsed runner request = runParsedWith request.captureOutput (const false) parsed runner request
 
 runParsedWith :: forall a r. Boolean -> (a -> Boolean) -> Either Ops.ParseError a -> (Context.WorkflowContext -> a -> Effect Outcome.OpOutcome) -> { captureOutput :: Boolean, stateRoot :: Nullable String, workspaceDir :: Nullable String | r } -> Effect ToolResult
 runParsedWith captureOutput allowCorruptState parsed runner request = case parsed of

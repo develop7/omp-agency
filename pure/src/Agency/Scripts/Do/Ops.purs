@@ -52,6 +52,8 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (joinWith)
 import Data.String.CodeUnits (drop)
 import Effect (Effect)
+import Effect.Exception (try)
+import Effect.Exception as Exception
 
 -- | Parse failures carry the legacy script's exit status and stderr text.
 type ParseError =
@@ -371,10 +373,16 @@ parseError code message = { code, message }
 -- | unreadable persisted state; all other operations fail before dispatch.
 resolveWorkflowContext :: Boolean -> Boolean -> Maybe String -> Maybe String -> Effect (Either String WorkflowContext)
 resolveWorkflowContext captureOutput allowCorruptState stateRoot workspaceDir = do
-  root <- case workspaceDir of
-    Nothing -> Sys.cwd
-    Just workspace -> Sys.realpath workspace
-  resolveAtRoot root
+  rootResult <- case workspaceDir of
+    Nothing -> Right <$> Sys.cwd
+    Just workspace -> do
+      result <- try (Sys.realpath workspace)
+      pure case result of
+        Left error -> Left ("workflow: workspace directory '" <> workspace <> "' does not exist or is unreadable: " <> Exception.message error)
+        Right root -> Right root
+  case rootResult of
+    Left error -> pure (Left error)
+    Right root -> resolveAtRoot root
   where
   resolveAtRoot root = do
     vcsOverrideText <- Sys.getEnv "VCS_OVERRIDE"

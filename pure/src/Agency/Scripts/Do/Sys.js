@@ -5,7 +5,13 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 
 const transactions = new Map();
+const UPSERT_SQL =
+  "INSERT INTO run(workspace_path, state_json) VALUES (?, ?) ON CONFLICT(workspace_path) DO UPDATE SET state_json = excluded.state_json";
+const SCHEMA_SQL =
+  "CREATE TABLE IF NOT EXISTS run (workspace_path TEXT PRIMARY KEY, state_json TEXT NOT NULL) STRICT";
 
+// The worktree's external snapshot path is derived once per context. Linked
+// worktrees intentionally have independent state databases.
 function stateLocation(root, workspace) {
   const workspacePath = realpathSync.native(workspace);
   const configured = root || process.env.AGENCY_STATE_DIR;
@@ -32,6 +38,10 @@ function stateLocation(root, workspace) {
   return { dbPath: join(directory, filename), workspacePath };
 }
 
+// Readers use readOnly and never create a file/schema. Writers enable WAL and
+// FULL durability. Schema setup is idempotent inside BEGIN IMMEDIATE: a second
+// first-writer rechecks the version after waiting rather than failing on a
+// duplicate table.
 function openState(location, create) {
   if (create)
     mkdirSync(dirname(location.dbPath), { recursive: true, mode: 0o700 });
@@ -52,10 +62,17 @@ function openState(location, create) {
   if (version < 1) {
     db.exec("BEGIN IMMEDIATE");
     try {
-      db.exec(
-        "CREATE TABLE run (workspace_path TEXT PRIMARY KEY, state_json TEXT NOT NULL) STRICT",
-      );
-      db.exec("PRAGMA user_version = 1");
+      const currentVersion = db
+        .prepare("PRAGMA user_version")
+        .get().user_version;
+      if (currentVersion === 0) {
+        db.exec(SCHEMA_SQL);
+        db.exec("PRAGMA user_version = 1");
+      } else if (currentVersion !== 1) {
+        throw new Error(
+          `state: unsupported schema version ${currentVersion} at ${location.dbPath}`,
+        );
+      }
       db.exec("COMMIT");
     } catch (error) {
       try {
@@ -110,18 +127,26 @@ export function writeStateJson(dbPath) {
     const location = { dbPath, workspacePath };
     const active = transactions.get(location.dbPath);
     if (active) {
-      active
-        .prepare(
-          "INSERT INTO run(workspace_path, state_json) VALUES (?, ?) ON CONFLICT(workspace_path) DO UPDATE SET state_json = excluded.state_json",
-        )
-        .run(location.workspacePath, json);
+      active.prepare(UPSERT_SQL).run(location.workspacePath, json);
       return;
     }
     const db = openState(location, true);
     try {
-      db.prepare(
-        "INSERT INTO run(workspace_path, state_json) VALUES (?, ?) ON CONFLICT(workspace_path) DO UPDATE SET state_json = excluded.state_json",
-      ).run(location.workspacePath, json);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        db.prepare(UPSERT_SQL).run(location.workspacePath, json);
+        db.exec("COMMIT");
+      } catch (error) {
+        try {
+          db.exec("ROLLBACK");
+        } catch (rollbackError) {
+          throw new Error(
+            `state: write failed at ${location.dbPath}: ${error?.message ?? error}; rollback failed: ${rollbackError?.message ?? rollbackError}`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
     } finally {
       db.close();
     }
@@ -135,7 +160,14 @@ export function withStateTransaction(dbPath) {
       throw new Error(`state: nested transaction at ${location.dbPath}`);
     const db = openState(location, true);
     try {
-      db.exec("BEGIN IMMEDIATE");
+      try {
+        db.exec("BEGIN IMMEDIATE");
+      } catch (error) {
+        throw new Error(
+          `state: unable to begin mutation at ${location.dbPath}; another mutation may be running or the WAL is contended: ${error?.message ?? error}`,
+          { cause: error },
+        );
+      }
       transactions.set(location.dbPath, db);
       try {
         const result = action();

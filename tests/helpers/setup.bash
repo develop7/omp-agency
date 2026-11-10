@@ -62,7 +62,7 @@ state_jq() {
 seed_base() {
   local base="$1"
   agency_do do-driver init "fixture run" >/dev/null || return 1
-  agency_do do-driver set base "$base" >/dev/null
+  agency_do do-driver set base "$base" >/dev/null || return 1
 }
 
 # Seed a fixed-timestamp run for the done-summary suites.
